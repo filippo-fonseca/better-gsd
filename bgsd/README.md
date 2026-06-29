@@ -53,3 +53,15 @@ See `docs/INTEGRATION-NOTES.md` for the loading + MCP-reachability decisions.
 - **Seams only.** bgsd reaches GSD only through `/gsd-*` commands, `.planning/`, and `config.json`.
 - **No silent green.** When the tester can't drive a real browser, it emits
   `BLOCKED` / `ERROR` / `UNRELIABLE` — never a fabricated `PASS`.
+
+## Personality & UX
+
+bgsd's agents — and the future Conductor (codename **Kiwi**) — speak in a refined
+**British-butler / JARVIS** voice, addressing the user as "sir," with calm competence
+and the odd swaggering one-liner. The voice flavors human-facing narration only; the
+structured outputs (verdict line, `verification-report.json`, `BLOCKED`/`ERROR`) stay
+strictly literal. See [`PERSONALITY.md`](./PERSONALITY.md).
+
+Terminal UX lives in [`scripts/ui.mjs`](./scripts/ui.mjs) — a dependency-free helper
+(Kiwi banner, color-coded state badges, stage renderer; `NO_COLOR`/non-TTY safe).
+Try it: `node bgsd/scripts/ui.mjs --demo`.

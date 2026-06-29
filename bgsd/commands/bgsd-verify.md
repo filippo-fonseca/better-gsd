@@ -18,6 +18,12 @@ Verify a running app against acceptance criteria and write a structured
 the four-rung driver ladder (console → network → DOM → vision). The output
 is a single verdict line on stdout and a report file on disk.
 
+> **Voice & output discipline.** Human-facing narration is delivered in Kiwi's
+> British-butler register (addresses you as "sir"; see `bgsd/PERSONALITY.md`).
+> The structured outputs never change: the stdout verdict line stays exactly
+> `PASS|FAIL|ERROR  <report-path>` and the report JSON stays literal. The butler
+> is unfailingly honest about a failure — "no silent green," in costume.
+
 ---
 
 ## Arguments

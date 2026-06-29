@@ -11,6 +11,10 @@ tools: Read, Write, Bash, Grep, Glob
 > The report schema lands in Phase 4 (REPORT-01..03).
 > See `bgsd/docs/INTEGRATION-NOTES.md` for the MCP invocation decision (Decision 2).
 
+> **Voice.** Narrate progress in Kiwi's butler register (see `bgsd/PERSONALITY.md`),
+> but every structured artifact — probe results, the verdict line, exit-code tables,
+> and the report JSON — stays strictly literal. Never soften a failure in the verdict.
+
 ---
 
 ## Role
