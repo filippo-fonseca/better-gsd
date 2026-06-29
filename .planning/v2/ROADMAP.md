@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Decomposition + Dependency Graph** - Decompose a prompt into whole-pipeline units and a verified DAG with wave grouping — the load-bearing structure all parallelism consumes
 - [x] **Phase 2: Control-File Protocol + Heartbeat/Restart** - The `<agent-id>.json` coordination contract + assumption/blocker/escalation protocol + deterministic heartbeat→restart state machine
 - [x] **Phase 3: Worktree Fan-Out + Wave Scheduler (mocked spawns)** - Deterministic per-worktree isolation (port/DB fan-out) + the dependency-aware wave scheduler, with the spawn boundary dependency-injected and unit-tested under mocked spawns
-- [ ] **Phase 4: `/bgsd-run` Lifecycle + Live Multi-Process Orchestration** *(HUMAN-GATED live run)* - The full run lifecycle/state-machine, abort, merge-boundary checkpoints, and the real headless multi-process spawn guarded behind `--live` (human-supervised, not yet executed)
+- [x] **Phase 4: `/bgsd-run` Lifecycle + Live Multi-Process Orchestration** *(HUMAN-GATED live run)* - The full run lifecycle/state-machine, abort, merge-boundary checkpoints, and the real headless multi-process spawn guarded behind `--live` (human-supervised, not yet executed) — lifecycle + abort + checkpoints built & unit-tested; live spawn behind `--live`, not executed
 - [ ] **Phase 5: Conflict Pre-Check + Merge-Resolver** - Deterministic git dry-run conflict pre-check + dependency-ordered merges, with the merge-resolver agent injected behind a mocked boundary and a human-escalation path for low-confidence conflicts
 - [ ] **Phase 6: Rehearsal Assembly + Doc Aggregation + Cleanup** - Assemble `rehearsal/<run-id>`, aggregate each worktree's `.planning/` into the run ledger + CHANGELOG, and clean up merged branches reversibly
 - [ ] **Phase 7: Live Colorful Status View (Kiwi)** - Always-on `/bgsd-status` view on ui.mjs — per-worktree badges, stage, loop counts, merge state, budget/context telemetry, the 🔒 main-protected indicator
@@ -166,7 +166,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Decomposition + Dependency Graph | 1/1 | Complete | 2026-06-29 |
 | 2. Control-File Protocol + Heartbeat/Restart | 1/1 | Complete | 2026-06-29 |
 | 3. Worktree Fan-Out + Wave Scheduler (mocked spawns) | 1/1 | Complete | 2026-06-29 |
-| 4. `/bgsd-run` Lifecycle + Live Multi-Process Orchestration (HUMAN-GATED) | 0/1 | Pending | — |
+| 4. `/bgsd-run` Lifecycle + Live Multi-Process Orchestration (HUMAN-GATED) | 1/1 | Built (live run human-gated) | 2026-06-29 |
 | 5. Conflict Pre-Check + Merge-Resolver | 0/1 | Pending | — |
 | 6. Rehearsal Assembly + Doc Aggregation + Cleanup | 0/1 | Pending | — |
 | 7. Live Colorful Status View (Kiwi) | 0/1 | Pending | — |
