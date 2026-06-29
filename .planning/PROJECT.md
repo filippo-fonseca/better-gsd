@@ -54,7 +54,7 @@ If this isn't reliable, nothing downstream (loops, orchestration) matters. v0 ex
 
 ## Future Milestones (per Part 8 of the PRD + live addenda)
 
-- **v1 — Fix-stream mode (`/bgsd-queue`) + Loop 1.** Queue → classify/route to GSD → execute → Tester → Ralph stop-hook. Lowest-risk autonomy; one worktree + one loop.
+- **v1 — Fix-stream mode (`/bgsd-queue`) + Loop 1. ✅ BUILT (2026-06-29).** Queue → classify/route to GSD → execute → Tester → Ralph stop-hook. Lowest-risk autonomy; one worktree + one loop. Deterministic core + 85 unit tests across queue/route/loop1/capture; the two live runs (Loop 1 autonomous spawn, Hyperpolymath cron) are guarded behind `--live` and remain human-gated. Roadmap: `.planning/v1/`.
 - **v2 — Project orchestrator (`/bgsd-run`) + parallelism + Loop 1 across worktrees.** Conductor (Kiwi): decomposition, dependency graph, headless spawning, control-file protocol, heartbeat/restart, conflict pre-check + merge-resolver, `rehearsal/<run-id>`, doc aggregation, branch cleanup, with Conductor→user checkpoints at merge boundaries.
 - **v3 — Loop 2 (integration) + User Review Gate + feedback mode.** `/bgsd-user-eval`, `/bgsd-feedback [--fast]`, per-agent CHANGELOG into the PR.
 
@@ -89,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone** (via `/gsd-complete-milestone`): full review; confirm Core Value priority; audit Out of Scope; promote next version (v1) into Active.
 
 ---
-*Last updated: 2026-06-29 — Milestone 1 (v0) complete & proven. Next: promote v1 (fix-stream + Loop 1) to Active.*
+*Last updated: 2026-06-29 — Milestones v0 (proven) + v1 (built; live runs human-gated) complete. Next: v2 (Conductor / Kiwi).*
