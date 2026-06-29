@@ -1,0 +1,4 @@
+# bgsd runtime output directories — local only, never committed
+# These are written by bgsd-verify runs and test suites.
+.bgsd/
+.bgsd-tmp/
