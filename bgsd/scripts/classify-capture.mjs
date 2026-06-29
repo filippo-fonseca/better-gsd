@@ -44,9 +44,13 @@ import { resolve } from "node:path";
 const REACT_WARNING_REGEXES = [
   {
     id: "validateDOMNesting",
-    // Matches: "Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>."
-    // and similar invalid-nesting messages React emits.
-    pattern: /validateDOMNesting/i,
+    // Matches the React 17 form:
+    //   "Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>."
+    // AND the React 18 / Next.js 14 form:
+    //   "Warning: In HTML, <div> cannot be a descendant of <p>."
+    //   "Warning: In HTML, %s cannot be a descendant of <%s>."
+    // Both indicate an invalid DOM nesting that a screenshot would miss.
+    pattern: /validateDOMNesting|in html,.*cannot be a descendant of/i,
     description: "Invalid DOM nesting (e.g. <div> inside <p>)",
   },
   {

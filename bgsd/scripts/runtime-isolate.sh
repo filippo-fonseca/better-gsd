@@ -192,6 +192,13 @@ EOF
 
   # ISO-03: boot next dev in background
   echo "Booting next dev on port ${port}..."
+  # Enable monitor (job-control) mode so that background processes `( ) &` get
+  # their own PGID. Without -m, bash in non-interactive mode inherits the
+  # caller's PGID for backgrounded jobs, which means `down`'s PGID-kill would
+  # propagate back to the caller (e.g. a Node test harness). With -m set,
+  # background processes form a new process group that `down` can safely kill
+  # without affecting the parent.
+  set -m
   (
     cd "$app_dir"
     # Merge .env.bgsd values into the environment for this shell
