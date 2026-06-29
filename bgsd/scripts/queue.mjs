@@ -43,6 +43,22 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, createHash } from "node:crypto";
 
+// Phase 2 imports — classifier and router (ROUTE-01..04)
+// These are loaded lazily inside runPlaceholderPipeline so that Phase-1-only
+// consumers (e.g. test-queue.mjs) can import queue.mjs without requiring the
+// Phase 2 modules to be present. The real pipeline wires them in below.
+let _classifyItem = null;
+let _routeItem    = null;
+
+async function loadPhase2Modules() {
+  if (_classifyItem && _routeItem) return;
+  const __dir2 = dirname(fileURLToPath(import.meta.url));
+  const { classifyItem } = await import(`file://${join(__dir2, "classify-item.mjs")}`);
+  const { routeItem }    = await import(`file://${join(__dir2, "route-item.mjs")}`);
+  _classifyItem = classifyItem;
+  _routeItem    = routeItem;
+}
+
 // ---------------------------------------------------------------------------
 // Paths
 // ---------------------------------------------------------------------------
@@ -395,7 +411,10 @@ export function printStatus() {
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun=false]  If true, print what would happen without mutating state.
  */
-export function startDrainer({ dryRun = false } = {}) {
+export async function startDrainer({ dryRun = false } = {}) {
+  // Pre-load Phase 2 modules once before the drain loop (ROUTE-01..04)
+  await loadPhase2Modules();
+
   const store = loadStore();
   const items = store.items ?? [];
 
@@ -416,7 +435,7 @@ export function startDrainer({ dryRun = false } = {}) {
 
     if (dryRun) {
       process.stdout.write(
-        `  (dry-run) would advance through placeholder pipeline\n`
+        `  (dry-run) would advance through classify -> route -> execute pipeline\n`
       );
       continue;
     }
@@ -431,7 +450,7 @@ export function startDrainer({ dryRun = false } = {}) {
     liveItem.attempts = (liveItem.attempts ?? 0) + 1;
 
     try {
-      runPlaceholderPipeline(liveItem);
+      runPipeline(liveItem);
     } catch (err) {
       // Unexpected pipeline error: mark blocked with reason
       if (!TERMINAL_STATES.includes(liveItem.state)) {
@@ -456,61 +475,85 @@ export function startDrainer({ dryRun = false } = {}) {
 }
 
 /**
- * Run the placeholder pipeline for a single item, advancing it from its
- * current state to a terminal state via the Phase 1 stub.
+ * Run the pipeline for a single item, advancing it from its current state
+ * to a terminal state.
  *
- * Each step prints a one-line trace so the run is visible in the terminal.
- * Phases 2 and 3 replace each stub block with real logic.
+ * Phase 2 steps (classify + route) are now REAL — they call classifyItem()
+ * and routeItem() from the Phase 2 modules loaded by loadPhase2Modules().
+ *
+ * Phase 3 steps (execute, verify, loop) remain stubs; they will be replaced
+ * in Phase 3 (loop1.mjs). Each stub step prints a clearly-labelled trace.
+ *
+ * Resume semantics (QUEUE-05): if an item is not in `queued` state when
+ * runPipeline() picks it up, the pipeline skips the steps already done and
+ * resumes from the current state.
  *
  * @param {object} item  The item to advance (mutated in place).
  */
-function runPlaceholderPipeline(item) {
-  // Resume from wherever the item was last persisted (QUEUE-05)
+function runPipeline(item) {
+  // -----------------------------------------------------------------
+  // PHASE 2: classify the item (title/body -> route class)  [ROUTE-01]
+  // _classifyItem is loaded by loadPhase2Modules() before the drain loop.
+  // It advances: queued -> classified  (or queued -> needs_input on ambiguity)
+  // -----------------------------------------------------------------
   if (item.state === "queued") {
-    // -----------------------------------------------------------------
-    // PHASE 2 HOOK: classify the item (title/body -> route class)
-    // Replace this stub with: classify(item) from classify-route.mjs
-    // -----------------------------------------------------------------
-    process.stdout.write(`  [stub] classify: queued -> classified\n`);
-    transition(item, "classified", { phase: "2-stub", note: "placeholder" });
+    process.stdout.write(`  [classify] classify: queued -> classified|needs_input\n`);
+    _classifyItem(item, transition);
+    // If needs_input: item is now terminal; fall through to end of function
+    if (item.state === "needs_input") {
+      process.stdout.write(
+        `  [classify] parked as needs_input — question: ${item.clarification_question}\n`
+      );
+      return;
+    }
   }
 
+  // -----------------------------------------------------------------
+  // PHASE 2: route the item (route class -> /gsd-* quick path)  [ROUTE-02, 03, 04]
+  // _routeItem is loaded by loadPhase2Modules().
+  // It advances: classified -> routed  (and writes config.json model posture)
+  // -----------------------------------------------------------------
   if (item.state === "classified") {
-    // -----------------------------------------------------------------
-    // PHASE 2 HOOK: route the item (route class -> GSD quick path)
-    // Replace this stub with: route(item) from classify-route.mjs
-    // -----------------------------------------------------------------
-    process.stdout.write(`  [stub] route: classified -> routed\n`);
-    transition(item, "routed", { phase: "2-stub", note: "placeholder" });
+    process.stdout.write(
+      `  [route] route: classified -> routed  (class=${item.route_class})\n`
+    );
+    const result = _routeItem(item, transition, { skipConfigWrite: false });
+    process.stdout.write(
+      `  [route] => command=${result.command}  model=${result.model_profile}  effort=${result.effort}\n`
+    );
+    // If the router parked as needs_input (unknown class edge case):
+    if (item.state === "needs_input") return;
   }
 
+  // -----------------------------------------------------------------
+  // PHASE 3 HOOK: execute via GSD quick path
+  // Replace this stub with: execute(item) from loop1.mjs
+  // Records: item.gsd_command is the /gsd-* command to invoke.
+  // -----------------------------------------------------------------
   if (item.state === "routed") {
-    // -----------------------------------------------------------------
-    // PHASE 3 HOOK: execute via GSD quick path (call /gsd-quick or
-    // /gsd-fast based on item.route_class)
-    // Replace this stub with: execute(item) from loop1.mjs
-    // -----------------------------------------------------------------
-    process.stdout.write(`  [stub] execute: routed -> executing\n`);
+    process.stdout.write(
+      `  [stub] execute: routed -> executing  (Phase 3 will invoke ${item.gsd_command})\n`
+    );
     transition(item, "executing", { phase: "3-stub", note: "placeholder" });
   }
 
+  // -----------------------------------------------------------------
+  // PHASE 3 HOOK: spawn bgsd-verify against the worktree
+  // Replace this stub with: verify(item) from loop1.mjs
+  // -----------------------------------------------------------------
   if (item.state === "executing") {
-    // -----------------------------------------------------------------
-    // PHASE 3 HOOK: spawn bgsd-verify against the worktree
-    // Replace this stub with: verify(item) from loop1.mjs
-    // -----------------------------------------------------------------
     process.stdout.write(`  [stub] verify: executing -> verifying\n`);
     transition(item, "verifying", { phase: "3-stub", note: "placeholder" });
   }
 
+  // -----------------------------------------------------------------
+  // PHASE 3 HOOK: Ralph verify->fix loop
+  // On PASS  -> done
+  // On FAIL  -> looping (then back to verifying until PASS or stop)
+  // On BLOCKED/ERROR -> blocked
+  // Replace this stub with: loop1(item) from loop1.mjs
+  // -----------------------------------------------------------------
   if (item.state === "verifying") {
-    // -----------------------------------------------------------------
-    // PHASE 3 HOOK: Ralph verify->fix loop
-    // On PASS  -> done
-    // On FAIL  -> looping (then back to verifying until PASS or stop)
-    // On BLOCKED/ERROR -> blocked
-    // Replace this stub with: loop1(item) from loop1.mjs
-    // -----------------------------------------------------------------
     process.stdout.write(
       `  [stub] loop: verifying -> done (placeholder — Phase 3 will run real Tester)\n`
     );
@@ -520,7 +563,7 @@ function runPlaceholderPipeline(item) {
   // If item is still in "looping" (picked up mid-loop after interruption):
   if (item.state === "looping") {
     // -----------------------------------------------------------------
-    // PHASE 3 HOOK: continue the in-progress verify→fix loop
+    // PHASE 3 HOOK: continue the in-progress verify->fix loop
     // -----------------------------------------------------------------
     process.stdout.write(
       `  [stub] continue loop: looping -> done (placeholder)\n`
@@ -601,10 +644,14 @@ if (
 
   if (subcommand === "start") {
     const flags = parseFlags(argv.slice(1));
-    startDrainer({ dryRun: flags["dry-run"] === true });
-    process.exit(0);
+    startDrainer({ dryRun: flags["dry-run"] === true }).then(() => {
+      process.exit(0);
+    }).catch((err) => {
+      process.stderr.write(`start: fatal error: ${err.message}\n`);
+      process.exit(1);
+    });
+  } else {
+    process.stderr.write(`Unknown subcommand: "${subcommand}"\n`);
+    usage();
   }
-
-  process.stderr.write(`Unknown subcommand: "${subcommand}"\n`);
-  usage();
 }
