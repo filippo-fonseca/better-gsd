@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Fix-Stream Queue + State Machine** - Durable, resumable single-stream queue with `add|start|status` and an auditable per-item state machine
 - [x] **Phase 2: Classification + GSD Quick-Path Routing** - Cheap classify each item and route it to a concrete `/gsd-*` quick path via the command + config seams
 - [x] **Phase 3: Loop 1 — Verify→Fix Ralph Loop** *(HUMAN-GATED live run)* - Bounded per-worktree verify→fix loop reusing the v0 Tester, until clean or a stop condition — controller + stop conditions built & unit-tested; live process-spawning run guarded behind `--live` (human-supervised, not yet executed)
-- [ ] **Phase 4: Hyperpolymath Capture→Queue Cron** *(HUMAN-GATED live hookup)* - Capture seam + dry-run cron against a mock source; live external wiring flagged, not automated
+- [x] **Phase 4: Hyperpolymath Capture→Queue Cron** *(HUMAN-GATED live hookup)* - Capture seam + dry-run cron against a mock source; live external wiring flagged, not automated
 - [ ] **Phase 5: Diagram-First Docs** - `/bgsd-queue` usage + Hyperpolymath capture pages, GSD-Mintlify style
 
 ## Phase Details
@@ -105,5 +105,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Fix-Stream Queue + State Machine | 1/1 | Complete | 2026-06-29 |
 | 2. Classification + GSD Quick-Path Routing | 1/1 | Complete | 2026-06-29 |
 | 3. Loop 1 — Verify→Fix Ralph Loop (HUMAN-GATED) | 1/1 | Built (live run human-gated) | 2026-06-29 |
-| 4. Hyperpolymath Capture→Queue Cron (HUMAN-GATED) | 0/TBD | Not started | - |
+| 4. Hyperpolymath Capture→Queue Cron (HUMAN-GATED) | 1/1 | Built (live hookup human-gated) | 2026-06-29 |
 | 5. Diagram-First Docs | 0/TBD | Not started | - |
