@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Runtime-Isolation Helper** - Boot one Next.js app cleanly on an isolated port + ephemeral DB, detect readiness, tear down
 - [x] **Phase 3: Verification-Driver Ladder** - Console-first ladder over `@playwright/mcp` with pre-flight probe and dev-mode capture
 - [x] **Phase 4: /bgsd-verify Command + Tester Agent + Report Schema** - Criteria-driven verification emitting structured `verification-report.json`
-- [ ] **Phase 5: Make-or-Break Proof** - Canary Next.js page proves the console error a screenshot misses is caught (FAIL) and clean passes (PASS)
+- [x] **Phase 5: Make-or-Break Proof** - Canary Next.js page proves the console error a screenshot misses is caught (FAIL) and clean passes (PASS)
 - [x] **Phase 6: Diagram-First Docs** - Quickstart + `/bgsd-verify` usage pages, diagram-first, GSD-Mintlify style
 
 ## Phase Details
@@ -107,5 +107,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Runtime-Isolation Helper | 1/1 | Complete | 2026-06-29 |
 | 3. Verification-Driver Ladder | 1/1 | Complete | 2026-06-29 |
 | 4. /bgsd-verify Command + Report Schema | 1/1 | Complete | 2026-06-29 |
-| 5. Make-or-Break Proof | 0/TBD | Not started | - |
+| 5. Make-or-Break Proof | 1/1 | Complete | 2026-06-29 |
 | 6. Diagram-First Docs | 1/1 | Complete | 2026-06-29 |

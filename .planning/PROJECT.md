@@ -29,17 +29,17 @@ If this isn't reliable, nothing downstream (loops, orchestration) matters. v0 ex
 
 ### Validated
 
-(None yet — v0 ships to validate the Core Value.)
+**Milestone 1 (v0) — COMPLETE & PROVEN (2026-06-29).** Core Value empirically validated: `/bgsd-verify` against a Next.js canary returned **FAIL** on a `<div>`-in-`<p>` defect (a real React console error invisible to a screenshot) and **PASS** on the clean route, reproducibly across reruns. The proof even caught a real bug in our own classifier (React 18/Next 14 emit a new nesting-warning string), which was fixed. Proven via a direct-Playwright harness running the real classifier; the `@playwright/mcp` transport is wired + manifest-validated, its live run pending a one-time Claude Code restart.
 
-### Active (v0 — this milestone)
+### Delivered (v0 — Milestone 1) ✅
 
-- [ ] A `/bgsd-verify` command: takes a running app URL + acceptance criteria (a GSD `UI-SPEC.md`/acceptance file, or inline) and returns a verdict.
-- [ ] A tester agent that drives the app via the Chrome/Playwright MCP, checking in priority order: **console messages → network errors → rendered DOM → screenshot/vision (fallback only)**.
-- [ ] Structured `verification-report.json` output: per-criterion pass/fail + defect list + screenshot paths.
-- [ ] A runtime-isolation helper (unique port + ephemeral DB/seed) that boots one app cleanly.
-- [ ] Proof on a real Next.js page — **including catching a console-level error** (e.g. a `<script>`-in-JSX warning) that a screenshot alone would miss. The make-or-break test.
-- [ ] Plugin skeleton: `.claude-plugin/plugin.json`, `commands/bgsd-verify.md`, `agents/tester.md`, `scripts/runtime-isolate.sh` (under bgsd's own additive namespace).
-- [ ] Diagram-first docs: a Quickstart page + a `/bgsd-verify` usage page.
+- [x] A `/bgsd-verify` command: takes a running app URL (or `--boot`) + acceptance criteria (a GSD `UI-SPEC.md`/acceptance file, or `--inline`) and returns a verdict.
+- [x] A tester agent that drives the app via `@playwright/mcp`, checking in priority order: **console messages → network errors → rendered DOM → screenshot/vision (fallback only)**.
+- [x] Structured `verification-report.json` output: per-criterion pass/fail + defect list + screenshot paths + driver-ladder audit + environment + verdict.
+- [x] A runtime-isolation helper (deterministic port + ephemeral SQLite + readiness detection + clean teardown) that boots one app cleanly.
+- [x] Proof on a real Next.js page — **catching a console-level error** that a screenshot alone would miss. The make-or-break test (passed).
+- [x] Plugin skeleton: `.claude-plugin/plugin.json`, `commands/bgsd-verify.md`, `agents/tester.md`, `scripts/runtime-isolate.sh` under bgsd's own additive namespace (loads as a second plugin via a local marketplace; zero edits to vendored GSD).
+- [x] Diagram-first docs: a Quickstart page + a `/bgsd-verify` usage page.
 
 ### Out of Scope (this milestone — deferred to later milestones)
 
@@ -67,10 +67,10 @@ If this isn't reliable, nothing downstream (loops, orchestration) matters. v0 ex
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Build v0 first (Standalone Tester) | De-risk the hardest assumption (tester reliability) in isolation before orchestration | — Pending |
-| Fork with GSD at repo root; bgsd in its own additive dirs | Current repo IS the GSD fork; honor "never edit vendored GSD" by namespacing bgsd | — Pending (exact dir layout decided in Phase 1) |
+| Build v0 first (Standalone Tester) | De-risk the hardest assumption (tester reliability) in isolation before orchestration | ✅ Validated — make-or-break proven (console error caught, no false positive) |
+| Fork with GSD at repo root; bgsd in its own additive dirs | Current repo IS the GSD fork; honor "never edit vendored GSD" by namespacing bgsd | ✅ Done — `bgsd/` namespace; loads as a 2nd plugin via local marketplace, zero GSD edits |
 | Sidecar vs git-subtree vendoring | PRD offers both; v0 doesn't require the full `vendor/gsd/` restructure | — Deferred (revisit v1) |
-| Verification-driver ladder: console → network → DOM → vision | Cheapest checks first; most bugs (incl. `<script>`-in-JSX) die before a vision call | — Pending |
+| Verification-driver ladder: console → network → DOM → vision | Cheapest checks first; most bugs (incl. `<script>`-in-JSX) die before a vision call | ✅ Validated — console rung caught the React-18 nesting warning a screenshot misses |
 | All work on `feat/bgsd-v0`, never `next` | Hard rule: never write to main/production | — Active |
 
 ## Context
@@ -89,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone** (via `/gsd-complete-milestone`): full review; confirm Core Value priority; audit Out of Scope; promote next version (v1) into Active.
 
 ---
-*Last updated: 2026-06-29 after initialization*
+*Last updated: 2026-06-29 — Milestone 1 (v0) complete & proven. Next: promote v1 (fix-stream + Loop 1) to Active.*
