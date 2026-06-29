@@ -1,0 +1,12 @@
+{
+  "console": [
+    { "type": "log",  "text": "App mounted successfully." },
+    { "type": "info", "text": "Using development mode." }
+  ],
+  "pageErrors": [],
+  "network": [
+    { "url": "http://localhost:3000/",      "status": 200, "ok": true },
+    { "url": "http://localhost:3000/api/health", "status": 200, "ok": true }
+  ],
+  "build_mode": "development"
+}

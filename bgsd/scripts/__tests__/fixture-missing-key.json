@@ -1,0 +1,11 @@
+{
+  "console": [
+    {
+      "type": "warning",
+      "text": "Warning: Each child in a list should have a unique \"key\" prop. Check the render method of `TodoList`."
+    }
+  ],
+  "pageErrors": [],
+  "network": [],
+  "build_mode": "development"
+}

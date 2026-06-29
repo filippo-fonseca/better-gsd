@@ -1,0 +1,11 @@
+{
+  "console": [
+    {
+      "type": "error",
+      "text": "Some error that exists in the console but may be suppressed in production builds."
+    }
+  ],
+  "pageErrors": [],
+  "network": [],
+  "build_mode": "production"
+}

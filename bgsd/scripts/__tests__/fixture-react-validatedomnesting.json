@@ -1,0 +1,11 @@
+{
+  "console": [
+    {
+      "type": "error",
+      "text": "Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>. See p > div."
+    }
+  ],
+  "pageErrors": [],
+  "network": [],
+  "build_mode": "development"
+}

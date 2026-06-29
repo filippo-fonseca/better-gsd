@@ -1,0 +1,9 @@
+{
+  "console": [],
+  "pageErrors": [],
+  "network": [
+    { "url": "http://localhost:3000/api/data", "status": 500, "ok": false },
+    { "url": "http://localhost:3000/",         "status": 200, "ok": true }
+  ],
+  "build_mode": "development"
+}

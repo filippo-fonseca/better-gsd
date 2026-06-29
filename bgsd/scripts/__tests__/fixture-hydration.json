@@ -1,0 +1,11 @@
+{
+  "console": [
+    {
+      "type": "error",
+      "text": "Error: Hydration failed because the initial UI does not match what was rendered on the server."
+    }
+  ],
+  "pageErrors": [],
+  "network": [],
+  "build_mode": "development"
+}
