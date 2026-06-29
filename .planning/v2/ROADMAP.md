@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Ordering note:** Phases run in numeric order, but the riskiest live wiring (the real multi-process orchestration run, Phase 4) is front-loaded right after its three hard dependencies are in place (the graph contract, the control-file protocol, and the deterministic worktree/scheduler logic). The single human-gated live phase (Phase 4's `--live` criterion) is built and unit-tested in isolation behind **mocked spawns** with the live wiring flagged off by default; the real merge-resolver invocation (Phase 5) and real context-pressure restarts (Phase 8) are exercised only under that same `--live` gate.
 
-- [ ] **Phase 1: Decomposition + Dependency Graph** - Decompose a prompt into whole-pipeline units and a verified DAG with wave grouping — the load-bearing structure all parallelism consumes
+- [x] **Phase 1: Decomposition + Dependency Graph** - Decompose a prompt into whole-pipeline units and a verified DAG with wave grouping — the load-bearing structure all parallelism consumes
 - [ ] **Phase 2: Control-File Protocol + Heartbeat/Restart** - The `<agent-id>.json` coordination contract + assumption/blocker/escalation protocol + deterministic heartbeat→restart state machine
 - [ ] **Phase 3: Worktree Fan-Out + Wave Scheduler (mocked spawns)** - Deterministic per-worktree isolation (port/DB fan-out) + the dependency-aware wave scheduler, with the spawn boundary dependency-injected and unit-tested under mocked spawns
 - [ ] **Phase 4: `/bgsd-run` Lifecycle + Live Multi-Process Orchestration** *(HUMAN-GATED live run)* - The full run lifecycle/state-machine, abort, merge-boundary checkpoints, and the real headless multi-process spawn guarded behind `--live` (human-supervised, not yet executed)
@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Decomposition + Dependency Graph | 0/1 | Pending | — |
+| 1. Decomposition + Dependency Graph | 1/1 | Complete | 2026-06-29 |
 | 2. Control-File Protocol + Heartbeat/Restart | 0/1 | Pending | — |
 | 3. Worktree Fan-Out + Wave Scheduler (mocked spawns) | 0/1 | Pending | — |
 | 4. `/bgsd-run` Lifecycle + Live Multi-Process Orchestration (HUMAN-GATED) | 0/1 | Pending | — |
