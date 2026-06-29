@@ -1,0 +1,13 @@
+{
+  "name": "bgsd-proof",
+  "version": "1.0.0",
+  "description": "Phase 5 empirical proof harness — direct Playwright capture + classify-capture.mjs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "proof": "node proof-direct.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
