@@ -1,0 +1,21 @@
+{
+  "name": "bgsd",
+  "displayName": "better-gsd",
+  "version": "0.0.1",
+  "description": "Autonomous, self-verifying orchestration layer on top of GSD. v0: the Standalone Tester + /bgsd-verify.",
+  "author": {
+    "name": "better-gsd",
+    "url": "https://github.com/filippo-fonseca/better-gsd"
+  },
+  "homepage": "https://github.com/filippo-fonseca/better-gsd",
+  "repository": "https://github.com/filippo-fonseca/better-gsd",
+  "license": "MIT",
+  "keywords": [
+    "gsd",
+    "verification",
+    "testing",
+    "playwright",
+    "claude-code",
+    "bgsd"
+  ]
+}
