@@ -174,7 +174,7 @@ After GSD execution completes, the drainer enters the Loop 1 controller (`loop1.
 | No silent green (NFR-06) | An item reaches `done` only on a verified Tester `PASS`. Every non-clean stop produces a structured terminal state (`failed` or `blocked`). |
 | No model calls in queue I/O (NFR-05) | `add`, `status`, and the store read/write path are deterministic scripts. |
 | Single-stream, single-worktree (QUEUE-04) | Exactly one item is active at a time; no parallelism; no second worktree. |
-| Branch safety (NFR-01) | bgsd writes only into `.bgsd/` and `bgsd/`. Nothing targets `next`. |
+| Branch safety (NFR-01) | bgsd writes only into `.bgsd/` and `bgsd/`. Agents never write to `main`; integration lands on the standing `next` branch, and `next` → `main` is human-only. |
 | Additive only (NFR-02/03) | Queue is fully contained under `bgsd/` and `.bgsd/`. No vendored GSD files are modified. |
 
 ---
