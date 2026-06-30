@@ -1,11 +1,11 @@
 ---
 title: "/bgsd-feedback + CHANGELOG→PR reference"
-description: "Feed review findings back into the pipeline (full re-run of both loops, or --fast parallel fix agents with no verification), aggregate per-agent CHANGELOGs, assemble the PR description, and open a real gh pr create — always against a non-default branch, always human-gated behind --live."
+description: "Feed review findings back into the pipeline (full re-run of both loops, or --fast parallel fix agents with no verification), aggregate per-agent CHANGELOGs, assemble the PR description, and open a real gh pr create — into the standing next branch, never into main/master, always human-gated behind --live."
 ---
 
 # Feedback Mode + CHANGELOG → PR
 
-When the User Review Gate returns `request_changes`, `/bgsd-feedback` ingests your findings and re-routes them through the fix pipeline. When you approve, `/bgsd-changelog` aggregates every subagent's changes into a PR description and — under an explicit `--live` opt-in — runs `gh pr create` against a non-default branch. Neither the feedback re-run nor the real PR creation happens without your explicit instruction.
+When the User Review Gate returns `request_changes`, `/bgsd-feedback` ingests your findings and re-routes them through the fix pipeline. When you approve, `/bgsd-changelog` aggregates every subagent's changes into a PR description and, under an explicit `--live` opt-in, runs `gh pr create` into the standing `next` branch. The guard refuses any PR whose base is `main` or `master` (the production branches). Neither the feedback re-run nor the real PR creation happens without your explicit instruction. The `next` → `main` merge is always a manual, human-only step.
 
 **Default: `--dry-run`.** Feedback ingestion prints the plan without spawning anything. PR creation prints the body and the `gh pr create` command it WOULD run, then exits.
 
@@ -24,11 +24,11 @@ flowchart TD
     C -->|"full (default)"| D
     C -->|"--fast"| E
 
-    D["Full re-run: Loop 1 per worktree\nroute items through classify→route seam\nfan into worktrees off rehearsal/<run-id>\nloop1.mjs verify→fix (bounded, max_iterations)"] --> F
+    D["Full re-run: Loop 1 per worktree\nroute items through classify→route seam\nfan into worktrees off next\nloop1.mjs verify→fix (bounded, max_iterations)"] --> F
 
-    F["Re-merge into rehearsal/<run-id>\nconflict.mjs dependency-ordered merge"] --> G
+    F["Re-merge into next\nconflict.mjs dependency-ordered merge"] --> G
 
-    G["Loop 2 re-run\nloop2.mjs integration verify→fix\nover updated rehearsal/<run-id>"] --> H
+    G["Loop 2 re-run\nloop2.mjs integration verify→fix\nover the updated next branch"] --> H
 
     E["--fast: parallel fix agents (or single for trivial)\nSonnet/medium (multi) or Haiku/low (single trivial)\nNO computer-use verification\nresult_status = UNVERIFIED always — NFR-06"] --> H
 
@@ -50,9 +50,9 @@ flowchart TD
     L -->|"no (default)"| DRYRUN["exit — plan printed only"]
     L -->|"yes"| M
 
-    M["requireLiveFlag() enforced\nrequireNotDefaultBranch(base) enforced\nnext / main / master refused — NFR-01"] --> N
+    M["requireLiveFlag() enforced\nrequireNotProductionBranch(base) enforced\nmain / master refused — NFR-01"] --> N
 
-    N["gh pr create\n--base <non-default-branch>\n--head <rehearsal or feature branch>\n--title <title>\n--body <body>"] --> DONE["PR created\nURL printed"]
+    N["gh pr create\n--base next\n--head <unit or feature branch>\n--title <title>\n--body <body>"] --> DONE["PR created into next\nURL printed"]
 ```
 
 ---
@@ -113,10 +113,10 @@ Items are written to `.bgsd/runs/<run-id>/feedback/feedback-<timestamp>.json` fo
 Re-runs the **entire two-loop machine** on the feedback items (FEEDBACK-02). The existing Loop 1 and Loop 2 controllers are reused unchanged — only the work set changes:
 
 1. Route each item through the v1/v2 classify→route seam.
-2. Fan items into worktrees off `rehearsal/<run-id>`.
+2. Fan items into worktrees off `next`.
 3. Run Loop 1 (per-worktree verify→fix) on each worktree.
-4. Re-merge into `rehearsal/<run-id>` (conflict pre-check + dependency-ordered merge).
-5. Re-run Loop 2 (integration verify→fix) over the updated rehearsal branch.
+4. Re-merge into `next` (conflict pre-check + dependency-ordered merge).
+5. Re-run Loop 2 (integration verify→fix) over the updated `next` branch.
 6. Return to the User Review Gate.
 
 Full mode is bounded by `max_iterations` (default: 5) and the per-run budget cap (NFR-08).
@@ -242,10 +242,10 @@ The function is a pure, deterministic string-building step — no I/O to git or 
 
 | Guard | Scope | What it prevents |
 |-------|-------|-----------------|
-| `requireNotDefaultBranch(base)` | **Always** (even in dry-run) | PR targeting `next`, `main`, or `master` (NFR-01) |
+| `requireNotProductionBranch(base)` | **Always** (even in dry-run) | PR targeting `main` or `master` (NFR-01) |
 | `requireLiveFlag()` | Only for live execution | Accidental automation without explicit human opt-in |
 
-The non-default-branch guard fires unconditionally, before the `--live` check. A PR targeting `next`/`main`/`master` is refused even in dry-run mode — this guard cannot be bypassed.
+The production-branch guard fires unconditionally, before the `--live` check. A PR targeting `main`/`master` is refused even in dry-run mode; this guard cannot be bypassed. The integration branch `next` is the intended PR base, so it is allowed.
 
 ### Dry-run (default)
 
@@ -262,18 +262,18 @@ Output:
 bgsd: CHANGELOG → PR (DRY-RUN — no PR created)
 ======================================================================
 
-  Base branch : rehearsal/bgsd-0001-my-feature
-  Head branch : rehearsal/bgsd-0001-my-feature
+  Base branch : next
+  Head branch : <run-id>/<unit-slug>
   PR title    : bgsd run: bgsd-0001-my-feature — Add user auth and dashboard...
 
   -- Would-be PR body --
   [full PR body here]
 
   -- Command that WOULD run --
-  gh pr create --base rehearsal/bgsd-0001-my-feature ...
+  gh pr create --base next ...
 
   To create the real PR, re-run with --live.
-  NFR-01: next/main/master are NEVER the PR base — this guard is always on.
+  NFR-01: main/master are NEVER the PR base — this guard is always on.
 ======================================================================
 ```
 
@@ -281,8 +281,8 @@ bgsd: CHANGELOG → PR (DRY-RUN — no PR created)
 
 **Before you run `--live`:**
 
-1. You are NOT on `next`/`main`/`master` — the guard enforces this unconditionally.
-2. The `base` branch is `rehearsal/<run-id>` or another non-default branch.
+1. The `base` branch is `next` (the standing integration branch), never `main`/`master`; the guard enforces this unconditionally.
+2. The `head` branch is the unit/feature branch the PR brings into `next`.
 3. You have reviewed the PR body at the User Review Gate.
 4. You are watching the terminal.
 
@@ -292,16 +292,16 @@ bgsd: CHANGELOG → PR (DRY-RUN — no PR created)
 node bgsd/scripts/changelog-pr.mjs --live
 ```
 
-With `--live` set and a non-default base branch, `liveCreatePr()` runs:
+With `--live` set and `next` as the base branch, `liveCreatePr()` runs:
 
 ```
-gh pr create --base rehearsal/bgsd-0001-my-feature \
-             --head rehearsal/bgsd-0001-my-feature \
+gh pr create --base next \
+             --head <run-id>/<unit-slug> \
              --title "bgsd run: bgsd-0001-my-feature — ..." \
              --body "..."
 ```
 
-The PR URL is printed on success. Only you can merge `rehearsal/<run-id>` into `next`, by hand.
+The PR URL is printed on success. Only you can merge `next` into `main`, by hand.
 
 ---
 
@@ -360,8 +360,8 @@ node bgsd/scripts/changelog-pr.mjs --live
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--run-id <id>` | Yes | The run identifier. |
-| `--base <branch>` | Yes | PR base branch. Must NOT be `next`/`main`/`master`. |
-| `--head <branch>` | Yes | PR head branch (usually `rehearsal/<run-id>`). |
+| `--base <branch>` | Yes | PR base branch. Defaults to the integration branch `next`. Must NOT be `main`/`master`. |
+| `--head <branch>` | Yes | PR head branch (the unit/feature branch being brought into `next`). |
 | `--issue <n>` | No | Issue number. When provided, appends `Closes #N` to the body. |
 | `--live` | **Human-gated** | Create the real PR. Default is dry-run (prints body + command). |
 
@@ -371,7 +371,7 @@ node bgsd/scripts/changelog-pr.mjs --live
 
 | Rule | Detail |
 |------|--------|
-| **NFR-01 (branch safety)** | Feedback fixes land on `rehearsal/<run-id>` and worktree branches only. The PR ALWAYS targets a non-default branch. `requireNotDefaultBranch()` fires unconditionally — before `--live`, before any GitHub I/O. Only you merge `rehearsal/<run-id>` into `next`, by hand. |
+| **NFR-01 (branch safety)** | Feedback fixes land on `next` and worktree branches only. The PR targets `next` and never `main`/`master`. `requireNotProductionBranch()` fires unconditionally: before `--live`, before any GitHub I/O. Only you merge `next` into `main`, by hand. |
 | **NFR-05 (scripts over models)** | Feedback ingestion, routing decision (full/fast/multi/single), CHANGELOG aggregation, and PR body assembly are all deterministic scripts. No model calls in the plan path. |
 | **NFR-06 (no silent green)** | `--fast` results are always `UNVERIFIED`. A clean `PASS` requires a real Tester pass from a full-mode run. The run always returns to the human gate after `--fast`. |
 | **NFR-08 (bounded autonomy)** | Full-mode re-runs respect `max_iterations` and the per-run budget cap. The multi/single/full/`--fast` decision is a deterministic scored choice, not a model call. |
