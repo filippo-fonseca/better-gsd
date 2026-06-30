@@ -1193,8 +1193,8 @@
         <p class="cmd-desc">
           For project-scale prompts: decompose into a verified DAG, fan units across parallel
           git worktrees, run Loop 1 per worktree, conflict-check and merge verified branches
-          into <code>rehearsal/&lt;run-id&gt;</code>, and checkpoint at every wave boundary.
-          The live path requires explicit <code>--live</code>.
+          into the standing <code>next</code> integration branch, and checkpoint at every wave
+          boundary. The live path requires explicit <code>--live</code>.
         </p>
       </div>
 
@@ -1206,8 +1206,9 @@
         <p class="cmd-desc">
           Kiwi's always-on dashboard. Color-coded per-worktree badges, Loop 1 iteration counts,
           merge history, budget and context telemetry, and a <code>main-protected</code>
-          indicator. Zero model calls. The Conductor displays this automatically; you can also
-          run it standalone with <code>--watch</code>.
+          indicator (marking that <code>main</code> is never written by an agent). Zero model
+          calls. The Conductor displays this automatically; you can also run it standalone with
+          <code>--watch</code>.
         </p>
       </div>
 
@@ -1217,9 +1218,9 @@
           <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v3 built</span>
         </div>
         <p class="cmd-desc">
-          Integration verify→fix over <code>rehearsal/&lt;run-id&gt;</code>: boot the
+          Integration verify→fix on the standing <code>next</code> branch: boot the
           integrated app, dispatch parallel fix agents on defects, re-merge, re-verify.
-          Followed by the User Review Gate — per-criterion checklist, your explicit sign-off.
+          Followed by the User Review Gate: per-criterion checklist, your explicit sign-off.
           Never auto-passes.
         </p>
       </div>
@@ -1231,8 +1232,9 @@
         </div>
         <p class="cmd-desc">
           Turns your review findings into a new fix pass. Aggregates per-agent CHANGELOGs
-          across Loop 1, Loop 2, and feedback rounds into a PR body. Opens the PR against a
-          non-default branch (never <code>next</code>) behind the <code>--live</code> guard.
+          across Loop 1, Loop 2, and feedback rounds into a PR body. Opens an atomic PR into
+          <code>next</code> behind the <code>--live</code> guard; <code>next</code> &rarr;
+          <code>main</code> stays human-only.
         </p>
       </div>
     </div>
@@ -1252,7 +1254,7 @@
       <span class="kicker"><span class="num">04b</span> · scale comparison</span>
       <h2 id="scale-heading" class="section-title">One flag. One guarantee. Three scales.</h2>
       <p class="section-sub">
-        A session <strong style="color:var(--fg)">runs by default</strong>. Pass <code>--plan-only</code> (or <code>--dry-run</code>) to preview without executing. A manual scale flag always wins, unconditionally. Real merges and PRs are human-gated at merge-boundary checkpoints and never touch <code>next</code>.
+        A session <strong style="color:var(--fg)">runs by default</strong>. Pass <code>--plan-only</code> (or <code>--dry-run</code>) to preview without executing. A manual scale flag always wins, unconditionally. The pipeline integrates everything on the standing <code>next</code> branch; agents never write to <code>main</code>, and the <code>next</code> &rarr; <code>main</code> merge is human-only.
       </p>
     </div>
 
@@ -1385,7 +1387,8 @@
           <div class="ms-title">Conductor (Kiwi) + parallel orchestration + live status</div>
           <p class="ms-desc">
             Full Conductor pipeline: decomposition, dependency graph, worktree fan-out, wave scheduler,
-            conflict pre-check + merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup,
+            conflict pre-check + merge-resolver, integration onto the standing <code>next</code> branch,
+            doc aggregation, reversible cleanup,
             context management, and the live status view. 14 test suites green across v0+v1+v2.
             Live multi-process run is human-gated behind <code>--live</code>.
           </p>
@@ -1398,10 +1401,10 @@
           <div class="ms-ver">v3 <span class="chip pass">built</span></div>
           <div class="ms-title">Loop 2 + User Review Gate + feedback mode</div>
           <p class="ms-desc">
-            Integration verify&rarr;fix (Loop 2) over <code>rehearsal/&lt;run-id&gt;</code>,
+            Integration verify&rarr;fix (Loop 2) on the standing <code>next</code> branch,
             per-criterion User Review Gate (never auto-passes), feedback mode for rapid iteration,
-            per-agent CHANGELOG aggregation, and guarded <code>gh pr create</code>. 19 test suites
-            green across v0+v1+v2+v3.
+            per-agent CHANGELOG aggregation, and guarded <code>gh pr create</code> into
+            <code>next</code>. 19 test suites green across v0+v1+v2+v3.
           </p>
         </div>
       </div>
@@ -1475,6 +1478,8 @@
         <span class="c"># Canary proof: buggy route (expect FAIL on validateDOMNesting)</span><br>
         /bgsd-verify <span class="path">http://localhost:&lt;port&gt;/buggy</span> \<br>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="flag">--criteria</span> bgsd/fixtures/canary-next/acceptance.md<br><br>
+        <span class="c"># One-time, idempotent repo setup (also runs as a /bgsd-sesh preflight)</span><br>
+        /bgsd-init                                       <span class="c"># create next, scaffold .bgsd/, write BGSD.md</span><br><br>
         <span class="c"># Then start talking to the Conductor</span><br>
         /bgsd-sesh <span class="path">"your task here"</span>                  <span class="c"># executes (default)</span><br>
         /bgsd-sesh <span class="path">"quick fix"</span> <span class="flag">--quick</span>              <span class="c"># force quick, still verified</span><br>
@@ -1487,9 +1492,12 @@
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
         <span>
           The <code>/buggy</code> route looks <em>identical</em> to a working page in a screenshot.
-          The defect only exists in the browser console — exactly what bgsd catches. Run the
+          The defect only exists in the browser console: exactly what bgsd catches. Run the
           fixture in <code>development</code> mode: React's <code>validateDOMNesting</code> warning is
-          stripped from production builds. Once the canary passes, <code>/bgsd-sesh</code> is all you need.
+          stripped from production builds. <code>/bgsd-init</code> creates the standing
+          <code>next</code> integration branch off your base branch, scaffolds the persistent
+          <code>.bgsd/</code> master folder, and writes a user-editable <code>BGSD.md</code> settings
+          file. Once the canary passes, <code>/bgsd-sesh</code> is all you need.
         </span>
       </p>
     </div>
@@ -1520,8 +1528,8 @@
         </thead>
         <tbody>
           <tr>
-            <td><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Never write to <code>next</code> / main</td>
-            <td>All work lands on <code>feat/bgsd-v0</code> or other non-default branches. No automated push or PR to the default branch, ever.</td>
+            <td><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Agents never write to <code>main</code></td>
+            <td><code>main</code> (production) is never written, committed, or PR'd by an agent. Integration lands on the standing <code>next</code> branch; the <code>next</code> &rarr; <code>main</code> merge is a manual, human-only step.</td>
           </tr>
           <tr>
             <td><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Additive only</td>
@@ -1581,7 +1589,8 @@
         <div class="link-title">GitHub <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></div>
         <p class="link-body">
           <code>filippo-fonseca/better-gsd</code> — source, issues, and PRs. Working branch:
-          <code>feat/bgsd-v0</code>. Never commits to <code>next</code>.
+          <code>feat/bgsd-v0</code>. Agents never write to <code>main</code>; integration lands
+          on <code>next</code>.
         </p>
       </a>
 
@@ -1642,8 +1651,8 @@
         <div class="link-title">orchestration engine reference</div>
         <p class="link-body">
           Internal stage reference: Conductor state machine, dependency graph, worktree fan-out,
-          wave scheduler, conflict pre-check, merge-resolver, rehearsal assembly, and the
-          human-gated <code>--live</code> checklist.
+          wave scheduler, conflict pre-check, merge-resolver, integration onto the standing
+          <code>next</code> branch, and the human-gated <code>--live</code> checklist.
         </p>
       </a>
 
