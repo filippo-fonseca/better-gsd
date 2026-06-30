@@ -85,6 +85,19 @@ export function defaultBgsdConfig() {
       // At every human gate, suggest the exact command to run next.
       suggest_gate_commands: true,
     },
+    // Per-subagent context-window management. Each Pipeline Agent runs in its
+    // own large window; the Conductor watches each agent's recorded usage and
+    // proactively compacts/relaunches before overflow (see context.mjs).
+    context: {
+      // The model's full context window, in tokens. Pipeline Agents run on a
+      // ~1M-token window today; bump this if the underlying model grows.
+      max_window_tokens: 1_000_000,
+      // Fraction of the window at which the Conductor proactively compacts.
+      compact_at: 0.70,
+      // Fraction of the window at which the Conductor clears + relaunches the
+      // agent from its handoff manifest (a fresh, small window).
+      relaunch_at: 0.90,
+    },
   };
 }
 
@@ -164,6 +177,12 @@ Notes section and Kiwi will respect them.
 - **conductor** — persona + narration. \`narrate\` streams stage-aware live
   updates; \`suggest_gate_commands\` makes Kiwi hand you the exact command at
   every human gate.
+- **context** — per-subagent context-window management. \`max_window_tokens\`
+  is the model's full window (Pipeline Agents run on ~1M tokens). When an
+  agent's usage crosses \`compact_at\` (fraction of the window) Kiwi compacts it
+  proactively; crossing \`relaunch_at\` clears and relaunches the agent from its
+  handoff manifest, into a fresh small window. Raise the fractions to let agents
+  run longer before Kiwi intervenes.
 
 \`\`\`json bgsd-settings
 ${json}
