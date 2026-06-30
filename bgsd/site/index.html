@@ -416,12 +416,12 @@
     .scan-line .tag { color: var(--xray); margin-left: auto; }
     .scan-sep { height: 1px; background: var(--line); margin: 0.9rem 0; }
     .verdict-row {
-      display: flex; align-items: center; gap: 0.65rem;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.65rem;
       font-family: 'IBM Plex Mono', monospace; font-size: 13.5px; font-weight: 600;
       padding: 0.7rem 0.85rem; border-radius: 8px; border: 1px solid;
     }
     .verdict-row.fail { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 35%, transparent); background: var(--fail-soft); }
-    .verdict-row .path { color: var(--fg-dim); font-weight: 400; font-size: 12px; word-break: break-all; }
+    .verdict-row .path { color: var(--fg-dim); font-weight: 400; font-size: 12px; word-break: normal; overflow-wrap: break-word; }
     .verdict-row .icon { width: 16px; height: 16px; }
 
     /* ============================================================
@@ -861,7 +861,7 @@
         <div class="term-body">
           <div class="scan-line" style="color:var(--fg-dim);margin-bottom:0.2rem;">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--xray)"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            <span class="rung" style="width:auto;color:var(--xray);">$ /bgsd-sesh</span>
+            <span class="rung" style="width:auto;color:var(--xray);white-space:nowrap;">$ /bgsd-sesh</span>
             <span class="res" style="color:var(--fg);">"Fix the nav collapse below 768px"</span>
           </div>
           <div class="scan-line is-pass" style="padding-left:1.4rem;">
