@@ -259,7 +259,7 @@ export function main() {
 }
 
 const invokedDirectly =
-  typeof process.argv[1] === "string" && process.argv[1].endsWith("init-live.mjs");
+  typeof process.argv[1] === "string" && /[\\/]init-live\.mjs$/.test(process.argv[1]);
 if (invokedDirectly) {
   try {
     main();
