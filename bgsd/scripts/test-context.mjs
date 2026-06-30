@@ -89,6 +89,9 @@ import {
   pressureDecision,
   DEFAULT_CONTEXT_THRESHOLDS,
   makeThresholds,
+  thresholdsFromConfig,
+  decideContextAction,
+  runContextTick,
   writeHandoffManifest,
   readHandoffManifest,
   cacheKey,
@@ -634,6 +637,133 @@ await test("X42", "liveRelaunch: throws without --live", async () => {
       worktreePath: "/fake/wt",
     }),
     /HUMAN-GATED: context\.mjs live boundary refused to run/
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Tests: thresholds-from-config (CTX-02)
+// ---------------------------------------------------------------------------
+
+process.stdout.write("\nCTX-02: thresholds from config\n");
+
+await test("X43", "thresholdsFromConfig: uses context block (max_window_tokens/compact_at/relaunch_at)", () => {
+  const config = { context: { max_window_tokens: 1_000_000, compact_at: 0.6, relaunch_at: 0.85 } };
+  const t = thresholdsFromConfig(config);
+  assert.equal(t.windowBytes, 3_000_000); // 1M tokens × 3 bytes
+  assert.equal(t.elevatedFraction, 0.6);
+  assert.equal(t.criticalFraction, 0.85);
+});
+
+await test("X44", "thresholdsFromConfig: falls back to defaults when context block absent", () => {
+  const t = thresholdsFromConfig({});
+  assert.equal(t.windowBytes, 3_000_000);
+  assert.equal(t.elevatedFraction, 0.70);
+  assert.equal(t.criticalFraction, 0.90);
+});
+
+await test("X45", "thresholdsFromConfig: drives estimatePressure transitions", () => {
+  const t = thresholdsFromConfig({ context: { max_window_tokens: 1_000_000, compact_at: 0.7, relaunch_at: 0.9 } });
+  assert.equal(estimatePressure({ accumulatedBytes: Math.round(t.windowBytes * 0.5), thresholds: t }), "normal");
+  assert.equal(estimatePressure({ accumulatedBytes: Math.round(t.windowBytes * 0.75), thresholds: t }), "elevated");
+  assert.equal(estimatePressure({ accumulatedBytes: Math.round(t.windowBytes * 0.95), thresholds: t }), "critical");
+});
+
+// ---------------------------------------------------------------------------
+// Tests: poll-loop decision dispatch (CTX-02) — mocked, no claude process
+// ---------------------------------------------------------------------------
+
+process.stdout.write("\nCTX-02: poll-loop decision dispatch\n");
+
+await test("X46", "decideContextAction: maps bytes → pressure → action", () => {
+  const t = makeThresholds({ contextTokens: 1_000_000 });
+  assert.deepEqual(
+    decideContextAction({ contextBytes: Math.round(t.windowBytes * 0.5), thresholds: t }),
+    { pressure: "normal", action: "continue" }
+  );
+  assert.deepEqual(
+    decideContextAction({ contextBytes: Math.round(t.windowBytes * 0.75), thresholds: t }),
+    { pressure: "elevated", action: "compact" }
+  );
+  assert.deepEqual(
+    decideContextAction({ contextBytes: Math.round(t.windowBytes * 0.95), thresholds: t }),
+    { pressure: "critical", action: "clear+relaunch" }
+  );
+});
+
+await test("X47", "runContextTick: rising bytes drive continue → compact → relaunch", async () => {
+  const t = makeThresholds({ contextTokens: 1_000_000 });
+  // Three successive ticks with rising usage for the SAME agent.
+  const byteSequence = [
+    Math.round(t.windowBytes * 0.50), // normal → continue
+    Math.round(t.windowBytes * 0.75), // elevated → compact
+    Math.round(t.windowBytes * 0.95), // critical → clear+relaunch
+  ];
+  let idx = 0;
+  const readBytesFn = () => byteSequence[idx];
+
+  const compactCalls  = [];
+  const relaunchCalls = [];
+  const recorded      = [];
+  const compactFn  = async (id) => { compactCalls.push(id); };
+  const relaunchFn = async (id) => { relaunchCalls.push(id); };
+  const recordFn   = (id, usage) => { recorded.push({ id, ...usage }); };
+
+  // Tick 1 — normal
+  let s = await runContextTick({ agentIds: ["agent-1"], readBytesFn, recordFn, compactFn, relaunchFn, thresholds: t });
+  assert.equal(s[0].dispatched, "continue");
+  assert.equal(compactCalls.length, 0);
+  assert.equal(relaunchCalls.length, 0);
+  assert.equal(recorded[0].context_pressure, "normal");
+
+  // Tick 2 — elevated → compact
+  idx = 1;
+  s = await runContextTick({ agentIds: ["agent-1"], readBytesFn, recordFn, compactFn, relaunchFn, thresholds: t });
+  assert.equal(s[0].dispatched, "compact");
+  assert.deepEqual(compactCalls, ["agent-1"]);
+  assert.equal(relaunchCalls.length, 0);
+
+  // Tick 3 — critical → clear+relaunch
+  idx = 2;
+  s = await runContextTick({ agentIds: ["agent-1"], readBytesFn, recordFn, compactFn, relaunchFn, thresholds: t });
+  assert.equal(s[0].dispatched, "clear+relaunch");
+  assert.deepEqual(relaunchCalls, ["agent-1"]);
+  assert.equal(compactCalls.length, 1, "compact not called again on the relaunch tick");
+});
+
+await test("X48", "runContextTick: evaluates every agent in the batch", async () => {
+  const t = makeThresholds({ contextTokens: 1_000_000 });
+  const bytesByAgent = {
+    "a-normal":   Math.round(t.windowBytes * 0.50),
+    "a-elevated": Math.round(t.windowBytes * 0.75),
+    "a-critical": Math.round(t.windowBytes * 0.95),
+  };
+  const readBytesFn = (id) => bytesByAgent[id];
+  const compactCalls = [];
+  const relaunchCalls = [];
+  const s = await runContextTick({
+    agentIds: Object.keys(bytesByAgent),
+    readBytesFn,
+    compactFn:  async (id) => compactCalls.push(id),
+    relaunchFn: async (id) => relaunchCalls.push(id),
+    thresholds: t,
+  });
+  assert.equal(s.length, 3);
+  assert.deepEqual(compactCalls, ["a-elevated"]);
+  assert.deepEqual(relaunchCalls, ["a-critical"]);
+});
+
+await test("X49", "runContextTick: throws when required injections are missing", async () => {
+  await assert.rejects(
+    () => runContextTick({ agentIds: ["a"], compactFn: async () => {}, relaunchFn: async () => {} }),
+    /readBytesFn must be injected/
+  );
+  await assert.rejects(
+    () => runContextTick({ agentIds: ["a"], readBytesFn: () => 0, relaunchFn: async () => {} }),
+    /compactFn must be injected/
+  );
+  await assert.rejects(
+    () => runContextTick({ agentIds: ["a"], readBytesFn: () => 0, compactFn: async () => {} }),
+    /relaunchFn must be injected/
   );
 });
 
