@@ -235,9 +235,11 @@ export function main() {
   const repoRoot = resolveRepoRoot();
   const out = (s) => process.stdout.write(s);
 
-  if (!isLiveFlagSet()) {
+  const planOnly =
+    process.argv.includes("--plan-only") || process.argv.includes("--dry-run");
+  if (planOnly) {
     const { alreadyInitialized, actions, integrationBranch, baseBranch } = previewPlan(repoRoot);
-    out(`\nbgsd-init preview — repo: ${repoRoot}\n`);
+    out(`\nbgsd-init preview (--plan-only) — repo: ${repoRoot}\n`);
     out(`  base branch:         ${baseBranch}\n`);
     out(`  integration branch:  ${integrationBranch}\n`);
     out(`  already initialized: ${alreadyInitialized ? "yes" : "no"}\n`);
@@ -245,11 +247,12 @@ export function main() {
     for (const a of actions) {
       out(`    - ${a.type}${a.branch ? ` (${a.branch} <- ${a.base})` : ""}\n`);
     }
-    out(`\n  Re-run with --live to apply.\n`);
+    out(`\n  Preview only. Run /bgsd-init (no flag) to apply.\n`);
     return;
   }
 
-  requireLiveFlag();
+  // Runs by default (no flag): apply the setup. `main` is never written; the
+  // integration branch is only created and fast-forwarded. Idempotent + safe.
   const res = executeInit(liveDeps(repoRoot, (m) => out(`  ${m}\n`)));
   out(`\nbgsd-init ${res.alreadyInitialized ? "refreshed" : "complete"} — repo: ${repoRoot}\n`);
   out(`  base branch:         ${res.baseBranch}\n`);

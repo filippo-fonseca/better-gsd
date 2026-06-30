@@ -16,16 +16,18 @@ explicitly when you want to review the plan first, or set up the repo ahead of t
 ## Usage
 
 ```
-/bgsd-init            # preview what would be set up (no changes)
-/bgsd-init --live     # apply the setup
+/bgsd-init               # set this repo up (RUNS BY DEFAULT, applies the setup)
+/bgsd-init --plan-only   # preview without applying
 ```
 
+Run it directly. It applies by default (it is idempotent and never touches `main`); do NOT ask for a `--live` confirmation. Only `--plan-only` / `--dry-run` previews.
+
 ```sh
-# Preview the plan (read-only; nothing is written, no branch is created):
+# Set up the repo (runs by default, applies the setup):
 node "${CLAUDE_PLUGIN_ROOT}/scripts/init-live.mjs"
 
-# Apply the setup:
-node "${CLAUDE_PLUGIN_ROOT}/scripts/init-live.mjs" --live
+# Preview only (read-only; nothing written, no branch created):
+node "${CLAUDE_PLUGIN_ROOT}/scripts/init-live.mjs" --plan-only
 ```
 
 > **Plugin-root note:** `${CLAUDE_PLUGIN_ROOT}` is the bgsd plugin's installed
