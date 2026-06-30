@@ -3,9 +3,9 @@
 `/bgsd-run "<prompt>"` is bgsd's project-mode entrypoint. It takes one large
 prompt, decomposes it into a dependency graph of whole-GSD-pipeline units,
 spawns them in parallel across isolated git worktrees, runs Loop 1 per
-worktree, conflict-checks and merges verified branches into a single
-`rehearsal/<run-id>` integration branch in dependency order, and checkpoints
-to you at every merge boundary. It is powered by **Kiwi, the Conductor**.
+worktree, conflict-checks and merges verified branches into the standing
+`next` integration branch in dependency order, and checkpoints to you at
+every merge boundary. It is powered by **Kiwi, the Conductor**.
 
 **Default: `--dry-run`.** No worktrees, processes, or merges are created
 unless you explicitly pass `--live` after reading the human-gated checklist.
@@ -20,7 +20,7 @@ created
   → spawning       (worktrees planned; spawn plan printed in --dry-run)
   → executing      (scheduler dispatches units wave-by-wave)
   → verifying      (Loop 1 per worktree: verify→fix until PASS/blocked)
-  → merging        (conflict pre-check + merge into rehearsal/<run-id>)
+  → merging        (conflict pre-check + merge into next)
   → checkpoint     (Conductor pauses; you approve/reject before next wave)
   → (done | aborted | blocked | needs_input)
 ```
@@ -90,15 +90,14 @@ Kiwi: Merge-Boundary Checkpoint (Wave 0)  [ckpt-1234-abc]
 ```
 
 - **Merged cleanly:** units whose Loop 1 passed and whose branch merged into
-  `rehearsal/<run-id>` without conflicts.
+  `next` without conflicts.
 - **Held back:** units that failed Loop 1, had merge conflicts the resolver
   was not confident about, or whose branch was not clean. These are never
   silently merged (NFR-06: no silent green).
 - You type `go` to continue to the next wave, or `abort` to cleanly stop the
   run. All branches and the run ledger are preserved for inspection.
 
-`rehearsal/<run-id>` is **never** merged into `next` automatically. Only you
-can do that, by hand.
+`next` is **never** merged into `main` automatically. Only you can do that, by hand.
 
 ---
 
@@ -124,7 +123,7 @@ real git worktrees. It is **off by default** and requires explicit opt-in.
 
 Work through this checklist every time:
 
-1. **Branch safety.** You are on a feature branch, NOT `next`.
+1. **Branch safety.** You are on a feature branch, NOT `main`.
    Verify: `git branch --show-current`
 2. **Budget cap.** You have a per-run budget cap set (`--budget-cap` or
    `BGSD_BUDGET_CAP` env var) to limit model spend.
@@ -136,9 +135,9 @@ Work through this checklist every time:
    to approve merge-boundary checkpoints and respond to Kiwi.
 6. **Understand the scope.** ≥2 concurrent `claude -p` processes will be
    spawned. Real git commits will be made on worktree branches.
-7. **`rehearsal/<run-id>` only.** Real branches are created and merged into
-   `rehearsal/<run-id>`. `next` is NEVER touched. Only you can merge
-   `rehearsal/<run-id>` → `next` by hand.
+7. **`next` is the integration branch.** Real branches are created and merged
+   into the standing `next` branch. `main` is NEVER touched. Only you can merge
+   `next` → `main` by hand.
 
 ### What happens during a live run
 
@@ -148,9 +147,9 @@ Work through this checklist every time:
 3. Agents launched:    claude -p /gsd-execute-phase --worktree <path>
 4. Loop 1 runs:        verify→fix (max_iterations per unit)
 5. Conflict pre-check: git dry-run merge (no model)
-6. Merge:              clean branches → rehearsal/<run-id>  (dep order)
+6. Merge:              clean branches → next  (dep order)
 7. Checkpoint:         you approve/reject each wave
-8. Cleanup:            merged worktrees removed; rehearsal branch retained
+8. Cleanup:            merged worktrees removed; next branch retained
 ```
 
 ### To abort a live run
@@ -192,18 +191,18 @@ It is written atomically on every transition (write temp + rename). Fields:
 
 - `/bgsd-status` — live colorful status view of an in-flight run.
 - `/bgsd-abort` — cleanly abort a run; see above.
-- `/bgsd-clean-branches` — prune `rehearsal/*` branches already merged
-  into the base branch (never deletes an unmerged branch).
+- `/bgsd-clean-branches` — prune `<run-id>/*` worktree branches already merged
+  into `next` (never deletes an unmerged branch).
 
 ---
 
 ## Safety guarantees
 
-- **NFR-01 (branch safety):** bgsd never writes to `next`. All work lands
-  on `<run-id>/<slug>` worktree branches, assembled into `rehearsal/<run-id>`.
-  Only you merge `rehearsal/<run-id>` → `next`.
+- **NFR-01 (branch safety):** bgsd never writes to `main`. All work lands
+  on `<run-id>/<slug>` worktree branches, assembled into `next`.
+  Only you merge `next` → `main`.
 - **NFR-06 (no silent green):** Units that fail Loop 1 or whose branches
-  have unresolved conflicts are held back from `rehearsal/<run-id>` — never
+  have unresolved conflicts are held back from `next`; they are never
   silently merged. The checkpoint summary shows exactly what was held and why.
 - **NFR-08 (bounded, reversible autonomy):** Every loop is bounded by
   `max_iterations`; every run is bounded by `--budget-cap`; every wave
