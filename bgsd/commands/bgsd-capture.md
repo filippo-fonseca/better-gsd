@@ -17,16 +17,16 @@ opt-in, and is never run by automated tests or CI (CAPTURE-04, NFR-07).
 
 ```bash
 # Dry-run against the mock source (safe, no writes, no external calls)
-node bgsd/scripts/capture-cron.mjs
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs"
 
 # Enqueue for real against the mock (writes to .bgsd/queue/queue.json)
-node bgsd/scripts/capture-cron.mjs --no-dry-run
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --no-dry-run
 
 # (HUMAN-GATED) Dry-run against the live Hyperpolymath source
-node bgsd/scripts/capture-cron.mjs --live
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live
 
 # (HUMAN-GATED) Real enqueue from the live source
-node bgsd/scripts/capture-cron.mjs --live --no-dry-run
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live --no-dry-run
 ```
 
 ---
@@ -158,13 +158,13 @@ launchctl unload ~/Library/LaunchAgents/com.bgsd.capture-cron.plist
    before writing:
 
    ```bash
-   node bgsd/scripts/capture-cron.mjs --live
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live
    ```
 
 4. **Enqueue for real** — once the dry-run output looks correct:
 
    ```bash
-   node bgsd/scripts/capture-cron.mjs --live --no-dry-run
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live --no-dry-run
    ```
 
 5. **Add to scheduler** (optional) — only after validating steps 3 and 4:
@@ -183,8 +183,8 @@ All automated tests run against the mock source only (CAPTURE-04). The live
 source is never hit in CI.
 
 ```bash
-node bgsd/scripts/test-capture.mjs   # capture tests (Phase 4)
-node bgsd/scripts/test-queue.mjs     # queue tests (Phase 1)
-node bgsd/scripts/test-route.mjs     # route tests (Phase 2)
-node bgsd/scripts/test-loop1.mjs     # loop1 tests (Phase 3)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-capture.mjs"   # capture tests (Phase 4)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-queue.mjs"     # queue tests (Phase 1)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-route.mjs"     # route tests (Phase 2)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-loop1.mjs"     # loop1 tests (Phase 3)
 ```

@@ -69,7 +69,7 @@ url = <url>   # e.g. http://localhost:3000
 
 ```bash
 # Boot the app in isolation. The script prints PORT: and DATABASE_URL:, then READY.
-OUTPUT="$(bash bgsd/scripts/runtime-isolate.sh up <app-dir>)"
+OUTPUT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-isolate.sh" up <app-dir>)"
 PORT="$(echo "$OUTPUT" | grep '^PORT:' | cut -d: -f2 | tr -d ' ')"
 url="http://localhost:${PORT}"
 ```
@@ -84,14 +84,14 @@ Record the `<app-dir>` so you can tear it down in Step 6.
 **From a file (`--criteria <file>`):**
 
 ```bash
-node bgsd/scripts/parse-criteria.mjs --file <file> --pretty \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/parse-criteria.mjs" --file <file> --pretty \
   > .bgsd/runs/$RUN_ID/criteria.json
 ```
 
 **Inline (`--inline "..."`):**
 
 ```bash
-node bgsd/scripts/parse-criteria.mjs --inline "<inline-string>" --pretty \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/parse-criteria.mjs" --inline "<inline-string>" --pretty \
   > .bgsd/runs/$RUN_ID/criteria.json
 ```
 
@@ -187,7 +187,7 @@ exists before proceeding.
 ### Step 4: Assemble the report (REPORT-01..03 + VERIFY-03)
 
 ```bash
-node bgsd/scripts/build-report.mjs .bgsd/runs/$RUN_ID/run-results.json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/build-report.mjs" .bgsd/runs/$RUN_ID/run-results.json
 ```
 
 This script:
@@ -207,7 +207,7 @@ or `FAIL ...` / `ERROR ...`. That single line is the final output of the command
 ### Step 5: Teardown (if `--boot` was used)
 
 ```bash
-bash bgsd/scripts/runtime-isolate.sh down <app-dir>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-isolate.sh" down <app-dir>
 ```
 
 Always tear down the booted instance, even if the run failed or errored.

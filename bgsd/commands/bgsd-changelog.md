@@ -75,7 +75,7 @@ Prints the assembled PR body and the `gh pr create` command it WOULD run, then e
 ## Dry-Run Default (no `--live`)
 
 ```
-node bgsd/scripts/changelog-pr.mjs
+node "${CLAUDE_PLUGIN_ROOT}/scripts/changelog-pr.mjs"
 ```
 
 Prints:
@@ -90,7 +90,7 @@ No PR is created. No GitHub I/O occurs.
 ## Live Run (human-supervised only)
 
 ```
-node bgsd/scripts/changelog-pr.mjs --live
+node "${CLAUDE_PLUGIN_ROOT}/scripts/changelog-pr.mjs" --live
 ```
 
 Conditions that must be true before using `--live`:
@@ -119,7 +119,7 @@ The same PR body assembled by `assemblePrBody()` is surfaced to the human at the
 ## Tests
 
 ```
-node bgsd/scripts/test-changelog-pr.mjs
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-changelog-pr.mjs"
 ```
 
 Tests cover:

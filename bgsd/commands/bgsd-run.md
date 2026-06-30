@@ -35,13 +35,13 @@ state without re-spawning completed worktrees.
 
 ```sh
 # Dry-run (the default — prints the spawn plan, creates nothing):
-node bgsd/scripts/run.mjs --prompt "Add user auth and rate limiting"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs" --prompt "Add user auth and rate limiting"
 
 # Live run (human-gated — read the checklist below first):
-node bgsd/scripts/run-live.mjs --live --prompt "Add user auth and rate limiting"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/run-live.mjs" --live --prompt "Add user auth and rate limiting"
 
 # Abort an in-flight run:
-node bgsd/scripts/run.mjs --abort <run-id>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs" --abort <run-id>
 ```
 
 ---
@@ -159,7 +159,7 @@ Either type `abort` at the next merge-boundary checkpoint, or open a second
 terminal and run:
 
 ```sh
-node bgsd/scripts/run.mjs --abort <run-id>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs" --abort <run-id>
 ```
 
 All branches, control files, and the run ledger are preserved. No orphaned

@@ -54,10 +54,10 @@ budget cap (NFR-08).
 
 ```bash
 # Plan (dry-run, default):
-node bgsd/scripts/feedback.mjs --run-id bgsd-0001-my-feature "Login button crashes"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" --run-id bgsd-0001-my-feature "Login button crashes"
 
 # Execute (human-supervised):
-node bgsd/scripts/feedback.mjs --live --run-id bgsd-0001-my-feature "Login button crashes"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" --live --run-id bgsd-0001-my-feature "Login button crashes"
 ```
 
 ### Fast mode (--fast)
@@ -78,10 +78,10 @@ results). No silent green (NFR-06).
 
 ```bash
 # Plan (dry-run, default):
-node bgsd/scripts/feedback.mjs --fast --run-id bgsd-0001-my-feature "Minor text typo"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" --fast --run-id bgsd-0001-my-feature "Minor text typo"
 
 # Execute (human-supervised):
-node bgsd/scripts/feedback.mjs --live --fast --run-id bgsd-0001-my-feature "Minor text typo"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" --live --fast --run-id bgsd-0001-my-feature "Minor text typo"
 ```
 
 ---
@@ -112,7 +112,7 @@ Each item is tagged to a file/feature where extractable and assigned a severity.
 You can supply feedback directly as a string argument:
 
 ```bash
-node bgsd/scripts/feedback.mjs "Login is broken; Dashboard loads slow"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" "Login is broken; Dashboard loads slow"
 ```
 
 Multi-line text and semicolon/numbered-list delimiters are split into discrete

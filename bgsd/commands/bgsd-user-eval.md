@@ -161,10 +161,10 @@ The constant `🔒 main-protected` indicator is always visible in the banner.
 
 ```bash
 # Dry-run (default): show the boot plan + checklist, do NOT boot
-node bgsd/scripts/review.mjs --run-id bgsd-0001-my-feature
+node "${CLAUDE_PLUGIN_ROOT}/scripts/review.mjs" --run-id bgsd-0001-my-feature
 
 # Live (human-supervised only): boot the real rehearsal app
-node bgsd/scripts/review.mjs --live --run-id bgsd-0001-my-feature
+node "${CLAUDE_PLUGIN_ROOT}/scripts/review.mjs" --live --run-id bgsd-0001-my-feature
 ```
 
 Or invoke via the Claude Code slash command:

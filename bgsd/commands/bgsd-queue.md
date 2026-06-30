@@ -43,7 +43,7 @@ with the same title and body already exists, the existing id is returned and no
 duplicate is created.
 
 ```bash
-node bgsd/scripts/queue.mjs add \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add \
   --title "Fix nav bug on mobile" \
   [--body "The top-nav collapses incorrectly below 768 px."] \
   [--source manual]            # "manual" (default) or "hyperpolymath"
@@ -74,7 +74,7 @@ Prints a compact, human-readable queue summary. Zero model calls in the I/O
 path (NFR-05). Full item JSON stays on disk at `.bgsd/queue/queue.json`.
 
 ```bash
-node bgsd/scripts/queue.mjs status
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" status
 ```
 
 **Output (stdout):**
@@ -112,7 +112,7 @@ Drains the queue through the fix-stream pipeline. Honors resumability:
 - Exactly ONE item is active at a time (single-stream, single-worktree).
 
 ```bash
-node bgsd/scripts/queue.mjs start [--dry-run]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start [--dry-run]
 ```
 
 `--dry-run` prints what would happen without mutating any state.
@@ -238,11 +238,11 @@ An item is NEVER marked `done` without a verified Tester PASS (NFR-06).
 
 | Task | Command |
 |---|---|
-| Add item | `node bgsd/scripts/queue.mjs add --title "..." [--body "..."]` |
-| Check status | `node bgsd/scripts/queue.mjs status` |
-| Drain queue | `node bgsd/scripts/queue.mjs start` |
-| Dry-run drain | `node bgsd/scripts/queue.mjs start --dry-run` |
-| Run unit tests | `node bgsd/scripts/test-queue.mjs` |
+| Add item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add --title "..." [--body "..."]` |
+| Check status | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" status` |
+| Drain queue | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start` |
+| Dry-run drain | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start --dry-run` |
+| Run unit tests | `node "${CLAUDE_PLUGIN_ROOT}/scripts/test-queue.mjs"` |
 
 ---
 

@@ -262,7 +262,7 @@ renderEscalationTelemetry(counter, { threshold: 0.60 });
 `bgsd/scripts/test-escalate.mjs` — 36 tests, all passing.
 
 ```
-node bgsd/scripts/test-escalate.mjs
+node "${CLAUDE_PLUGIN_ROOT}/scripts/test-escalate.mjs"
 # Tests: 36 | Passed: 36 | Failed: 0
 ```
 

@@ -55,11 +55,11 @@ and `run` / `run-live` split from v1/v2:
 
 ```sh
 # Dry-run (the default — prints the integration plan, creates nothing):
-node bgsd/scripts/loop2-live.mjs
+node "${CLAUDE_PLUGIN_ROOT}/scripts/loop2-live.mjs"
 # → HUMAN-GATED refusal; shows the checklist and exits non-zero.
 
 # Live run (human-gated — read the checklist below first):
-node bgsd/scripts/loop2-live.mjs --live \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/loop2-live.mjs" --live \
   --run-id bgsd-0001-my-feature \
   --rehearsal-branch rehearsal/bgsd-0001-my-feature \
   --max-iterations 5
@@ -209,7 +209,7 @@ Integration Tester→fix cycles) requires an explicit --live flag
 to prevent accidental automation.
 
 To run this supervised:
-  node bgsd/scripts/loop2-live.mjs --live [options]
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/loop2-live.mjs" --live [options]
 ...
 ======================================================================
 ```

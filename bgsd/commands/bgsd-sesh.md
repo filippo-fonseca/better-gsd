@@ -21,21 +21,27 @@ access — see "Under the hood" below).
 
 ```sh
 # Auto-detect scale and EXECUTE (the default — no flag needed):
-node bgsd/scripts/session.mjs --prompt "Change the CTA button to 'Get started'"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "Change the CTA button to 'Get started'"
 
 # Force quick (no discussion, still verified) and execute:
-node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "Fix the 404 on /pricing" --quick
 
 # Force feature (decompose into 1-3 units, no discussion, still verified) and execute:
-node bgsd/scripts/session.mjs --prompt "Add a search bar to the header" --feature
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "Add a search bar to the header" --feature
 
 # Force project (discuss first, full pipeline) and execute. Real merges/PRs are human-gated:
-node bgsd/scripts/session.mjs --prompt "Build a billing dashboard with Stripe" --project
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "Build a billing dashboard with Stripe" --project
 
 # Preview only — classify + plan, zero boundaries invoked, nothing spawned:
-node bgsd/scripts/session.mjs --prompt "..." --plan-only
-node bgsd/scripts/session.mjs --prompt "..." --dry-run   # alias for --plan-only
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "..." --plan-only
+node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "..." --dry-run   # alias for --plan-only
 ```
+
+> **Plugin-root note:** `${CLAUDE_PLUGIN_ROOT}` is set by Claude Code to the bgsd
+> plugin's installed directory. The engine code always comes from there. Runtime
+> output (`.bgsd/runs/…`, queue state, etc.) is written to the **current working
+> repo** (your cwd). You can run `/bgsd-sesh` from ANY repo; bgsd's engine finds
+> itself automatically.
 
 ---
 
@@ -127,6 +133,31 @@ A session is a live, fully async loop. Nothing about it blocks the conversation:
 Most downstream questions never reach you: the oracle (`oracle.mjs:answerQuestion`)
 auto-answers from the sealed spec + decisions + profile, and the rare leftovers
 are **batched** non-blockingly via `escalate.mjs`.
+
+---
+
+## BLOCKED behavior (hard stop — no silent fallback)
+
+If the session harness cannot run, **STOP immediately** and emit a loud blocked
+message. Do NOT attempt to "handle the task directly", edit files by hand, or
+silently skip the pipeline. The only valid responses are:
+
+```
+BLOCKED: <reason>
+Remedy: <what the user must do to fix it>
+```
+
+Common blocked conditions:
+
+| Condition | BLOCKED message |
+|-----------|-----------------|
+| `node` not found or node error on `session.mjs` | `BLOCKED: Cannot invoke session harness — node error: <error>. Remedy: ensure Node 18+ is on PATH and the bgsd plugin is installed.` |
+| `${CLAUDE_PLUGIN_ROOT}` is unset or empty | `BLOCKED: CLAUDE_PLUGIN_ROOT is not set — bgsd plugin root is unknown. Remedy: ensure bgsd is installed as a Claude Code plugin and the session is started from Claude Code (not a bare shell).` |
+| Playwright MCP unavailable (for the verify step) | `BLOCKED: @playwright/mcp is not available — cannot run UI verification. Remedy: install and enable the Playwright MCP server, then retry.` |
+
+**Never silently bypass the pipeline.** If an error occurs mid-session, surface it
+as a BLOCKED or FAILED status in the live view and stop. A silent "I'll just do it
+manually" path does not exist.
 
 ---
 

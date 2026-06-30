@@ -61,19 +61,19 @@ Renders a single snapshot of the current run and exits. Reads `.bgsd/runs/<lates
 To target a specific run:
 
 ```
-node bgsd/scripts/status.mjs --run-id bgsd-0001-my-feature
+node "${CLAUDE_PLUGIN_ROOT}/scripts/status.mjs" --run-id bgsd-0001-my-feature
 ```
 
 ### Live watch mode (--watch)
 
 ```
-node bgsd/scripts/status.mjs --watch
+node "${CLAUDE_PLUGIN_ROOT}/scripts/status.mjs" --watch
 ```
 
 Refreshes every 3 seconds (default). Specify a custom interval in seconds:
 
 ```
-node bgsd/scripts/status.mjs --watch 5
+node "${CLAUDE_PLUGIN_ROOT}/scripts/status.mjs" --watch 5
 ```
 
 The watch loop re-reads run.json and all control files on every tick. It never spawns any process, never calls a model, and exits cleanly on `Ctrl-C` (SIGINT/SIGTERM).
