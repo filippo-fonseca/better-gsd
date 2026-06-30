@@ -1,11 +1,11 @@
 ---
 title: "/bgsd-integrate + /bgsd-user-eval reference"
-description: "Loop 2 integration verify→fix over rehearsal/<run-id> and the User Review Gate: boot the integrated app, run the Integration Tester, fix defects, re-merge, re-verify — then present the human a checklist and a GSD-style selector verdict that is never auto-passed."
+description: "Loop 2 integration verify→fix on the standing next branch and the User Review Gate: boot the integrated app, run the Integration Tester, fix defects, re-merge, re-verify — then present the human a checklist and a GSD-style selector verdict that is never auto-passed."
 ---
 
 # Loop 2 + User Review Gate — Integration → Human Handoff
 
-After v2's Conductor assembles `rehearsal/<run-id>` and you approve its merge-boundary checkpoint, v3 takes over. `/bgsd-integrate` (backed by `loop2-live.mjs`) runs **Loop 2** — the integration-level sibling of v1's per-worktree Loop 1, applied to the whole assembled system. When Loop 2 returns a clean `PASS`, the Conductor opens the **User Review Gate** (`/bgsd-user-eval`): boot the rehearsal app, print a checklist, and capture your verdict. Nothing advances automatically. Every step is bounded, reversible, and human-gated behind `--live`.
+After v2's Conductor integrates the verified branches onto the standing **`next`** branch and you approve its merge-boundary checkpoint, v3 takes over. `/bgsd-integrate` (backed by `loop2-live.mjs`) runs **Loop 2** — the integration-level sibling of v1's per-worktree Loop 1, applied to the whole assembled system on `next`. When Loop 2 returns a clean `PASS`, the Conductor opens the **User Review Gate** (`/bgsd-user-eval`): boot the app on `next`, print a checklist, and capture your verdict. Nothing advances automatically. Every step is bounded, reversible, and gated behind `--live`. The `next` → `main` merge is always a manual, human-only step; agents never write to `main`.
 
 **Default: `--dry-run`.** No app is booted, no Tester runs, no fixes are dispatched unless you explicitly pass `--live`.
 
@@ -15,7 +15,7 @@ After v2's Conductor assembles `rehearsal/<run-id>` and you approve its merge-bo
 
 ```mermaid
 flowchart TD
-    A["rehearsal/<run-id> assembled\n(v2 Conductor — merge-boundary checkpoint approved)"] --> B
+    A["verified branches integrated on next\n(v2 Conductor — merge-boundary checkpoint approved)"] --> B
 
     B["LOOP2-01: advance run.json → integrating\nboot integrated app via runtime-isolate.sh\none server — not per-worktree"] --> C
 
@@ -41,11 +41,11 @@ flowchart TD
     G3 -->|"yes"| MAXITER["integration_failed\nreason: max_iterations"]
     G3 -->|"no"| I
 
-    I["Parallel fix agents\nSonnet/medium\nworktrees off rehearsal/<run-id>"] --> J
+    I["Parallel fix agents\nSonnet/medium\nworktrees off next"] --> J
 
-    J["Re-merge via conflict.mjs\ndependency-ordered\nnon-destructive pre-check first"] --> C
+    J["Re-merge into next via conflict.mjs\ndependency-ordered\nnon-destructive pre-check first"] --> C
 
-    H["User Review Gate — /bgsd-user-eval\nauto-boot rehearsal/<run-id>\nprint localhost URL"] --> K
+    H["User Review Gate — /bgsd-user-eval\nauto-boot the app on next\nprint localhost URL"] --> K
 
     K["Checklist presented\nfrom criteria_results + defects\n(baseline items if empty)"] --> L
 
@@ -65,15 +65,15 @@ flowchart TD
 
 ### Overview
 
-Loop 2 is the **integration-level sibling of v1's Loop 1** — "same loop shape, applied twice" (Plan Part 5). Where Loop 1 ran per-worktree (verifying a single unit's work), Loop 2 runs over the WHOLE assembled `rehearsal/<run-id>` branch, verifying the integrated system across feature boundaries.
+Loop 2 is the **integration-level sibling of v1's Loop 1** — "same loop shape, applied twice" (Plan Part 5). Where Loop 1 ran per-worktree (verifying a single unit's work), Loop 2 runs over the WHOLE integrated build on the standing `next` branch, verifying the integrated system across feature boundaries.
 
 The Loop 2 controller (`loop2.mjs`) is a pure, deterministic DI controller. All live operations are dependency-injected:
 
 | Injected boundary | Tests | Live (Phase 2, `loop2-live.mjs`) |
 |-------------------|-------|----------------------------------|
-| `verify()` | mock returning fixture report | boot rehearsal app + run Integration Tester |
-| `fix(defects)` | mock | spawn parallel fix agents in worktrees off `rehearsal/<run-id>` |
-| `reMerge()` | mock | re-integrate via `conflict.mjs` dependency-ordered merge |
+| `verify()` | mock returning fixture report | boot the app on `next` + run Integration Tester |
+| `fix(defects)` | mock | spawn parallel fix agents in worktrees off `next` |
+| `reMerge()` | mock | re-integrate into `next` via `conflict.mjs` dependency-ordered merge |
 
 The controller (`loop2.mjs`) **never spawns processes, boots apps, or runs agents.** All live seams live in `loop2-live.mjs` and are guarded behind `--live`.
 
@@ -107,8 +107,8 @@ The Integration Tester emits `.bgsd/runs/<run-id>/integration-report.json`. It r
   "scope":         "integration",
   "verdict":       "PASS | FAIL | ERROR | BLOCKED",
   "integration": {
-    "rehearsal_branch": "rehearsal/bgsd-0001-my-feature",
-    "iteration":        0,
+    "integration_branch": "next",
+    "iteration":          0,
     "scrutiny": {
       "cross_boundary_uat":     true,
       "integrated_diff_review": true,
@@ -158,7 +158,7 @@ Run: bgsd-0001-my-feature  |  State: review
   [per-agent CHANGELOG summary]
 
 ── Boot ─────────────────────────────────────────────
-  Rehearsal app: http://localhost:3099
+  Integrated app (next): http://localhost:3099
   (open in your browser to verify by hand)
 
 ── Checklist ────────────────────────────────────────
@@ -168,7 +168,7 @@ Run: bgsd-0001-my-feature  |  State: review
   [ ] The integrated app loads and responds on the localhost URL
 
 ── Verdict ──────────────────────────────────────────
-  Your verdict on the rehearsal branch — pick one:
+  Your verdict on the integrated build (next) — pick one:
 
   [approve]          Approve — integration looks good. Advance to PR creation.
   [request-changes]  Request changes — describe what's wrong → /bgsd-feedback.
@@ -230,10 +230,10 @@ When a run is in `review` or `needs_input` state, `/bgsd-status` shows a distinc
 
 ```
 ── 👁 User Review Gate  [👁 REVIEW]
-  ⚠ NEEDS YOUR EVAL:  Run /bgsd-user-eval to boot the rehearsal app and submit your verdict.
+  ⚠ NEEDS YOUR EVAL:  Run /bgsd-user-eval to boot the app on next and submit your verdict.
 ```
 
-The `🔒 main-protected` indicator is always visible in the banner.
+The `🔒 main-protected` indicator is always visible in the banner: it marks that `main` (production) is never written by an agent.
 
 ---
 
@@ -241,7 +241,7 @@ The `🔒 main-protected` indicator is always visible in the banner.
 
 > **This section is critical. Read it before every live integration run.**
 
-The live path boots the actual `rehearsal/<run-id>` app and drives real Integration-Tester→fix cycles. It is **off by default** and requires an explicit `--live` opt-in.
+The live path boots the actual integrated app on `next` and drives real Integration-Tester→fix cycles. It is **off by default** and requires an explicit `--live` opt-in.
 
 **Dry-run (always safe, always the default):**
 
@@ -252,7 +252,7 @@ node bgsd/scripts/loop2-live.mjs
 
 **Live integration run — work through this checklist every time:**
 
-1. **Branch safety.** You are on a feature branch, NOT `next`.
+1. **Branch safety.** You are not on `main`. Integration and fix-agent worktrees target the standing `next` branch; agents never write to `main`.
    ```bash
    git branch --show-current
    ```
@@ -263,15 +263,15 @@ node bgsd/scripts/loop2-live.mjs
    ```
 4. **Stay awake.** `caffeinate -dimsu &` is running so the Mac does not sleep mid-run.
 5. **Watch the terminal.** This is NOT fire-and-forget. Kiwi prints iteration progress; you must be present to respond to stop conditions.
-6. **Isolation in place.** `runtime-isolate.sh` isolation is configured: the rehearsal app runs on its own port/DB/env with no shared state with production.
-7. **`rehearsal/<run-id>` only.** Fix-agent worktrees branch off `rehearsal/<run-id>`. `next` is NEVER touched automatically.
+6. **Isolation in place.** `runtime-isolate.sh` isolation is configured: the integrated app runs on its own port/DB/env with no shared state with production.
+7. **`next` is the integration branch.** Fix-agent worktrees branch off `next` and re-merge into `next`. `main` is NEVER touched by an agent; the `next` → `main` merge is human-only.
 
 **Run the live path:**
 
 ```bash
 node bgsd/scripts/loop2-live.mjs --live \
   --run-id bgsd-0001-my-feature \
-  --rehearsal-branch rehearsal/bgsd-0001-my-feature \
+  --rehearsal-branch next \
   --max-iterations 5
 ```
 
@@ -281,7 +281,7 @@ node bgsd/scripts/loop2-live.mjs --live \
 # Dry-run (default): show the boot plan + checklist, do NOT boot
 node bgsd/scripts/review.mjs --run-id bgsd-0001-my-feature
 
-# Live (human-supervised only): boot the real rehearsal app
+# Live (human-supervised only): boot the real app on next
 node bgsd/scripts/review.mjs --live --run-id bgsd-0001-my-feature
 ```
 
@@ -301,7 +301,7 @@ Or invoke via the Claude Code slash commands:
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--run-id <id>` | Yes | The run identifier (e.g. `bgsd-0001-my-feature`). |
-| `--rehearsal-branch <branch>` | No (default: `rehearsal/<run-id>`) | The assembled integration branch to run against. |
+| `--rehearsal-branch <branch>` | No (default: `next`) | The standing integration branch to run Loop 2 against. |
 | `--max-iterations <n>` | No (default: 5) | Hard cap on fix→re-merge→re-verify cycles (LOOP2-04). |
 | `--live` | **Human-gated** | Engage the real live integration path. See checklist above. |
 | `--budget-cap <$>` | Recommended with `--live` | Per-run token/cost cap (also `BGSD_BUDGET_CAP`). |
@@ -311,8 +311,8 @@ Or invoke via the Claude Code slash commands:
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--run-id <id>` | Yes | The run identifier. |
-| `--port <n>` | No (default: 3099) | Port to boot the rehearsal app on. |
-| `--live` | **Human-gated** | Boot the real rehearsal app. Default is dry-run (no boot). |
+| `--port <n>` | No (default: 3099) | Port to boot the integrated app (on `next`) on. |
+| `--live` | **Human-gated** | Boot the real app on `next`. Default is dry-run (no boot). |
 
 ---
 
@@ -320,10 +320,10 @@ Or invoke via the Claude Code slash commands:
 
 | Rule | Detail |
 |------|--------|
-| **NFR-01 (branch safety)** | bgsd never writes to `next`. Fix-agent branches and re-merges all target `rehearsal/<run-id>`. Only you merge `rehearsal/<run-id>` into `next`, by hand. |
+| **NFR-01 (branch safety)** | Agents never write to `main`. Fix-agent branches and re-merges all target the standing `next` branch. Only you merge `next` into `main`, by hand. |
 | **NFR-06 (no silent green)** | `BLOCKED`/`ERROR` verdicts park immediately without calling fix. Loop 2 ends in a structured non-PASS terminal state with `integration-report.json` attached. The User Review Gate is never auto-passed (NFR-11). |
 | **NFR-08 (bounded, reversible autonomy)** | Loop 2 is bounded by `max_iterations`; feedback re-runs are equally bounded; the per-run budget cap limits model spend. |
-| **NFR-10 (live integration run is human-gated)** | Real booting and real Tester→fix cycles are exercised only under explicit `--live` opt-in, human-supervised, never in CI, `next` never written. `--dry-run` is the default. |
+| **NFR-10 (live integration run is human-gated)** | Real booting and real Tester→fix cycles are exercised only under explicit `--live` opt-in, human-supervised, never in CI, `main` never written by an agent. `--dry-run` is the default. |
 | **NFR-11 (User Review Gate is interactive-by-design)** | The gate uses GSD-style selector Q&A and never auto-passes. An unanswered gate parks in `needs_input`, never `done`. |
 
 ---
