@@ -1,10 +1,10 @@
 {
   "name": "bgsd-local",
   "metadata": {
-    "description": "Local marketplace for the better-gsd (bgsd) plugin — an additive verification layer over GSD."
+    "description": "Local marketplace for the better-gsd (bgsd) plugin: An additive verification layer over GSD."
   },
   "owner": {
-    "name": "better-gsd",
+    "name": "filippo-fonseca",
     "email": "filifonsecacagnazzo@gmail.com"
   },
   "plugins": [
@@ -12,9 +12,9 @@
       "name": "bgsd",
       "description": "better-gsd v0 — the Standalone Tester + /bgsd-verify",
       "source": "./",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "author": {
-        "name": "better-gsd"
+        "name": "filippo-fonseca"
       },
       "homepage": "https://github.com/filippo-fonseca/better-gsd",
       "license": "MIT",
