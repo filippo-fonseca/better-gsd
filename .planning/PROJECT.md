@@ -56,7 +56,7 @@ If this isn't reliable, nothing downstream (loops, orchestration) matters. v0 ex
 
 - **v1 — Fix-stream mode (`/bgsd-queue`) + Loop 1. ✅ BUILT (2026-06-29).** Queue → classify/route to GSD → execute → Tester → Ralph stop-hook. Lowest-risk autonomy; one worktree + one loop. Deterministic core + 85 unit tests across queue/route/loop1/capture; the two live runs (Loop 1 autonomous spawn, Hyperpolymath cron) are guarded behind `--live` and remain human-gated. Roadmap: `.planning/v1/`.
 - **v2 — Project orchestrator (`/bgsd-run`) — Conductor (Kiwi). ✅ BUILT (2026-06-29).** Decomposition, dependency graph, headless spawning, control-file protocol, heartbeat/restart, conflict pre-check + merge-resolver, `rehearsal/<run-id>`, doc aggregation, reversible branch cleanup, Conductor→user checkpoints at merge boundaries, the live colorful `/bgsd-status` view, and context management. 9 phases; deterministic core unit-tested (14 suites green across v0+v1+v2); the live multi-process orchestration run is guarded behind `--live` (human-gated). Roadmap `.planning/v2/`. Intake/proxy extension (E1–E6) drafted in `.planning/v2-intake/`.
-- **v3 — Loop 2 (integration) + User Review Gate + feedback mode.** `/bgsd-user-eval`, `/bgsd-feedback [--fast]`, per-agent CHANGELOG into the PR.
+- **v3 — Loop 2 (integration) + User Review Gate + feedback mode. ✅ BUILT (2026-06-29).** Loop 2 integration verify→fix over `rehearsal/<run-id>`, `/bgsd-user-eval` (selector review gate, never-auto-pass), `/bgsd-feedback [--fast]` (`--fast` flagged UNVERIFIED), per-agent CHANGELOG → PR body. 6 phases; deterministic core unit-tested (19 suites green across v0+v1+v2+v3); the live integration run and real `gh pr create` are guarded behind `--live` (human-gated; PR never targets a default branch). Roadmap `.planning/v3/`.
 
 **Live addenda captured (post-PRD clarifications — all land in v2+/Conductor scope unless noted):**
 - **Caffeinate during runs:** after the user approves at plugin setup, bgsd keeps the Mac awake (`caffeinate`) so agents keep working through long autonomous runs. (Setup-time helper; primarily v1+.)
@@ -89,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone** (via `/gsd-complete-milestone`): full review; confirm Core Value priority; audit Out of Scope; promote next version (v1) into Active.
 
 ---
-*Last updated: 2026-06-29 — v0 (proven) + v1 + v2 (built; live runs human-gated) complete. Next: v3 (Loop 2 + feedback) and the v2-intake extension. Landing page + docs in progress.*
+*Last updated: 2026-06-29 — v0 (proven) + v1 + v2 + v3 all built (live runs human-gated); landing page + OSS docs shipped. Next: the v2-intake extension (E1–E6 — Conductor intake + proxy-Q&A). v4 (remote control) planned.*
