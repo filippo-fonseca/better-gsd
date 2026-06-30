@@ -137,9 +137,18 @@ function requireLiveFlag() {
  * @param {string}   opts.worktreePath   - absolute path to the worktree root
  * @param {string}   opts.runId          - run ID for the verification run
  * @param {string}   [opts.bgsdVerifyCmd] - override for the bgsd-verify command path
+ * @param {boolean}  [opts.usageTesting]  - run the Playwright usage-testing rung?
+ *                   Defaults to the BGSD_USAGE_TESTING env (set by session.mjs).
+ *                   When false, the Tester runs code-only (gsd-verifier) and the
+ *                   Playwright ladder is skipped; code verification still runs.
  * @returns {Promise<{ verdict: string, defects: object[], reportPath: string|null }>}
  */
-export async function liveVerify({ worktreePath, runId, bgsdVerifyCmd }) {
+export async function liveVerify({
+  worktreePath,
+  runId,
+  bgsdVerifyCmd,
+  usageTesting = process.env.BGSD_USAGE_TESTING !== "0",
+}) {
   requireLiveFlag();
 
   const cmd = bgsdVerifyCmd ?? "node";
@@ -163,6 +172,7 @@ export async function liveVerify({ worktreePath, runId, bgsdVerifyCmd }) {
     cwd: worktreePath,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
+    env: { ...process.env, BGSD_USAGE_TESTING: usageTesting ? "1" : "0" },
   });
 
   if (result.error) {

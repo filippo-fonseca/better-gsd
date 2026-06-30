@@ -78,6 +78,17 @@ export function defaultBgsdConfig() {
       researcher: "one-tier-below",
       verifier: { model: "haiku", effort: "low" },
     },
+    // How thoroughly bgsd verifies. The goal-backward code verification
+    // (gsd-verifier: "did it build what was asked, is everything proper") ALWAYS
+    // runs. usage_testing toggles the heavier Playwright/vision rung (driving the
+    // real app: console -> network -> DOM -> vision). Turn it off for repos or
+    // sessions where browser UI testing is overkill (a quick fix, a non-UI
+    // change). The Conductor can flip this per-session (--no-usage-verification)
+    // or persist it here. Never disables code verification; "no silent green"
+    // still holds via the gsd-verifier.
+    verification: {
+      usage_testing: true,
+    },
     conductor: {
       persona: "kiwi",
       // Live, stage-aware narration using the canonical pipeline names.
@@ -174,6 +185,13 @@ Notes section and Kiwi will respect them.
 - **model_posture** — the per-unit model + effort routing. Executor uses the
   unit's difficulty tier; researcher drops one tier (capped at \`medium\`);
   verifier is fixed. Override any tier, threshold, or role here.
+- **verification.usage_testing** — \`true\` runs the full Tester ladder including
+  the Playwright/vision rung (driving the real app). \`false\` skips that UI
+  usage-testing but STILL runs the goal-backward code verification
+  (gsd-verifier), so quick fixes and non-UI changes don't pay for browser
+  testing. Toggle per-session with \`--no-usage-verification\`, or tell Kiwi
+  ("stop UI-testing quick fixes") and it sets this for you. It never disables
+  code verification — "no silent green" still holds.
 - **conductor** — persona + narration. \`narrate\` streams stage-aware live
   updates; \`suggest_gate_commands\` makes Kiwi hand you the exact command at
   every human gate.

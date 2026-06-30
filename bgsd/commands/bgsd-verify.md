@@ -34,6 +34,28 @@ is a single verdict line on stdout and a report file on disk.
 | `--boot <app-dir>` | One of `<url>` or `--boot` | Boot one isolated instance first via `runtime-isolate.sh`, then verify it. |
 | `--criteria <file>` | One of `--criteria` or `--inline` | Acceptance criteria from a GSD `UI-SPEC.md` or acceptance file. |
 | `--inline "..."` | One of `--criteria` or `--inline` | Acceptance criteria given inline (quote the string; separate criteria with `;` or newlines). |
+| `--no-usage-verification` | No | Code-only mode: run the goal-backward gsd-verifier against the criteria but **skip the Playwright usage-testing ladder** (no browser). Equivalent to `BGSD_USAGE_TESTING=0`. |
+
+---
+
+## Verification mode (BGSD_USAGE_TESTING)
+
+bgsd verifies in two modes; the goal-backward **code verification** (gsd-verifier)
+always runs. The Playwright **usage testing** (the driver ladder below) is toggled
+by the session — off for quick fixes and non-UI changes:
+
+- **Full (default):** `BGSD_USAGE_TESTING=1` or unset → run the full
+  console → network → DOM → vision ladder.
+- **Code-only:** `BGSD_USAGE_TESTING=0` (set by `/bgsd-sesh --no-usage-verification`,
+  the `--no-usage-verification` arg here, or the `verification.usage_testing`
+  BGSD.md knob) → **skip the ladder and the MCP probe**, run the gsd-verifier
+  code/goal check, and emit a report with `verification_mode: "code-only"` and
+  every ladder rung marked skipped. A missing Playwright MCP is **not** BLOCKED in
+  this mode. "No silent green" still holds: `PASS` requires the gsd-verifier to
+  confirm the criteria.
+
+The Tester agent (`bgsd/agents/tester.md`) reads `BGSD_USAGE_TESTING` first and
+branches accordingly.
 
 ---
 

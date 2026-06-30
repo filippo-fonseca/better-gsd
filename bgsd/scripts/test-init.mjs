@@ -188,6 +188,22 @@ test("I07c — BGSD.md documents + round-trips the context block", () => {
   assert.equal(c.context.max_window_tokens, 1_000_000);
 });
 
+test("I07d — defaultBgsdConfig: verification.usage_testing defaults true", () => {
+  const c = defaultBgsdConfig();
+  assert.equal(c.verification.usage_testing, true);
+});
+
+test("I07e — BGSD.md documents + round-trips the verification knob", () => {
+  const md = renderBgsdMd(defaultBgsdConfig());
+  assert.ok(
+    md.includes("verification.usage_testing"),
+    "prose should document the verification knob"
+  );
+  const text = '```json bgsd-settings\n{ "verification": { "usage_testing": false } }\n```';
+  const c = parseBgsdMd(text);
+  assert.equal(c.verification.usage_testing, false, "override must disable usage testing");
+});
+
 // ---------------------------------------------------------------------------
 // .gitignore merge
 // ---------------------------------------------------------------------------

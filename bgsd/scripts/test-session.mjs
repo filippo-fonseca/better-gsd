@@ -19,6 +19,7 @@ import {
   classifyScale,
   buildDepthPlan,
   startSession,
+  resolveUsageTesting,
 } from "./session.mjs";
 
 let passed = 0;
@@ -51,6 +52,38 @@ console.log("\nbgsd session (U1/U2/U3) tests\n");
 await test("U1: constants — SCALES + SESSION_MODES", () => {
   assert.deepEqual(SCALES, ["quick", "feature", "project"]);
   assert.deepEqual(SESSION_MODES, ["auto", "quick", "feature", "project"]);
+});
+
+// ---------------------------------------------------------------------------
+// resolveUsageTesting — verification depth (--no-usage-verification + config knob)
+// ---------------------------------------------------------------------------
+
+await test("UV: default (no flag, no config) → usage testing ON", () => {
+  assert.equal(resolveUsageTesting({}), true);
+  assert.equal(resolveUsageTesting({ config: null, noUsageVerification: false }), true);
+});
+
+await test("UV: --no-usage-verification flag forces code-only", () => {
+  assert.equal(resolveUsageTesting({ noUsageVerification: true }), false);
+  // flag wins even when config enables usage testing
+  assert.equal(
+    resolveUsageTesting({ config: { verification: { usage_testing: true } }, noUsageVerification: true }),
+    false
+  );
+});
+
+await test("UV: BGSD.md verification.usage_testing=false disables it (no flag)", () => {
+  assert.equal(
+    resolveUsageTesting({ config: { verification: { usage_testing: false } } }),
+    false
+  );
+});
+
+await test("UV: config usage_testing=true keeps it on", () => {
+  assert.equal(
+    resolveUsageTesting({ config: { verification: { usage_testing: true } } }),
+    true
+  );
 });
 
 await test("U1: trivial single-surface fix → quick", async () => {

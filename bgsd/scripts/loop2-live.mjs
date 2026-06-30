@@ -211,7 +211,14 @@ export function requireNotProductionBranch() {
  *   reportPath:       string|null,
  * }>}
  */
-export async function liveVerify({ rehearsalBranch, runId, bgsdDir, isoScript, verifyScript }) {
+export async function liveVerify({
+  rehearsalBranch,
+  runId,
+  bgsdDir,
+  isoScript,
+  verifyScript,
+  usageTesting = process.env.BGSD_USAGE_TESTING !== "0",
+}) {
   requireLiveFlag();
 
   const bgsd       = bgsdDir   ?? join(REPO_ROOT, ".bgsd");
@@ -221,7 +228,8 @@ export async function liveVerify({ rehearsalBranch, runId, bgsdDir, isoScript, v
   process.stderr.write(
     `[loop2-live] liveVerify: booting rehearsal app for ${rehearsalBranch}\n` +
     `  runtime-isolate.sh: ${isoPath}\n` +
-    `  report path:        ${reportPath}\n`
+    `  report path:        ${reportPath}\n` +
+    `  usage testing:      ${usageTesting ? "ON (Playwright)" : "OFF (code-only / gsd-verifier)"}\n`
   );
 
   // LIVE SEAM POINT — Step 1: boot the integrated rehearsal app (LOOP2-01)
@@ -253,6 +261,7 @@ export async function liveVerify({ rehearsalBranch, runId, bgsdDir, isoScript, v
   //   const verifyResult = spawnSync("node", [verify, "--run-id", runId,
   //                                            "--integration", "--scope", "integration"], {
   //     cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8",
+  //     env: { ...process.env, BGSD_USAGE_TESTING: usageTesting ? "1" : "0" },
   //   });
   //   if (verifyResult.error) {
   //     return { verdict: "ERROR", defects: [], criteria_results: [], scrutiny: {},

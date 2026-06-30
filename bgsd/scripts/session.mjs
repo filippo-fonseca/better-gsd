@@ -984,6 +984,25 @@ function renderView(scale, unitStates) {
   };
 }
 
+/**
+ * Resolve the effective verification mode for a session: whether the heavy
+ * Playwright/vision usage-testing rung runs. The goal-backward code verification
+ * (gsd-verifier) ALWAYS runs regardless; this only governs the UI usage testing.
+ *
+ * Precedence: an explicit per-session `--no-usage-verification` flag forces
+ * code-only. Otherwise the BGSD.md `verification.usage_testing` knob decides
+ * (default true). A missing config defaults to full usage testing.
+ *
+ * @param {object} opts
+ * @param {object|null} [opts.config]                resolved BGSD.md config (or null)
+ * @param {boolean}     [opts.noUsageVerification]   the per-session flag
+ * @returns {boolean} true = run Playwright usage testing; false = code-only
+ */
+export function resolveUsageTesting({ config, noUsageVerification } = {}) {
+  if (noUsageVerification) return false;
+  return config?.verification?.usage_testing !== false;
+}
+
 // ---------------------------------------------------------------------------
 // CLI entrypoint
 // ---------------------------------------------------------------------------
@@ -1025,6 +1044,20 @@ if (
     const mode = flags.quick ? "quick" : flags.feature ? "feature" : flags.project ? "project" : "auto";
     // plan-only is ONLY when explicitly requested; default (no flag) = run the session.
     const planOnly = flags["plan-only"] === true || flags["dry-run"] === true;
+    const noUsageVerification = flags["no-usage-verification"] === true;
+
+    // Resolve the verification mode: flag overrides the BGSD.md verification knob.
+    // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
+    // (full usage testing). Code verification (gsd-verifier) always runs either way.
+    let bgsdConfig = null;
+    try {
+      const { resolveRepoRoot } = await import("./init-live.mjs");
+      const { parseBgsdMd } = await import("./init.mjs");
+      const { existsSync, readFileSync } = await import("node:fs");
+      const bgsdMdPath = `${resolveRepoRoot()}/BGSD.md`;
+      if (existsSync(bgsdMdPath)) bgsdConfig = parseBgsdMd(readFileSync(bgsdMdPath, "utf8"));
+    } catch (_) { bgsdConfig = null; }
+    const usageTesting = resolveUsageTesting({ config: bgsdConfig, noUsageVerification });
 
     // CLI: classify + build the depth plan always; then either preview (--plan-only / --dry-run)
     // or execute (the default). Real irreversible actions (git merge, gh pr create) remain
@@ -1041,6 +1074,11 @@ if (
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);
     process.stdout.write(`  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`);
+    process.stdout.write(
+      `  verify:  ${usageTesting
+        ? "full (gsd-verifier code check + Playwright usage testing)"
+        : "code-only (gsd-verifier; Playwright UI usage testing OFF)"}\n`
+    );
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
@@ -1048,6 +1086,10 @@ if (
     if (planOnly) {
       process.stdout.write(`\n  preview (--plan-only) — classified and planned; nothing spawned. Pass no flag to execute.\n\n`);
     } else {
+      // Propagate the verification mode to every spawned agent + Tester. Children
+      // inherit process.env; the Tester (tester.md) and /bgsd-verify honor
+      // BGSD_USAGE_TESTING=0 by skipping the Playwright ladder (code-only).
+      process.env.BGSD_USAGE_TESTING = usageTesting ? "1" : "0";
       // sesh preflight: ensure init + ff-sync the integration branch from base.
       try {
         const { resolveRepoRoot, seshPreflight } = await import("./init-live.mjs");
@@ -1080,7 +1122,11 @@ if (
           `Install manually: npx -y @opengsd/gsd-core@latest --claude --global\n`
         );
       }
-      process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
+      if (usageTesting) {
+        process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
+      } else {
+        process.stdout.write(`  deps: Playwright skipped — code-only verification (gsd-verifier). No browser/UI usage testing this session.\n`);
+      }
       process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
     }
     process.exit(0);

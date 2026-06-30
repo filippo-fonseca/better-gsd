@@ -67,6 +67,32 @@ A flag never disables verification and never lets bgsd write `main` or any produ
 
 ---
 
+## Verification depth — `--no-usage-verification` (orthogonal)
+
+bgsd verifies in two depths. The goal-backward **code verification** (the
+gsd-verifier: "did it build what was asked, is everything proper") **always
+runs** — that is the floor, and "no silent green" depends on it. The heavier
+**Playwright usage testing** (the Tester driving the real app: console → network
+→ DOM → vision) is the part you can turn off.
+
+| Flag | Effect |
+|------|--------|
+| *(default)* | **Full** verification: gsd-verifier code check **plus** Playwright usage testing. |
+| `--no-usage-verification` | **Code-only:** still runs the gsd-verifier against the unit's criteria, but **skips the Playwright UI usage testing**. For a quick fix or a non-UI change that doesn't need browser testing. |
+
+It is orthogonal to `--quick`/`--feature`/`--project` (combine freely), and it
+propagates to **every** worktree Pipeline Agent and the Loop 2 integration Tester
+via `BGSD_USAGE_TESTING`. Persist it as the repo default with the
+`verification.usage_testing` knob in `BGSD.md`.
+
+**Kiwi can toggle it for you, any time.** Tell Kiwi "stop UI-testing quick fixes"
+or "turn usage testing back on" and it edits `verification.usage_testing` in
+`BGSD.md` itself (via `bgsdmd.mjs:editSettingLive`) and reports the change — the
+same way Claude Code edits its own settings. Set it per-session with the flag, or
+per-repo by telling Kiwi.
+
+---
+
 ## How Kiwi picks the scale (auto mode)
 
 Deterministic, zero required model calls. Kiwi reads cheap signals from the prompt:

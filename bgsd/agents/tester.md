@@ -27,6 +27,36 @@ decide.
 
 ---
 
+## Verification mode gate (BGSD_USAGE_TESTING)
+
+**BEFORE the MCP probe, read the `BGSD_USAGE_TESTING` environment variable.**
+
+bgsd has two verification modes. The goal-backward **code verification**
+(gsd-verifier: "did it build what the unit asked for, is everything proper")
+ALWAYS runs. The Playwright **usage testing** below (driving the real app) is
+toggled by the session — off for quick fixes and non-UI changes
+(`--no-usage-verification`, or the `verification.usage_testing` BGSD.md knob).
+
+```bash
+echo "${BGSD_USAGE_TESTING:-1}"
+```
+
+- **`BGSD_USAGE_TESTING=0` → CODE-ONLY mode.** Do **not** run the MCP probe or the
+  console → network → DOM → vision ladder. Do **not** require Playwright (a
+  missing MCP is not a BLOCKED here). Instead, run the gsd-verifier code/goal
+  check against the unit's acceptance criteria and emit the report from that.
+  Mark every ladder rung skipped: `driver_ladder.{console,network,dom,vision}:
+  { ran: false, skipped: "usage_testing_off" }`, and set `verification_mode:
+  "code-only"`. "No silent green" still holds: a `PASS` requires the
+  gsd-verifier to confirm the criteria, never an absence of evidence.
+- **`BGSD_USAGE_TESTING=1` or unset → FULL mode (default).** Proceed through the
+  MCP probe and the full ladder below as normal. Set `verification_mode: "full"`.
+
+Everything below this section is the FULL-mode ladder. Skip it entirely in
+code-only mode.
+
+---
+
 ## Pre-flight: MCP Probe (DRIVER-03)
 
 **BEFORE touching any acceptance criteria, run this probe first.**
