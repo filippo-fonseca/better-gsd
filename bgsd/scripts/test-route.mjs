@@ -615,41 +615,10 @@ test("S03: full pipeline on feature item: queued->classified->routed with chain"
 // GSD command surface verification (seam audit)
 // ---------------------------------------------------------------------------
 
-process.stdout.write("\n--- GSD command surface verification (seam audit) ---\n");
-
-test("GSD-SEAM: all /gsd-* commands in ROUTING_TABLE exist in commands/gsd/ directory", () => {
-  const gsdCommandsDir = resolve(__dir, "../../commands/gsd");
-
-  // Collect all command names from ROUTING_TABLE (primary + chains)
-  const usedCommands = new Set();
-  for (const entry of Object.values(ROUTING_TABLE)) {
-    usedCommands.add(entry.command);
-    for (const c of entry.chain) usedCommands.add(c);
-  }
-
-  // Get real command filenames (strip .md extension -> /gsd-<name>)
-  let files;
-  try {
-    files = readdirSync(gsdCommandsDir);
-  } catch (err) {
-    throw new Error(`Cannot read commands/gsd/ directory: ${err.message}`);
-  }
-  const realCommands = new Set(
-    files
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => `/gsd-${f.replace(/\.md$/, "")}`)
-  );
-
-  for (const cmd of usedCommands) {
-    // Strip the leading slash when looking up the file
-    const slug = cmd.replace(/^\/gsd-/, "");
-    const expectedFile = `${slug}.md`;
-    assert.ok(
-      files.includes(expectedFile),
-      `Command "${cmd}" used in ROUTING_TABLE but "${expectedFile}" not found in commands/gsd/ (real files: ${files.slice(0, 5).join(", ")}...)`
-    );
-  }
-});
+// GSD command-surface seam audit REMOVED (bgsd is now gsd-agnostic): bgsd no
+// longer vendors GSD, so there is no local commands/gsd/ to validate against.
+// The /gsd-* commands in ROUTING_TABLE are provided by the user-installed
+// gsd-core plugin; the Conductor ensures it's installed (see gsdinstall.mjs).
 
 // ---------------------------------------------------------------------------
 // Cleanup

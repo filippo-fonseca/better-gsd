@@ -1,0 +1,26 @@
+{
+  "name": "better-gsd",
+  "metadata": {
+    "description": "bgsd — an autonomous, self-verifying orchestration layer on top of GSD. Talk to the Conductor; it handles everything."
+  },
+  "owner": {
+    "name": "Filippo Fonseca",
+    "email": "filifonsecacagnazzo@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "bgsd",
+      "source": "./bgsd",
+      "description": "Autonomous, self-verifying orchestration layer on top of GSD (gsd-agnostic: uses the installed gsd-core plugin).",
+      "version": "0.0.1",
+      "author": {
+        "name": "Filippo Fonseca",
+        "url": "https://github.com/filippo-fonseca/better-gsd"
+      },
+      "homepage": "https://github.com/filippo-fonseca/better-gsd",
+      "license": "MIT",
+      "category": "workflow",
+      "keywords": ["gsd", "orchestration", "verification", "autonomous", "claude-code", "bgsd"]
+    }
+  ]
+}

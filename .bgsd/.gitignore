@@ -1,4 +1,0 @@
-# bgsd runtime output (verification runs). Ignore everything here except this file,
-# so the directory exists in the repo but its contents stay untracked.
-*
-!.gitignore
