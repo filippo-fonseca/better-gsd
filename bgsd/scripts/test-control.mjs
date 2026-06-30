@@ -63,6 +63,7 @@ import {
   createControlFile,
   readControlFile,
   updateControlFile,
+  updateContextUsage,
   touchHeartbeat,
   recordAssumption,
   raiseBlocker,
@@ -684,6 +685,83 @@ test("C32 updateControlFile: atomic write (no leftover .tmp file)", () => {
   assert.equal(existsSync(p + ".tmp"), false);
   const cf = readControlFile(p);
   assert.equal(cf.phase, "execute");
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Context-pressure fields + updateContextUsage (CTX-02)
+// ---------------------------------------------------------------------------
+
+process.stdout.write("\n--- C33..C39  Context-pressure plumbing ---\n");
+
+test("C33 createControlFile: seeds context_bytes=0, context_pressure=null", () => {
+  const dir = makeTempDir();
+  const p = join(dir, "agent-ctx.json");
+  const data = createControlFile(p, {
+    agent_id: "agent-ctx", run_id: "r1", worktree: "/w", branch: "b", unit_id: "u1",
+  });
+  assert.equal(data.context_bytes, 0);
+  assert.equal(data.context_pressure, null);
+});
+
+test("C34 updateContextUsage: records bytes + pressure, preserves other fields", () => {
+  const dir = makeTempDir();
+  const p = join(dir, "agent-ctx.json");
+  createControlFile(p, {
+    agent_id: "agent-ctx", run_id: "r1", worktree: "/w", branch: "b", unit_id: "u1",
+  });
+  const updated = updateContextUsage(p, { context_bytes: 123456, context_pressure: "elevated" });
+  assert.equal(updated.context_bytes, 123456);
+  assert.equal(updated.context_pressure, "elevated");
+  // other fields preserved
+  assert.equal(updated.agent_id, "agent-ctx");
+  assert.equal(updated.status, "running");
+  const re = readControlFile(p);
+  assert.equal(re.context_bytes, 123456);
+  assert.equal(re.context_pressure, "elevated");
+});
+
+test("C35 updateContextUsage: atomic write (no leftover .tmp file)", () => {
+  const dir = makeTempDir();
+  const p = join(dir, "agent-ctx.json");
+  createControlFile(p, {
+    agent_id: "agent-ctx", run_id: "r1", worktree: "/w", branch: "b", unit_id: "u1",
+  });
+  updateContextUsage(p, { context_bytes: 1, context_pressure: "normal" });
+  assert.equal(existsSync(p + ".tmp"), false);
+});
+
+test("C36 updateContextUsage: rejects negative context_bytes", () => {
+  const dir = makeTempDir();
+  const p = join(dir, "agent-ctx.json");
+  createControlFile(p, {
+    agent_id: "agent-ctx", run_id: "r1", worktree: "/w", branch: "b", unit_id: "u1",
+  });
+  assert.throws(
+    () => updateContextUsage(p, { context_bytes: -5 }),
+    /context_bytes must be a non-negative number/
+  );
+});
+
+test("C37 updateContextUsage: rejects unknown context_pressure", () => {
+  const dir = makeTempDir();
+  const p = join(dir, "agent-ctx.json");
+  createControlFile(p, {
+    agent_id: "agent-ctx", run_id: "r1", worktree: "/w", branch: "b", unit_id: "u1",
+  });
+  assert.throws(
+    () => updateContextUsage(p, { context_bytes: 10, context_pressure: "exploded" }),
+    /context_pressure must be one of/
+  );
+});
+
+test("C38 validateControlFile: rejects negative context_bytes", () => {
+  const obj = makeControlObj({ context_bytes: -1 });
+  assert.throws(() => validateControlFile(obj), /context_bytes.*must be a non-negative number/);
+});
+
+test("C39 validateControlFile: rejects invalid context_pressure", () => {
+  const obj = makeControlObj({ context_pressure: "huge" });
+  assert.throws(() => validateControlFile(obj), /context_pressure.*must be one of/);
 });
 
 // ---------------------------------------------------------------------------
