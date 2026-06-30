@@ -291,6 +291,57 @@ export function planInit(state) {
 }
 
 // ---------------------------------------------------------------------------
+// Path + state detection (shared by executeInit and the live dry-run preview)
+// ---------------------------------------------------------------------------
+
+/** Compute all init-relevant absolute paths under a target repo root. */
+export function initPaths(root) {
+  const j = (...parts) => parts.join("/").replace(/\/+/g, "/");
+  return {
+    bgsdDir: j(root, ".bgsd"),
+    bgsdMd: j(root, "BGSD.md"),
+    config: j(root, ".bgsd", "config.json"),
+    ledger: j(root, ".bgsd", "ledger.md"),
+    seshsDir: j(root, ".bgsd", "seshs"),
+    gitignore: j(root, ".gitignore"),
+    planningConfig: j(root, ".planning", "config.json"),
+  };
+}
+
+/**
+ * Read-only detection of the target repo's init state via injected deps.
+ * Resolves config (explicit > BGSD.md > defaults), the integration branch, and
+ * the base branch. Shared so paths + detection never drift between the executor
+ * and the live preview.
+ */
+export function detectInitState(deps) {
+  const paths = initPaths(deps.repoRoot);
+  let config = deps.config;
+  if (!config) {
+    config = deps.exists(paths.bgsdMd)
+      ? parseBgsdMd(deps.readFile(paths.bgsdMd))
+      : defaultBgsdConfig();
+  }
+  const integrationBranch = config.integration_branch || "next";
+  const baseBranch = config.base_branch || deps.detectBaseBranch();
+  const state = {
+    bgsdConfigExists: deps.exists(paths.config),
+    bgsdMdExists: deps.exists(paths.bgsdMd),
+    ledgerExists: deps.exists(paths.ledger),
+    seshsDirExists: deps.exists(paths.seshsDir),
+    integrationBranchExists: deps.branchExists(integrationBranch),
+    planningConfigExists: deps.exists(paths.planningConfig),
+    gitignoreHasBlock:
+      deps.exists(paths.gitignore) &&
+      deps.readFile(paths.gitignore).includes(GITIGNORE_SENTINEL),
+    integrationBranch,
+    baseBranch,
+    config,
+  };
+  return { paths, config, integrationBranch, baseBranch, state };
+}
+
+// ---------------------------------------------------------------------------
 // DI executor — runs the plan through injected I/O (testable)
 // ---------------------------------------------------------------------------
 
@@ -319,42 +370,16 @@ const LEDGER_HEADER =
  * @returns {{ alreadyInitialized:boolean, baseBranch:string, integrationBranch:string, performed:string[], notes:string[] }}
  */
 export function executeInit(deps) {
-  const join = (...parts) => parts.join("/").replace(/\/+/g, "/");
   const log = deps.log ?? (() => {});
+  const { paths, config, integrationBranch, baseBranch, state } = detectInitState(deps);
   const root = deps.repoRoot;
-
-  const bgsdDir = join(root, ".bgsd");
-  const bgsdMdPath = join(root, "BGSD.md");
-  const configPath = join(bgsdDir, "config.json");
-  const ledgerPath = join(bgsdDir, "ledger.md");
-  const seshsDir = join(bgsdDir, "seshs");
-  const gitignorePath = join(root, ".gitignore");
-  const planningConfigPath = join(root, ".planning", "config.json");
-
-  // Resolve config: explicit > BGSD.md > defaults.
-  let config = deps.config;
-  if (!config) {
-    config = deps.exists(bgsdMdPath)
-      ? parseBgsdMd(deps.readFile(bgsdMdPath))
-      : defaultBgsdConfig();
-  }
-
-  const integrationBranch = config.integration_branch || "next";
-  const baseBranch = config.base_branch || deps.detectBaseBranch();
-
-  const state = {
-    bgsdConfigExists: deps.exists(configPath),
-    bgsdMdExists: deps.exists(bgsdMdPath),
-    ledgerExists: deps.exists(ledgerPath),
-    seshsDirExists: deps.exists(seshsDir),
-    integrationBranchExists: deps.branchExists(integrationBranch),
-    planningConfigExists: deps.exists(planningConfigPath),
-    gitignoreHasBlock:
-      deps.exists(gitignorePath) && deps.readFile(gitignorePath).includes(GITIGNORE_SENTINEL),
-    integrationBranch,
-    baseBranch,
-    config,
-  };
+  const join = (...parts) => parts.join("/").replace(/\/+/g, "/");
+  const bgsdDir = paths.bgsdDir;
+  const bgsdMdPath = paths.bgsdMd;
+  const configPath = paths.config;
+  const ledgerPath = paths.ledger;
+  const seshsDir = paths.seshsDir;
+  const gitignorePath = paths.gitignore;
 
   const { alreadyInitialized, actions } = planInit(state);
   const performed = [];
