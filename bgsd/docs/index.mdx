@@ -1,41 +1,45 @@
 ---
 title: "bgsd Documentation"
-description: "Table of contents for all bgsd doc pages — from quickstart to full command references."
+description: "Table of contents for all bgsd doc pages — start with the Conductor Session, then explore the stage references."
 ---
 
 # bgsd Documentation
 
-bgsd is an open-source Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. These pages document every command, every hard rule, and every seam from v0 through v2.
+bgsd is an open-source Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
 
 All pages are valid standalone Mintlify MDX. They are intentionally kept outside GSD's vendored nav config (`mint.json` / `docs.json`) — editing that file would violate the "never edit vendored GSD" rule. To surface bgsd in the docs site nav, add a single group entry to the Mintlify nav config pointing at these pages (see the note at the bottom of any page).
 
 ---
 
-## Getting started
+## Start here
 
-- **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Start here.
+- **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor (Kiwi). Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
+
+- **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Run this once after installing.
 
 ---
 
-## Command references
+## Internal stage references
 
-### v0 — Standalone Tester
+These pages document what the Conductor runs internally. You never call these commands directly from a `/bgsd-sesh` — Kiwi orchestrates all of them. They are reference material for contributors, advanced users, and anyone who wants to understand the mechanics.
 
-- **[/bgsd-verify reference](./bgsd-verify.mdx)** — Full reference for the verify command: arguments, acceptance-criteria input formats (`--criteria` file or `--inline` string), the `verification-report.json` schema (all fields and types), and detailed driver-ladder behavior (pre-flight probe, rung-by-rung procedure, `console_reliable` flag, and hard rules).
+### v0 — Verify engine
+
+- **[/bgsd-verify reference](./bgsd-verify.mdx)** — Full reference for the verify stage: arguments, acceptance-criteria input formats (`--criteria` file or `--inline` string), the `verification-report.json` schema (all fields and types), and detailed driver-ladder behavior (pre-flight probe, rung-by-rung procedure, `console_reliable` flag, and hard rules).
 
 ### v1 — Fix-stream
 
-- **[/bgsd-queue reference](./bgsd-queue.mdx)** — Fix-stream lifecycle diagram, state machine (all states and terminal conditions), subcommands (`add`, `status`, `start`), classification rules and routing table, Loop 1 controller algorithm and stop conditions, queue store format, and quick-reference script invocations.
+- **[/bgsd-queue reference](./bgsd-queue.mdx)** — Fix-stream lifecycle diagram, state machine (all states and terminal conditions), subcommands, classification rules and routing table, Loop 1 controller algorithm and stop conditions, queue store format.
 
-- **[Hyperpolymath capture→queue cron](./hyperpolymath-capture.mdx)** — How bgsd turns Hyperpolymath items into `/bgsd-queue` entries: the capture seam contract, dry-run cron invocation modes, idempotency via content-key dedup, launchd scheduling, and the human-gated live hookup (guards, refusal behavior, and step-by-step activation).
+- **[Hyperpolymath capture→queue cron](./hyperpolymath-capture.mdx)** — How bgsd turns Hyperpolymath items into queue entries: the capture seam contract, dry-run cron invocation modes, idempotency via content-key dedup, launchd scheduling, and the human-gated live hookup.
 
-### v2 — Conductor (Kiwi)
+### v2 — Conductor pipeline
 
-- **[/bgsd-run reference](./bgsd-run.mdx)** — The full Conductor pipeline: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and the wave scheduler, conflict pre-check and merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
+- **[/bgsd-run reference](./bgsd-run.mdx)** — The Conductor state machine: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and wave scheduler, conflict pre-check and merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
 
-- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `🔒 main-protected` indicator.
+- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the main-protected indicator.
 
-### v3 — Integration Loop + Human Handoff
+### v3 — Integration loop + human handoff
 
 - **[/bgsd-integrate + /bgsd-user-eval reference](./bgsd-loop2-review.mdx)** — Loop 2 integration verify→fix over `rehearsal/<run-id>`: boot the integrated app, run the Integration Tester, dispatch parallel fix agents, re-merge, and re-verify in a bounded loop until clean or a stop condition fires. Followed by the User Review Gate: auto-boot, per-criterion checklist, GSD-style selector verdict (approve / request-changes / abort / type-your-own), `review.json` output, and the never-auto-pass rule.
 
@@ -53,10 +57,13 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 | I want to... | Go to |
 |---|---|
+| **Start using bgsd** | [Conductor Session](./conductor-session.mdx) |
 | Install and run the canary proof | [Quickstart](./quickstart.mdx) |
-| Understand the verdict contract | [/bgsd-verify](./bgsd-verify.mdx#the-report-schema) |
-| Add an item to the fix queue | [/bgsd-queue](./bgsd-queue.mdx#subcommands) |
-| Run a full orchestrated project | [/bgsd-run](./bgsd-run.mdx#human-gated-the---live-flag) |
+| Understand the pipeline flowchart | [Conductor Session — pipeline diagram](./conductor-session.mdx#the-same-pipeline-scaled) |
+| Understand the flags (--quick / --feature / --project) | [Conductor Session — flags](./conductor-session.mdx#flags) |
+| Understand the verdict contract | [/bgsd-verify — report schema](./bgsd-verify.mdx#the-report-schema) |
+| Understand Loop 1 mechanics | [/bgsd-queue — Loop 1 controller](./bgsd-queue.mdx) |
+| Understand the full orchestration state machine | [/bgsd-run](./bgsd-run.mdx) |
 | Watch in-flight workers live | [/bgsd-status](./bgsd-status.mdx) |
 | Run Loop 2 integration verify→fix | [/bgsd-integrate + /bgsd-user-eval](./bgsd-loop2-review.mdx) |
 | Review the rehearsal build by hand | [User Review Gate](./bgsd-loop2-review.mdx#user-review-gate) |
@@ -76,6 +83,7 @@ These pages render standalone without any nav config change. When a maintainer i
 {
   "group": "bgsd",
   "pages": [
+    "bgsd/docs/conductor-session",
     "bgsd/docs/quickstart",
     "bgsd/docs/bgsd-verify",
     "bgsd/docs/bgsd-queue",

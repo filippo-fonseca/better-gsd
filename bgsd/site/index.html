@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>better-gsd (bgsd) · Autonomous, self-verifying Claude Code plugin</title>
-  <meta name="description" content="bgsd layers an autonomous, self-verifying orchestration system on top of GSD. It catches the console errors a screenshot misses — then fixes them." />
+  <title>better-gsd (bgsd) · Talk to the Conductor. It handles everything.</title>
+  <meta name="description" content="bgsd's Conductor (Kiwi) is always on. One session, one command: /bgsd-sesh. It auto-scales from a quick fix to a full parallel pipeline — always verified, never silent green." />
 
   <!-- No-FOUC: apply theme before first paint -->
   <script>
@@ -696,6 +696,73 @@
     html {
       transition: background-color 200ms var(--ease), color 200ms var(--ease);
     }
+
+    /* ============================================================
+       §04b SCALE COMPARISON TABLE
+       ============================================================ */
+    .scale-wrap {
+      max-width: 960px; margin-inline: auto;
+      border: 1px solid var(--line); border-radius: var(--radius-lg);
+      background: var(--bg-1); overflow: hidden;
+    }
+    .scale-table {
+      width: 100%; border-collapse: collapse; font-size: 0.88rem;
+    }
+    .scale-table thead tr {
+      background: var(--bg-2);
+    }
+    .scale-table th {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--fg-dim); text-align: left;
+      padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line);
+    }
+    .scale-table th.col-tier {
+      color: var(--xray); font-size: 12px; letter-spacing: 0.06em;
+    }
+    .scale-table td {
+      padding: 0.78rem 1.1rem; border-bottom: 1px solid var(--line);
+      vertical-align: top; line-height: 1.55; color: var(--fg-mid);
+    }
+    .scale-table tr:last-child td { border-bottom: none; }
+    .scale-table td:first-child {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--fg-dim); white-space: nowrap;
+      border-right: 1px solid var(--line); background: var(--bg-2);
+    }
+    .scale-table td.val-pass {
+      color: var(--pass); font-family: 'IBM Plex Mono', monospace;
+      font-size: 11.5px; font-weight: 600;
+    }
+    .scale-table td.val-warn {
+      color: var(--warn); font-family: 'IBM Plex Mono', monospace;
+      font-size: 11.5px; font-weight: 500;
+    }
+    .scale-table td.val-dim {
+      color: var(--fg-faint); font-family: 'IBM Plex Mono', monospace;
+      font-size: 11.5px;
+    }
+    .scale-table td.val-example {
+      font-style: italic; color: var(--fg-mid); font-size: 0.87rem;
+    }
+    .scale-flag {
+      display: inline-block; font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+      color: var(--warn); background: var(--warn-soft);
+      border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+      border-radius: 5px; padding: 0.1em 0.45em; margin-bottom: 0.3rem;
+    }
+    .scale-note {
+      margin-top: 1.2rem; max-width: 960px; margin-inline: auto;
+      font-size: 0.86rem; color: var(--fg-dim); line-height: 1.6;
+      padding: 0.85rem 1.1rem;
+      border: 1px solid color-mix(in srgb, var(--xray) 22%, var(--line));
+      border-radius: var(--radius); background: var(--xray-soft);
+    }
+    .scale-note code { font-size: 0.92em; }
+    @media (max-width: 640px) {
+      .scale-table { font-size: 0.8rem; }
+      .scale-table td:first-child { white-space: normal; }
+    }
   </style>
 </head>
 
@@ -716,7 +783,7 @@
     </a>
     <div class="nav-links">
       <a href="#how-it-works" class="nav-link">how-it-works</a>
-      <a href="#commands"     class="nav-link">commands</a>
+      <a href="#pipeline"     class="nav-link">pipeline</a>
       <a href="#milestones"   class="nav-link">milestones</a>
       <a href="#install"      class="nav-link">install</a>
       <!-- Theme toggle -->
@@ -752,13 +819,12 @@
         </span>
 
         <h1 class="hero-title">
-          It catches the<br><span class="accent">console error</span><br>a screenshot misses.
+          Talk to the<br><span class="accent">Conductor.</span><br>It handles the rest.
         </h1>
 
         <p class="hero-lede">
-          bgsd runs your GSD pipeline, then <strong>verifies</strong> the result with real browser
-          testing, and loops until the output is clean. Autonomous, self-verifying orchestration,
-          all without touching your production branch.
+          One command, one session, always-on Kiwi. The Conductor auto-scales from a quick fix to
+          a full parallel pipeline — <strong>always verified, never a silent green.</strong>
         </p>
 
         <div class="hero-actions">
@@ -767,52 +833,57 @@
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
             Install bgsd
           </a>
-          <a href="#how-it-works" class="btn btn-ghost">
+          <a href="#pipeline" class="btn btn-ghost">
             <!-- lucide: workflow -->
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>
-            How it works
+            See the pipeline
           </a>
         </div>
 
         <div class="hero-meta">
-          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0 proven · v1 + v2 built</span>
+          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0–v3 built · all verified</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Conductor codename Kiwi</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> No silent green, ever</span>
         </div>
       </div>
 
-      <!-- Right: live terminal scan demo -->
-      <div class="term" role="img" aria-label="Terminal showing a bgsd driver-ladder scan that fails on a console-level React validateDOMNesting error">
+      <!-- Right: Conductor session terminal -->
+      <div class="term" role="img" aria-label="Terminal showing a bgsd Conductor session: /bgsd-sesh with auto-scale routing and a Loop 1 PASS verdict">
         <div class="term-bar">
           <span class="term-dots" aria-hidden="true"><i class="d-fail"></i><i class="d-warn"></i><i class="d-pass"></i></span>
           <span class="term-title">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
-            bgsd-verify /buggy
+            bgsd-sesh — Kiwi · Conductor
           </span>
           <span class="term-spacer"></span>
           <span class="scan-dot" aria-hidden="true"></span>
         </div>
         <div class="term-body">
-          <div class="scan-line is-pass">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-            <span class="rung">network</span><span class="res">no 4xx/5xx</span><span class="tag">rung 2</span>
+          <div class="scan-line" style="color:var(--fg-dim);margin-bottom:0.2rem;">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="color:var(--xray)"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span class="rung" style="width:auto;color:var(--xray);">$ /bgsd-sesh</span>
+            <span class="res" style="color:var(--fg);">"Fix the nav collapse below 768px"</span>
           </div>
-          <div class="scan-line is-pass">
+          <div class="scan-line is-pass" style="padding-left:1.4rem;">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-            <span class="rung">dom</span><span class="res">structure ok</span><span class="tag">rung 3</span>
+            <span class="res">scale: quick · 1 agent · no discuss</span>
           </div>
-          <div class="scan-line is-fail">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
-            <span class="rung">console</span><span class="res">validateDOMNesting</span><span class="tag">rung 1</span>
+          <div class="scan-line is-pass" style="padding-left:1.4rem;">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span class="res">execute → Loop 1 verify→fix</span>
+          </div>
+          <div class="scan-line is-pass" style="padding-left:1.4rem;">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <span class="res">console · network · dom — clean</span><span class="tag">rung 1–3</span>
           </div>
           <div class="scan-sep"></div>
-          <div class="verdict-row fail">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.6 14.7a2 2 0 0 1 0-2.4l8.6-9.4a2 2 0 0 1 2.9 0l7.3 8a2 2 0 0 1 .5 1.7l-1 5.6a2 2 0 0 1-2 1.7H6.7a2 2 0 0 1-1.5-.7Z"/></svg>
-            FAIL
+          <div class="verdict-row" style="color:var(--pass);border-color:color-mix(in srgb,var(--pass) 35%,transparent);background:var(--pass-soft);">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            PASS
             <span class="path">.bgsd/runs/&lt;id&gt;/verification-report.json</span>
           </div>
           <p style="margin-top:0.9rem;font-size:12.5px;color:var(--fg-dim);line-height:1.55;font-family:'IBM Plex Mono',monospace;">
-            DEF-01 · high · &lt;div&gt; nested inside &lt;p&gt;. Identical in a screenshot. Caught at the console.
+            Very good, sir. Nav fix verified clean on all four rungs. No defects recorded.
           </p>
         </div>
       </div>
@@ -831,16 +902,29 @@
 <section id="core-value" class="section" aria-labelledby="core-value-heading">
   <div class="container">
     <div class="section-header center">
-      <span class="kicker"><span class="num">02</span> · the core value</span>
-      <h2 id="core-value-heading" class="section-title">The make-or-break test.</h2>
+      <span class="kicker"><span class="num">02</span> · what bgsd does</span>
+      <h2 id="core-value-heading" class="section-title">The make-or-break guarantee.</h2>
       <p class="section-sub">
-        An agent that boots your app, checks it against acceptance criteria, and returns a
-        <strong style="color:var(--fg)">reliable, structured defect list</strong> — including catching the
-        console errors a screenshot alone would miss.
+        Every path through the pipeline — a one-agent quick fix or a twelve-unit project —
+        ends in a <strong style="color:var(--fg)">verified result</strong>. The console errors a screenshot misses are caught. Always.
       </p>
     </div>
 
     <div class="grid-cards">
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: bird (Kiwi) -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>
+        </span>
+        <div class="card-title">The Conductor is always on</div>
+        <p class="card-body">
+          Kiwi is the only interface. You describe what you need;
+          the Conductor detects scale, decides how many agents to run, and orchestrates the full
+          pipeline. You never call verify, queue, or run directly — those are stages Kiwi manages.
+        </p>
+        <span class="card-tag">Single entry: /bgsd-sesh</span>
+      </div>
+
       <div class="card">
         <span class="card-ico">
           <!-- lucide: scan-search -->
@@ -851,9 +935,24 @@
           The driver ladder checks console messages before it ever looks at the DOM or takes a
           screenshot. React's <code>validateDOMNesting</code> warnings, hydration mismatches,
           and missing-key errors all fire at console level — invisible to visual regression
-          tools. bgsd surfaces them.
+          tools. bgsd surfaces them on every run, at every scale.
         </p>
         <span class="card-tag">Rung 1 of 4</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: refresh-cw -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </span>
+        <div class="card-title">Same pipeline, scaled</div>
+        <p class="card-body">
+          Quick fix? One agent, direct execution, Loop 1 verify→fix. Full project? Decompose
+          into a DAG, parallel worktrees, Loop 1 per worktree, merge, Loop 2 integration, review
+          gate. The pipeline is the same — scale determines depth and width. <code>--quick</code>
+          still verifies. Always.
+        </p>
+        <span class="card-tag">Auto-scale · --quick · --feature · --project</span>
       </div>
 
       <div class="card">
@@ -863,39 +962,11 @@
         </span>
         <div class="card-title">Structured defect reports</div>
         <p class="card-body">
-          Every run writes a schema-validated <code>verification-report.json</code>: per-criterion
-          pass/fail, defect list with severity and source rung, screenshot index, and a driver-ladder
-          audit. Machine-readable. Actionable. No ambiguity.
+          Every verification run writes a schema-validated <code>verification-report.json</code>:
+          per-criterion pass/fail, defect list with severity and source rung, screenshot index,
+          and a driver-ladder audit. Machine-readable. Actionable. No ambiguity.
         </p>
         <span class="card-tag">REPORT-01..03</span>
-      </div>
-
-      <div class="card">
-        <span class="card-ico">
-          <!-- lucide: refresh-cw -->
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-        </span>
-        <div class="card-title">Verify-then-fix loops</div>
-        <p class="card-body">
-          v1 introduced Loop 1: after execution, bgsd verifies and, on defects, re-routes to GSD
-          for a fix. The loop runs up to 5 iterations with escalating model effort. A pass is only
-          recorded on a verified Tester <code>PASS</code>. Never a silent green.
-        </p>
-        <span class="card-tag">v1 Loop 1</span>
-      </div>
-
-      <div class="card">
-        <span class="card-ico">
-          <!-- lucide: bird (Kiwi) -->
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>
-        </span>
-        <div class="card-title">Kiwi, the Conductor</div>
-        <p class="card-body">
-          v2's Conductor (codename Kiwi) decomposes a large prompt into a DAG of parallel GSD units,
-          fans them across isolated git worktrees, conflict-checks and merges verified branches, and
-          checkpoints to you at every wave boundary. Your production branch is never touched.
-        </p>
-        <span class="card-tag">v2 Conductor</span>
       </div>
 
       <div class="card">
@@ -1075,84 +1146,188 @@
 
 
 <!-- ============================================================
-     §04 COMMANDS
+     §04 PIPELINE STAGES
      ============================================================ -->
-<section id="commands" class="section" aria-labelledby="commands-heading">
+<section id="pipeline" class="section" aria-labelledby="commands-heading">
   <div class="container">
     <div class="section-header center">
-      <span class="kicker"><span class="num">04</span> · command surface</span>
-      <h2 id="commands-heading" class="section-title">Five slash commands.</h2>
+      <span class="kicker"><span class="num">04</span> · stages the conductor runs</span>
+      <h2 id="commands-heading" class="section-title">You talk. Kiwi orchestrates.</h2>
       <p class="section-sub">
-        From a single verify call to a full Conductor-orchestrated project run — all in
-        the Claude Code chat.
+        These are the internal stages the Conductor runs on your behalf inside a
+        <code>/bgsd-sesh</code> session. You never call them directly.
       </p>
     </div>
 
     <div class="cmd-grid">
       <div class="cmd-card">
         <div class="cmd-head">
-          <span class="cmd-name">/bgsd-verify</span>
+          <span class="cmd-name">verify stage</span>
           <span class="chip pass"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0 proven</span>
         </div>
         <p class="cmd-desc">
-          Boot or attach to a running app and verify it against acceptance criteria. Returns a
-          single verdict line plus a structured <code>verification-report.json</code>. The
-          make-or-break command: if the driver ladder can't drive a real browser, it emits
-          <code>BLOCKED</code>, never a fabricated pass.
+          Boots or attaches to a running app and verifies it against acceptance criteria.
+          Returns a single verdict line plus a structured <code>verification-report.json</code>.
+          Runs inside every Loop 1 and Loop 2 cycle. If the driver ladder can't drive a real
+          browser, it emits <code>BLOCKED</code> — never a fabricated pass.
         </p>
       </div>
 
       <div class="cmd-card">
         <div class="cmd-head">
-          <span class="cmd-name">/bgsd-queue</span>
+          <span class="cmd-name">classify + fix-stream</span>
           <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v1 built</span>
         </div>
         <p class="cmd-desc">
-          A persistent fix-stream. Add items with <code>bgsd-queue add</code>; drain them with
-          <code>bgsd-queue start</code>. Each item moves through classify &rarr; route &rarr;
-          execute &rarr; verify &rarr; loop until a terminal state. Durable store,
-          content-key dedup, append-only audit trail.
+          Items move through classify &rarr; route &rarr; execute &rarr; verify &rarr; Loop 1
+          until a terminal state. The Conductor feeds items in from your prompt; each
+          item's history is recorded in a durable, append-only store with content-key dedup.
         </p>
       </div>
 
       <div class="cmd-card">
         <div class="cmd-head">
-          <span class="cmd-name">/bgsd-run</span>
+          <span class="cmd-name">orchestration engine</span>
           <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v2 built</span>
         </div>
         <p class="cmd-desc">
-          The Conductor (Kiwi). Takes one large prompt, decomposes it into a verified DAG,
-          fans units across parallel git worktrees, runs Loop 1 per worktree, conflict-checks
-          and merges verified branches, and checkpoints at every wave boundary. Default is
-          <code>--dry-run</code>; the live path requires explicit <code>--live</code>.
+          For project-scale prompts: decompose into a verified DAG, fan units across parallel
+          git worktrees, run Loop 1 per worktree, conflict-check and merge verified branches
+          into <code>rehearsal/&lt;run-id&gt;</code>, and checkpoint at every wave boundary.
+          The live path requires explicit <code>--live</code>.
         </p>
       </div>
 
       <div class="cmd-card">
         <div class="cmd-head">
-          <span class="cmd-name">/bgsd-status</span>
+          <span class="cmd-name">live status view</span>
           <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v2 built</span>
         </div>
         <p class="cmd-desc">
-          The Kiwi live status view. Color-coded per-worktree badges, Loop 1 iteration counts,
+          Kiwi's always-on dashboard. Color-coded per-worktree badges, Loop 1 iteration counts,
           merge history, budget and context telemetry, and a <code>main-protected</code>
-          indicator. Zero model calls. Supports <code>--watch</code> for live refresh.
+          indicator. Zero model calls. The Conductor displays this automatically; you can also
+          run it standalone with <code>--watch</code>.
         </p>
       </div>
 
       <div class="cmd-card">
         <div class="cmd-head">
-          <span class="cmd-name">/bgsd-capture</span>
-          <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v1 built</span>
+          <span class="cmd-name">Loop 2 + review gate</span>
+          <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v3 built</span>
         </div>
         <p class="cmd-desc">
-          The Hyperpolymath capture adapter. Fetches external Hyperpolymath items and enqueues
-          them into <code>/bgsd-queue</code>. Default path is completely safe: dry-run, mock
-          source, zero credentials required. The live hookup is human-gated behind
-          <code>--live</code>.
+          Integration verify→fix over <code>rehearsal/&lt;run-id&gt;</code>: boot the
+          integrated app, dispatch parallel fix agents on defects, re-merge, re-verify.
+          Followed by the User Review Gate — per-criterion checklist, your explicit sign-off.
+          Never auto-passes.
+        </p>
+      </div>
+
+      <div class="cmd-card">
+        <div class="cmd-head">
+          <span class="cmd-name">feedback + CHANGELOG</span>
+          <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v3 built</span>
+        </div>
+        <p class="cmd-desc">
+          Turns your review findings into a new fix pass. Aggregates per-agent CHANGELOGs
+          across Loop 1, Loop 2, and feedback rounds into a PR body. Opens the PR against a
+          non-default branch (never <code>next</code>) behind the <code>--live</code> guard.
         </p>
       </div>
     </div>
+  </div>
+</section>
+
+
+<div class="divider"></div>
+
+
+<!-- ============================================================
+     §04b SCALE COMPARISON
+     ============================================================ -->
+<section id="scale-comparison" class="section" aria-labelledby="scale-heading">
+  <div class="container">
+    <div class="section-header center">
+      <span class="kicker"><span class="num">04b</span> · scale comparison</span>
+      <h2 id="scale-heading" class="section-title">One flag. One guarantee. Three scales.</h2>
+      <p class="section-sub">
+        A manual flag always wins, unconditionally. Auto-scale thresholds apply only when no flag is given.
+        <code>--feature</code> on a 2-unit task still runs the feature pipeline.
+        <code>--project</code> on a tiny task still discusses with you first.
+      </p>
+    </div>
+
+    <div class="scale-wrap">
+      <table class="scale-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="col-tier">
+              <span class="scale-flag">--quick</span>
+            </th>
+            <th class="col-tier">
+              <span class="scale-flag">--feature</span>
+            </th>
+            <th class="col-tier">
+              <span class="scale-flag">--project</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Example</td>
+            <td class="val-example">"change this button to blue"</td>
+            <td class="val-example">"add a dark-mode toggle"</td>
+            <td class="val-example">"build auth + billing + a dashboard"</td>
+          </tr>
+          <tr>
+            <td>Auto-scale trigger</td>
+            <td class="val-dim">&le;2 units, 1 surface</td>
+            <td class="val-dim">a few units, mid-size</td>
+            <td class="val-dim">&ge;4 units or &ge;3 surfaces</td>
+          </tr>
+          <tr>
+            <td>Upfront discussion</td>
+            <td class="val-dim">no</td>
+            <td class="val-dim">no</td>
+            <td class="val-warn">yes (intake/brainstorm)</td>
+          </tr>
+          <tr>
+            <td>Decompose + parallel worktrees</td>
+            <td class="val-dim">no &mdash; single</td>
+            <td class="val-warn">some, low concurrency</td>
+            <td class="val-warn">full fan-out</td>
+          </tr>
+          <tr>
+            <td>Integration loop (Loop 2)</td>
+            <td class="val-dim">no</td>
+            <td class="val-warn">yes if &gt;1 unit</td>
+            <td class="val-warn">yes</td>
+          </tr>
+          <tr>
+            <td>Formal review gate</td>
+            <td class="val-dim">no (Loop 1 PASS + 1-line confirm)</td>
+            <td class="val-warn">yes</td>
+            <td class="val-warn">yes</td>
+          </tr>
+          <tr>
+            <td>Verification (Loop 1)</td>
+            <td class="val-pass">always</td>
+            <td class="val-pass">always</td>
+            <td class="val-pass">always</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="scale-note">
+      <strong style="color:var(--fg)">No silent green at any scale.</strong>
+      Every path through the pipeline &mdash; quick, feature, or project &mdash; exits through Loop 1
+      with a real browser check. A structured <code>verification-report.json</code> is produced on
+      every run. <code>BLOCKED</code> if the MCP is absent. <code>INSUFFICIENT_EVIDENCE</code> if
+      evidence is thin. Never a fabricated <code>PASS</code>.
+    </p>
   </div>
 </section>
 
@@ -1170,7 +1345,7 @@
       <h2 id="milestones-heading" class="section-title">Proven in order. Built to deepen.</h2>
       <p class="section-sub">
         Each version de-risks the next. The core value was validated at v0, before any
-        orchestration was built on top of it.
+        orchestration was built on top of it. v0 through v3 are all built.
       </p>
     </div>
 
@@ -1179,14 +1354,14 @@
       <div class="ms-item done">
         <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v0 — Milestone 1 <span class="chip pass">proven</span></div>
-          <div class="ms-title">Standalone Tester + /bgsd-verify</div>
+          <div class="ms-ver">v0 <span class="chip pass">proven</span></div>
+          <div class="ms-title">Verify engine — the make-or-break test</div>
           <p class="ms-desc">
-            The make-or-break test, proven in isolation. <code>/bgsd-verify</code> against a Next.js
-            canary returned <code>FAIL</code> on a <code>&lt;div&gt;</code>-in-<code>&lt;p&gt;</code>
-            defect (a real React console error invisible to a screenshot) and <code>PASS</code> on the
-            clean route, reproducibly across reruns. Tester, runtime-isolate, criteria parser,
-            report assembler, and schema all live.
+            Proven in isolation before any orchestration was built on top. The verify stage returned
+            <code>FAIL</code> on a <code>&lt;div&gt;</code>-in-<code>&lt;p&gt;</code> defect (a real
+            React console error invisible to a screenshot) and <code>PASS</code> on the clean route,
+            reproducibly across reruns. Tester, runtime-isolate, criteria parser, report assembler,
+            and schema all live.
           </p>
         </div>
       </div>
@@ -1194,12 +1369,12 @@
       <div class="ms-item done">
         <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v1 — Fix-stream <span class="chip pass">built</span></div>
-          <div class="ms-title">/bgsd-queue + Loop 1</div>
+          <div class="ms-ver">v1 <span class="chip pass">built</span></div>
+          <div class="ms-title">Fix-stream + Loop 1</div>
           <p class="ms-desc">
             Persistent fix-stream with classify &rarr; route &rarr; execute &rarr; verify &rarr; loop.
             Queue, classify-item, route-item, and loop1 scripts with 85 unit tests across all four
-            layers. The two live runs (Loop 1 autonomous spawn, Hyperpolymath cron) are guarded behind
+            layers. Live runs (Loop 1 autonomous spawn, Hyperpolymath cron) are guarded behind
             <code>--live</code> and remain human-gated.
           </p>
         </div>
@@ -1208,25 +1383,27 @@
       <div class="ms-item done">
         <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v2 — Conductor <span class="chip pass">built</span></div>
-          <div class="ms-title">/bgsd-run (Kiwi) + /bgsd-status</div>
+          <div class="ms-ver">v2 <span class="chip pass">built</span></div>
+          <div class="ms-title">Conductor (Kiwi) + parallel orchestration + live status</div>
           <p class="ms-desc">
             Full Conductor pipeline: decomposition, dependency graph, worktree fan-out, wave scheduler,
             conflict pre-check + merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup,
-            context management, and the <code>/bgsd-status</code> live view. 14 test suites green across
-            v0+v1+v2. Live multi-process run is human-gated behind <code>--live</code>.
+            context management, and the live status view. 14 test suites green across v0+v1+v2.
+            Live multi-process run is human-gated behind <code>--live</code>.
           </p>
         </div>
       </div>
 
-      <div class="ms-item planned">
-        <span class="ms-mark planned"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg></span>
+      <div class="ms-item done">
+        <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v3 — Loop 2 + User Review Gate <span class="chip">planned</span></div>
-          <div class="ms-title">/bgsd-user-eval + /bgsd-feedback</div>
+          <div class="ms-ver">v3 <span class="chip pass">built</span></div>
+          <div class="ms-title">Loop 2 + User Review Gate + feedback mode</div>
           <p class="ms-desc">
-            Integration verify&rarr;fix (Loop 2), per-agent CHANGELOG into the PR, user review gate
-            at the end of a Conductor run, and feedback mode for rapid iteration on a specific defect.
+            Integration verify&rarr;fix (Loop 2) over <code>rehearsal/&lt;run-id&gt;</code>,
+            per-criterion User Review Gate (never auto-passes), feedback mode for rapid iteration,
+            per-agent CHANGELOG aggregation, and guarded <code>gh pr create</code>. 19 test suites
+            green across v0+v1+v2+v3.
           </p>
         </div>
       </div>
@@ -1235,10 +1412,11 @@
         <span class="ms-mark planned"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg></span>
         <div>
           <div class="ms-ver">v2-intake + v4 Remote <span class="chip">planned</span></div>
-          <div class="ms-title">Intake/proxy extension + remote orchestration</div>
+          <div class="ms-title">Conductor intake extension + remote orchestration</div>
           <p class="ms-desc">
-            Intake extension (E1&ndash;E6) drafted in <code>.planning/v2-intake/</code>. Remote
-            orchestration (off-machine worktrees, distributed execution) planned for v4.
+            Intake/proxy extension (E1&ndash;E6) for Conductor brainstorm and decision-oracle, drafted
+            in <code>.planning/v2-intake/</code>. Remote orchestration (off-machine worktrees,
+            distributed execution) planned for v4.
           </p>
         </div>
       </div>
@@ -1258,7 +1436,7 @@
   <div class="container">
     <div class="section-header center">
       <span class="kicker"><span class="num">06</span> · installation</span>
-      <h2 id="install-heading" class="section-title">Three commands to first verify.</h2>
+      <h2 id="install-heading" class="section-title">Three steps to install. One command to run everything.</h2>
     </div>
 
     <div class="install-card">
@@ -1290,15 +1468,20 @@
 
       <div class="step-label">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 18 22 12 16 6"/><path d="M8 6 2 12 8 18"/></svg>
-        Step 3 — Restart Claude Code, then run the canary proof
+        Step 3 — Restart Claude Code, run the canary proof, then start a session
       </div>
       <div class="code">
-        <span class="c"># Boot the canary fixture and verify the clean route (expect PASS)</span><br>
+        <span class="c"># Canary proof: clean route (expect PASS)</span><br>
         /bgsd-verify <span class="flag">--boot</span> bgsd/fixtures/canary-next \<br>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="flag">--criteria</span> bgsd/fixtures/canary-next/acceptance.md<br><br>
-        <span class="c"># Verify the buggy route (expect FAIL on validateDOMNesting)</span><br>
+        <span class="c"># Canary proof: buggy route (expect FAIL on validateDOMNesting)</span><br>
         /bgsd-verify <span class="path">http://localhost:&lt;port&gt;/buggy</span> \<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="flag">--criteria</span> bgsd/fixtures/canary-next/acceptance.md
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="flag">--criteria</span> bgsd/fixtures/canary-next/acceptance.md<br><br>
+        <span class="c"># Then start talking to the Conductor</span><br>
+        /bgsd-sesh <span class="path">"your task here"</span><br>
+        /bgsd-sesh <span class="path">"quick fix"</span> <span class="flag">--quick</span><br>
+        /bgsd-sesh <span class="path">"add dark-mode toggle"</span> <span class="flag">--feature</span><br>
+        /bgsd-sesh <span class="path">"big feature"</span> <span class="flag">--project</span>
       </div>
 
       <p class="install-note">
@@ -1307,7 +1490,7 @@
           The <code>/buggy</code> route looks <em>identical</em> to a working page in a screenshot.
           The defect only exists in the browser console — exactly what bgsd catches. Run the
           fixture in <code>development</code> mode: React's <code>validateDOMNesting</code> warning is
-          stripped from production builds.
+          stripped from production builds. Once the canary passes, <code>/bgsd-sesh</code> is all you need.
         </span>
       </p>
     </div>
@@ -1386,6 +1569,7 @@
       <p class="section-sub">
         bgsd is MIT-licensed and lives in the <code>bgsd/</code> namespace of the
         <code>filippo-fonseca/better-gsd</code> repo (a fork of <code>@opengsd/gsd-core</code>).
+        The <strong style="color:var(--fg)">Conductor Session</strong> doc is the best place to start after installing.
       </p>
     </div>
 
@@ -1402,6 +1586,18 @@
         </p>
       </a>
 
+      <a href="../docs/conductor-session.mdx" class="link-card">
+        <span class="link-ico">
+          <!-- lucide: bird (Kiwi) -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>
+        </span>
+        <div class="link-title">Conductor Session</div>
+        <p class="link-body">
+          The primary reference: <code>/bgsd-sesh</code>, auto-scale, flags, and the full pipeline
+          flowchart from prompt to done. Start here after the canary proof.
+        </p>
+      </a>
+
       <a href="../docs/quickstart.mdx" class="link-card">
         <span class="link-ico">
           <!-- lucide: rocket -->
@@ -1409,8 +1605,8 @@
         </span>
         <div class="link-title">Quickstart</div>
         <p class="link-body">
-          Install bgsd, add Playwright MCP, and run your first <code>/bgsd-verify</code> against
-          the bundled canary fixture. From zero to a structured defect report in minutes.
+          Install bgsd, add Playwright MCP, and run the canary proof. From zero to a verified
+          first session in under ten minutes.
         </p>
       </a>
 
@@ -1419,10 +1615,11 @@
           <!-- lucide: file-check -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m3 15 2 2 4-4"/></svg>
         </span>
-        <div class="link-title">/bgsd-verify reference</div>
+        <div class="link-title">verify stage reference</div>
         <p class="link-body">
-          Full argument table, acceptance-criteria formats, <code>verification-report.json</code>
-          schema, and driver-ladder details.
+          Internal stage reference: argument table, acceptance-criteria formats,
+          <code>verification-report.json</code> schema, and driver-ladder details. The Conductor
+          runs this on your behalf inside every Loop 1 and Loop 2 cycle.
         </p>
       </a>
 
@@ -1431,10 +1628,10 @@
           <!-- lucide: list-checks -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
         </span>
-        <div class="link-title">/bgsd-queue reference</div>
+        <div class="link-title">fix-stream stage reference</div>
         <p class="link-body">
-          Fix-stream lifecycle, state machine, classification and routing table, Loop 1 behavior,
-          and the queue store schema.
+          Internal stage reference: fix-stream lifecycle, state machine, classification and routing
+          table, Loop 1 behavior, and the queue store schema.
         </p>
       </a>
 
@@ -1443,11 +1640,11 @@
           <!-- lucide: git-branch -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         </span>
-        <div class="link-title">/bgsd-run reference</div>
+        <div class="link-title">orchestration engine reference</div>
         <p class="link-body">
-          Conductor pipeline, dependency graph, worktree fan-out, wave scheduler, conflict
-          pre-check, merge-resolver, rehearsal assembly, and the human-gated <code>--live</code>
-          checklist.
+          Internal stage reference: Conductor state machine, dependency graph, worktree fan-out,
+          wave scheduler, conflict pre-check, merge-resolver, rehearsal assembly, and the
+          human-gated <code>--live</code> checklist.
         </p>
       </a>
 
@@ -1456,10 +1653,11 @@
           <!-- lucide: activity -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
         </span>
-        <div class="link-title">/bgsd-status reference</div>
+        <div class="link-title">live status view reference</div>
         <p class="link-body">
-          Kiwi live status view, color-coded badges, budget and context telemetry, and the
-          <code>--watch</code> live refresh mode.
+          Kiwi's always-on dashboard: color-coded per-worktree badges, budget and context
+          telemetry, and the <code>--watch</code> live refresh mode. The Conductor surfaces this
+          automatically during every session.
         </p>
       </a>
     </div>

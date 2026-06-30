@@ -2,14 +2,89 @@
 
 **Autonomous, self-verifying orchestration built on top of GSD — as an additive Claude Code plugin.**
 
-bgsd runs your GSD pipeline, then verifies the result with real browser testing, and loops until the output is clean. The make-or-break capability: catching **console errors a screenshot alone would miss** (React `validateDOMNesting` warnings, hydration mismatches, missing-key props) before anything more complex is built on top.
+You talk to the Conductor (codename **Kiwi**). Kiwi handles everything else.
 
 > "Very good, sir. I shall begin verification at once."
 > — Kiwi, the bgsd Conductor
 
 ---
 
-## Core Value
+## The single entry point
+
+```
+/bgsd-sesh "<whatever I need>"   [--quick | --feature | --project]
+```
+
+That's it. One command, one ongoing session, always-on Conductor.
+
+You describe what you need — a bug fix, a feature, an entire project — and the Conductor auto-detects the scale, decides how many agents to spin up, and orchestrates the full pipeline. You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any other stage command directly. Those are internal stages Kiwi runs for you.
+
+---
+
+## Auto-scale: the same pipeline, scaled
+
+bgsd always runs the same pipeline. Scale determines how deep and wide it goes.
+
+| Signal | What Kiwi does |
+|--------|----------------|
+| **quick** (one bug, a minor change; ≤2 units, 1 surface) | One agent, no pre-discussion, direct execution — but still fully verified. Never skips the Loop 1 verify→fix cycle. |
+| **feature** (a few units, mid-size; a few units, mid-size scope) | A few agents, no pre-discussion, some parallelism, integration loop if >1 unit. |
+| **project** (broad prompt, many units; ≥4 units or ≥3 surfaces) | Full parallel pipeline: decompose → parallel git worktrees → Loop 1 per worktree → conflict pre-check + merge → `rehearsal/<run-id>` → Loop 2 integration → review. Pre-discusses with you first. |
+
+The scale threshold is decided by the Conductor, not by you. You can override with a flag.
+
+**A manual flag always wins, unconditionally.** The auto-scale thresholds above apply only when no flag is given. `--feature` on a 2–3-unit task still runs the feature pipeline; `--project` on a tiny task still discusses with you first and runs the full pipeline.
+
+---
+
+## Flags
+
+| Flag | Behavior |
+|------|----------|
+| *(none)* | Conductor auto-detects scale and routes. |
+| `--quick` | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Use for quick fixes or small changes. |
+| `--feature` | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Use when you know it's a feature-sized task. |
+| `--project` | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan) before running anything. Use this when you know it's a big build. |
+
+A manual flag always wins, unconditionally — the auto-scale thresholds apply only in auto mode.
+
+---
+
+## Scale comparison
+
+| | quick | feature | project |
+|---|---|---|---|
+| **Example** | "change this button to blue" | "add a dark-mode toggle" | "build auth + billing + a dashboard" |
+| **Auto-scale trigger** | ≤2 units, 1 surface | a few units, mid-size | ≥4 units or ≥3 surfaces |
+| **Upfront discussion** | no | no | yes (intake/brainstorm) |
+| **Decompose + parallel worktrees** | no — single | some, low concurrency | full fan-out |
+| **Integration loop (Loop 2)** | no | yes if >1 unit | yes |
+| **Formal review gate** | no (Loop 1 PASS + 1-line confirm) | yes | yes |
+| **Verification (Loop 1)** | always | always | always |
+
+---
+
+## What the Conductor actually runs
+
+These are **internal stages** — you never call them directly. Kiwi orchestrates all of them on your behalf:
+
+| Stage | What it does |
+|-------|--------------|
+| **Classify / route** | Determines scale (quick / feature / project) and builds the execution plan |
+| **Decompose** | For project-scale: breaks the prompt into a verified DAG of GSD units |
+| **Worktree fan-out** | Spawns parallel git worktrees, one per unit, isolated from each other |
+| **Loop 1 — verify→fix per worktree** | Runs each GSD unit, then verifies with real browser testing. On defects, re-routes to GSD for a fix. Loops up to the configured max, escalating model effort each time |
+| **Conflict pre-check + merge** | Detects merge conflicts before they land; merges verified branches into `rehearsal/<run-id>` in dependency order |
+| **Loop 2 — integration verify→fix** | Boots the integrated `rehearsal/<run-id>` app and verifies end-to-end. Dispatches parallel fix agents on defects, re-merges, re-verifies |
+| **User Review Gate** | Auto-boots the integrated build, shows a per-criterion checklist, waits for your approval. Never auto-passes |
+| **Feedback ingestion** | Turns your review findings into a new fix pass. `--fast` mode runs parallel fix agents without re-verification (always flagged `UNVERIFIED`) |
+| **CHANGELOG + PR** | Aggregates per-agent changelogs across all loops and assembles a PR body. Opens the PR against a non-default branch (never `next`) behind `--live` |
+
+The always-on live status view (`/bgsd-status` machinery) is Kiwi's dashboard — it runs throughout and shows you what every agent is doing, where Loop 1 stands per worktree, merge history, budget, and context pressure.
+
+---
+
+## Core Value: the make-or-break test
 
 The single most important thing bgsd does:
 
@@ -17,9 +92,11 @@ The single most important thing bgsd does:
 
 This was proven at v0, in isolation, before any orchestration was built on top of it: `/bgsd-verify` against a Next.js canary returned `FAIL` on a `<div>`-in-`<p>` defect (a real React console error invisible to a screenshot) and `PASS` on the clean route, reproducibly across reruns.
 
+The Conductor inherits this guarantee. Every path through the pipeline — whether a one-agent quick fix or a full parallel project run — still ends in a verified result. No silent green, ever.
+
 ---
 
-## How It Works
+## How verification works: the four-rung driver ladder
 
 bgsd uses a four-rung driver ladder — cheapest and most reliable first:
 
@@ -36,121 +113,18 @@ Vision is a last resort, not a crutch. Most bugs die at rung 1.
 
 ---
 
-## Milestone Map
+## Build history
 
 | Version | Name | Status |
 |---------|------|--------|
-| **v0** | Standalone Tester + `/bgsd-verify` | **PROVEN** (2026-06-29) |
-| **v1** | Fix-stream + `/bgsd-queue` + Loop 1 | **BUILT** (2026-06-29) |
-| **v2** | Conductor (Kiwi) + `/bgsd-run` + `/bgsd-status` | **BUILT** (2026-06-29) |
-| v3 | Loop 2 + User Review Gate + `/bgsd-user-eval` + `/bgsd-feedback` | Planned |
-| v2-intake | Intake/proxy extension (E1–E6) | Planned |
+| **v0** | Standalone Tester + verify engine | **PROVEN** (2026-06-29) |
+| **v1** | Fix-stream + Loop 1 | **BUILT** (2026-06-29) |
+| **v2** | Conductor (Kiwi) + parallel orchestration + status view | **BUILT** (2026-06-29) |
+| **v3** | Loop 2 + User Review Gate + feedback mode | **BUILT** (2026-06-29) |
+| **v2-intake** | Conductor intake/proxy extension (E1–E6) | In progress |
 | v4 | Remote orchestration | Planned |
 
-Live runs at v1 and v2 are guarded behind `--live` and remain human-gated. The deterministic core at every version is unit-tested (85 tests at v1; 14 suites across v0+v1+v2).
-
----
-
-## Command Surface
-
-### `/bgsd-verify` (v0)
-
-Boot or attach to a running app and verify it against acceptance criteria.
-
-```bash
-# Verify an already-running app
-/bgsd-verify http://localhost:3000 --criteria path/to/UI-SPEC.md
-
-# Boot and verify in one command
-/bgsd-verify --boot bgsd/fixtures/canary-next \
-             --criteria bgsd/fixtures/canary-next/acceptance.md
-
-# Ad-hoc inline criteria
-/bgsd-verify http://localhost:3000 \
-             --inline "Page loads without console errors; Nav renders correctly"
-```
-
-Stdout contract — always exactly one line:
-```
-PASS  .bgsd/runs/<run-id>/verification-report.json
-FAIL  .bgsd/runs/<run-id>/verification-report.json
-```
-
-Full schema-validated `verification-report.json` lands on disk. See [`docs/bgsd-verify.mdx`](./docs/bgsd-verify.mdx).
-
----
-
-### `/bgsd-queue` (v1)
-
-A persistent fix-stream. Items move through classify → route → execute → verify → loop.
-
-```bash
-# Add an item
-node bgsd/scripts/queue.mjs add --title "Fix nav collapse on mobile" \
-                                 --body "Collapses below 768 px."
-
-# Check queue status (zero model calls)
-node bgsd/scripts/queue.mjs status
-
-# Drain the queue
-node bgsd/scripts/queue.mjs start
-
-# Dry-run: preview without mutating state
-node bgsd/scripts/queue.mjs start --dry-run
-```
-
-See [`docs/bgsd-queue.mdx`](./docs/bgsd-queue.mdx).
-
----
-
-### `/bgsd-run` (v2 — human-gated `--live`)
-
-The Conductor (Kiwi). Decomposes a large prompt into a DAG, fans units across parallel git worktrees, and checkpoints at every wave boundary.
-
-```bash
-# Always safe: resolve the graph, print the spawn plan, exit
-node bgsd/scripts/run.mjs --prompt "Add user auth and rate limiting"
-
-# Live: requires explicit flag + the checklist in docs/bgsd-run.mdx
-node bgsd/scripts/run-live.mjs --live --prompt "..." --budget-cap 5.00
-```
-
-See [`docs/bgsd-run.mdx`](./docs/bgsd-run.mdx).
-
----
-
-### `/bgsd-status` (v2)
-
-Kiwi live status view. Color-coded per-worktree badges, Loop 1 iteration counts, merge history, budget and context telemetry. Zero model calls.
-
-```bash
-# One-shot snapshot (most recent run)
-node bgsd/scripts/status.mjs
-
-# Live watch, refresh every 3 seconds
-node bgsd/scripts/status.mjs --watch
-
-# Target a specific run
-node bgsd/scripts/status.mjs --run-id bgsd-0042-add-user-auth
-```
-
-See [`docs/bgsd-status.mdx`](./docs/bgsd-status.mdx).
-
----
-
-### `/bgsd-capture` (v1)
-
-Hyperpolymath capture adapter. Fetches external items and enqueues them into `/bgsd-queue`. Default path is safe: dry-run, mock source, zero credentials.
-
-```bash
-# Dry-run against mock fixture (always safe)
-node bgsd/scripts/capture-cron.mjs
-
-# Live Hyperpolymath hookup (human-gated)
-node bgsd/scripts/capture-cron.mjs --live --no-dry-run
-```
-
-See [`docs/hyperpolymath-capture.mdx`](./docs/hyperpolymath-capture.mdx).
+All live runs are guarded behind `--live` and remain human-gated. The deterministic core is unit-tested (19 suites green across v0+v1+v2+v3).
 
 ---
 
@@ -191,6 +165,15 @@ Expected: `FAIL  .bgsd/runs/.../verification-report.json`
 
 Run the fixture in `development` mode: React's `validateDOMNesting` warning is stripped from production builds.
 
+**Step 4: Start a Conductor session**
+
+```bash
+/bgsd-sesh "your task here"            # auto-detect
+/bgsd-sesh "your task here" --quick    # quick, no discussion, still verified
+/bgsd-sesh "your task here" --feature  # feature mode, some parallelism
+/bgsd-sesh "your task here" --project  # full pipeline, discuss first
+```
+
 ---
 
 ## Layout
@@ -203,18 +186,20 @@ bgsd/
   agents/
     tester.md            # bgsd tester persona + driver-ladder runbook
   commands/
-    bgsd-verify.md       # /bgsd-verify slash command
-    bgsd-queue.md        # /bgsd-queue slash command
-    bgsd-run.md          # /bgsd-run slash command
-    bgsd-status.md       # /bgsd-status slash command
-    bgsd-capture.md      # /bgsd-capture slash command
+    bgsd-sesh.md         # /bgsd-sesh — the Conductor session entry point
+    bgsd-verify.md       # /bgsd-verify — internal verify stage
+    bgsd-queue.md        # /bgsd-queue — internal fix-stream stage
+    bgsd-run.md          # /bgsd-run — internal Conductor orchestration stage
+    bgsd-status.md       # /bgsd-status — live status view
+    bgsd-capture.md      # /bgsd-capture — Hyperpolymath capture adapter
   docs/
-    index.mdx            # table of contents for all doc pages
+    index.mdx            # table of contents (Conductor Session as entry point)
+    conductor-session.mdx  # PRIMARY: /bgsd-sesh reference + pipeline flowchart
     quickstart.mdx       # install + canary proof walkthrough
-    bgsd-verify.mdx      # /bgsd-verify full reference
-    bgsd-queue.mdx       # /bgsd-queue full reference
-    bgsd-run.mdx         # /bgsd-run Conductor reference
-    bgsd-status.mdx      # /bgsd-status live view reference
+    bgsd-verify.mdx      # internal stage reference
+    bgsd-queue.mdx       # internal stage reference
+    bgsd-run.mdx         # internal stage reference
+    bgsd-status.mdx      # live view reference
     hyperpolymath-capture.mdx  # Hyperpolymath capture adapter
     INTEGRATION-NOTES.md # plugin loading + MCP reachability decisions
   fixtures/
@@ -288,10 +273,11 @@ Full doc pages live in `bgsd/docs/`. See [`docs/index.mdx`](./docs/index.mdx) fo
 
 | Page | Contents |
 |------|----------|
-| [`docs/quickstart.mdx`](./docs/quickstart.mdx) | Install, canary proof, first `/bgsd-verify` run |
-| [`docs/bgsd-verify.mdx`](./docs/bgsd-verify.mdx) | Arguments, criteria formats, report schema, driver-ladder details |
-| [`docs/bgsd-queue.mdx`](./docs/bgsd-queue.mdx) | Fix-stream lifecycle, state machine, Loop 1 behavior |
-| [`docs/bgsd-run.mdx`](./docs/bgsd-run.mdx) | Conductor pipeline, graph, scheduler, conflict resolver, `--live` checklist |
+| [`docs/conductor-session.mdx`](./docs/conductor-session.mdx) | **Start here.** The Conductor session — `/bgsd-sesh` entry, auto-scale, flags, full pipeline flowchart |
+| [`docs/quickstart.mdx`](./docs/quickstart.mdx) | Install, canary proof, first verify run |
+| [`docs/bgsd-verify.mdx`](./docs/bgsd-verify.mdx) | Arguments, criteria formats, report schema, driver-ladder details (internal stage) |
+| [`docs/bgsd-queue.mdx`](./docs/bgsd-queue.mdx) | Fix-stream lifecycle, state machine, Loop 1 behavior (internal stage) |
+| [`docs/bgsd-run.mdx`](./docs/bgsd-run.mdx) | Conductor pipeline, graph, scheduler, conflict resolver (internal stage) |
 | [`docs/bgsd-status.mdx`](./docs/bgsd-status.mdx) | Live status view, color badges, budget telemetry |
 | [`docs/hyperpolymath-capture.mdx`](./docs/hyperpolymath-capture.mdx) | Capture adapter, cron setup, human-gated live hookup |
 

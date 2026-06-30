@@ -1,0 +1,171 @@
+---
+title: "Conductor Session — /bgsd-sesh"
+description: "The single entry point for bgsd: talk to the Conductor (Kiwi) and let it orchestrate everything — verify, fix, decompose, fan out, merge, and review — scaled to your task."
+---
+
+# Conductor Session
+
+`/bgsd-sesh "<prompt>"` is the only interface you ever use. The Conductor (codename Kiwi) is always on.
+
+You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and orchestrates the full pipeline. You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly — those are internal stages the Conductor runs for you.
+
+---
+
+## The entry point
+
+```
+/bgsd-sesh "<whatever I need>"   [--quick | --feature | --project]
+```
+
+**Examples:**
+
+```bash
+# Let the Conductor decide (auto-detect)
+/bgsd-sesh "Fix the nav collapse on mobile below 768px"
+
+# Quick task — no discussion, direct execution, still verified
+/bgsd-sesh "Change the hero button to indigo" --quick
+
+# Feature — no discussion, some parallelism, integration loop if >1 unit
+/bgsd-sesh "Add a dark-mode toggle" --feature
+
+# Big build — Conductor discusses with you first, then full parallel pipeline
+/bgsd-sesh "Add user authentication, rate limiting, and an admin dashboard" --project
+```
+
+---
+
+## Flags
+
+| Flag | When to use | What changes |
+|------|-------------|--------------|
+| *(none)* | Always the safe default | Conductor reads the prompt and auto-routes |
+| `--quick` | You know it's small (a bug fix, a copy change, a minor tweak) | No pre-discussion, no brainstorm phase. Fast. Still fully verified — Loop 1 always runs. |
+| `--feature` | You know it's feature-sized (one coherent feature, a few units) | No pre-discussion, some parallelism, integration loop if >1 unit, formal review gate. |
+| `--project` | You know it's large (many features, broad scope) | Conductor **discusses with you first**: brainstorm, clarify ambiguity, confirm scope — before any code runs. Then full parallel pipeline. |
+
+**A manual flag always wins, unconditionally.** The auto-scale thresholds apply only when no flag is given. `--feature` on a 2–3-unit task still runs the feature pipeline; `--project` on a tiny task still discusses with you first and runs the full pipeline. Every path — quick, feature, or project — exits through Loop 1 with a real browser check.
+
+---
+
+## Scale comparison
+
+| | quick | feature | project |
+|---|---|---|---|
+| **Example** | "change this button to blue" | "add a dark-mode toggle" | "build auth + billing + a dashboard" |
+| **Auto-scale trigger** | ≤2 units, 1 surface | a few units, mid-size | ≥4 units or ≥3 surfaces |
+| **Upfront discussion** | no | no | yes (intake/brainstorm) |
+| **Decompose + parallel worktrees** | no — single | some, low concurrency | full fan-out |
+| **Integration loop (Loop 2)** | no | yes if >1 unit | yes |
+| **Formal review gate** | no (Loop 1 PASS + 1-line confirm) | yes | yes |
+| **Verification (Loop 1)** | always | always | always |
+
+---
+
+## The same pipeline, scaled
+
+bgsd always runs the same pipeline. What changes is how many agents, how many worktrees, and whether the Conductor discusses first.
+
+```mermaid
+flowchart TD
+    A["/bgsd-sesh \"&lt;prompt&gt;\""] --> B{Scale classify}
+
+    B -->|quick flag or auto: small| C["Quick path\n1 agent\nNo discussion"]
+    B -->|feature flag or auto: mid| CM["Feature path\nFew agents\nNo discussion · some parallelism"]
+    B -->|project flag or auto: large| D["Project path\nDiscuss first\n(brainstorm · clarify · confirm)"]
+
+    C --> E["Execute units\n(GSD pipeline)"]
+    CM --> E
+    D --> F["Decompose prompt\nBuild dependency DAG"]
+    F --> G["Parallel git worktrees\n(one per unit, isolated)"]
+    G --> E
+
+    E --> H["Loop 1 — per-worktree verify→fix\nBoot app · driver ladder · defect list\nLoop until PASS or max_iterations"]
+
+    H -->|quick path| I["Done\nStructured report"]
+    H -->|feature path: >1 unit| J
+    H -->|project path| J["Conflict pre-check\nMerge verified branches\nrehearsal/&lt;run-id&gt;"]
+
+    J --> K["Loop 2 — integration verify→fix\nBoot rehearsal app · Integration Tester\nFix agents · re-merge · re-verify"]
+
+    K --> L["User Review Gate\nPer-criterion checklist\nApprove / request-changes / abort\nNever auto-passes"]
+
+    L -->|approved| M["Feedback ingestion\n(if review findings)\nFull re-run or --fast parallel fixes"]
+    L -->|no findings| N["CHANGELOG aggregation\nPR body assembly\ngh pr create (non-default branch, --live)"]
+    M --> N
+
+    N --> O["Done"]
+
+    style A fill:var(--xray-soft,#1e1f3d),stroke:var(--xray,#818cf8),color:#e8edf5
+    style I fill:var(--pass-soft,#0d2b20),stroke:var(--pass,#34d399),color:#e8edf5
+    style O fill:var(--pass-soft,#0d2b20),stroke:var(--pass,#34d399),color:#e8edf5
+```
+
+---
+
+## Stages the Conductor runs internally
+
+You never call these. Kiwi orchestrates all of them on your behalf as part of a `/bgsd-sesh`.
+
+| Stage | Quick path | Feature path | Project path | Details |
+|-------|:-----------:|:------------:|:------------:|---------|
+| Scale classify | always | always | always | Reads prompt length, keyword heuristics, and your flag |
+| Intake / discuss | — | — | always | Brainstorm, clarify scope, confirm before code runs |
+| Decompose | — | some | always | Breaks prompt into a verified DAG of GSD units |
+| Worktree fan-out | optional | some, low concurrency | always | Parallel isolated git worktrees, one per unit |
+| **Loop 1 — verify→fix** | **always** | **always** | **always** | Real browser check after every execution; loops until PASS |
+| Conflict pre-check + merge | — | if >1 unit | always | Detects conflicts; merges into `rehearsal/<run-id>` in dependency order |
+| **Loop 2 — integration verify→fix** | — | **if >1 unit** | **always** | End-to-end boot of integrated build; fix agents on defects |
+| User Review Gate | — | always | always | Per-criterion approval gate; never auto-passes |
+| Feedback ingestion | on request | on request | on request | Turns review findings into another fix pass |
+| CHANGELOG + PR | always | always | always | Aggregated changelog, guarded `gh pr create` |
+
+The live status view (`/bgsd-status` machinery) runs throughout. At any moment you can see: active agents, current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure.
+
+---
+
+## The "same pipeline, scaled" idea
+
+The quick, feature, and project paths are not different systems — they are the same verify-and-fix pipeline, with feature adding some parallelism and a review gate, and project adding full decomposition, parallel worktrees, Loop 2, and a formal review gate on top.
+
+This means:
+
+- **A one-line bug fix** still goes through the driver ladder (console → network → DOM → vision), still produces a `verification-report.json`, and still exits with a structured verdict.
+- **A twelve-unit project** goes through exactly the same loop per worktree, then a second loop over the integrated build, then your explicit sign-off.
+
+The only thing that changes is scale. The guarantees — no silent green, bounded iterations, never touching `next` — are constant.
+
+---
+
+## Driver ladder (all paths)
+
+bgsd's four-rung verification ladder runs in every Loop 1 and Loop 2 cycle:
+
+| Rung | Tool | Catches |
+|------|------|---------|
+| 1 · Console | `browser_console_messages` | React warnings, hydration errors, JS exceptions |
+| 2 · Network | `browser_network_requests` | 4xx/5xx, failed resource loads |
+| 3 · DOM | `browser_snapshot` | Wrong structure, missing elements, unmet criteria |
+| 4 · Vision | `browser_take_screenshot` | Purely visual criteria (last resort only) |
+
+**No silent green.** `BLOCKED` if the Playwright MCP is absent. `INSUFFICIENT_EVIDENCE` if evidence is thin. A `FAIL` is always called a `FAIL`.
+
+---
+
+## Conductor personality
+
+Kiwi speaks in a refined British-butler voice: courteous, calm, conspicuously competent. It narrates progress, checkpoints, and merge decisions in plain English. Structured outputs — verdict lines, `verification-report.json`, YAML frontmatter, error signals — stay strictly literal and machine-parseable. The butler never softens a `FAIL` into something that sounds like a pass.
+
+See [`PERSONALITY.md`](../PERSONALITY.md) for the full voice contract.
+
+---
+
+## Related references
+
+The per-stage pages document what the Conductor runs internally. They are reference material for contributors and advanced users, not required reading for running `/bgsd-sesh`.
+
+- [/bgsd-verify reference](./bgsd-verify.mdx) — verify engine, driver ladder, report schema
+- [/bgsd-queue reference](./bgsd-queue.mdx) — fix-stream lifecycle, Loop 1 algorithm
+- [/bgsd-run reference](./bgsd-run.mdx) — Conductor state machine, worktree scheduler, merge protocol
+- [/bgsd-status reference](./bgsd-status.mdx) — live status view, budget telemetry
+- [Quickstart](./quickstart.mdx) — install bgsd and run the canary proof
