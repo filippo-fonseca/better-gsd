@@ -37,6 +37,7 @@ import {
   renderBgsdMd,
   parseBgsdMd,
   mergeGitignore,
+  mergeClaudeMd,
   planInit,
   executeInit,
 } from "./init.mjs";
@@ -193,6 +194,17 @@ test("I10 — mergeGitignore: preserves existing content", () => {
   assert.ok(content.includes(".bgsd-tmp/"));
 });
 
+test("I10b — mergeClaudeMd: empty gains block + idempotent", () => {
+  const first = mergeClaudeMd("");
+  assert.equal(first.changed, true);
+  assert.ok(first.content.includes("this is a bgsd repo"));
+  assert.ok(first.content.includes(".bgsd/seshs/"));
+  assert.ok(first.content.includes("/bgsd-sesh"));
+  const second = mergeClaudeMd(first.content);
+  assert.equal(second.changed, false);
+  assert.equal(second.content, first.content);
+});
+
 // ---------------------------------------------------------------------------
 // planInit
 // ---------------------------------------------------------------------------
@@ -241,6 +253,7 @@ test("I12 — planInit: initialized repo only ensures dir + syncs", () => {
     integrationBranchExists: true,
     planningConfigExists: true,
     gitignoreHasBlock: true,
+    claudeMdHasBlock: true,
   });
   const { alreadyInitialized, actions } = planInit(state);
   const types = actions.map((a) => a.type);

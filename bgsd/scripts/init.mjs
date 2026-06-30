@@ -242,6 +242,58 @@ export function mergeGitignore(existing) {
 }
 
 // ---------------------------------------------------------------------------
+// CLAUDE.md merge — teach any Claude (in or out of a session) about this repo
+// ---------------------------------------------------------------------------
+
+const CLAUDE_MD_SENTINEL = "<!-- bgsd:managed -->";
+
+/** The bgsd-managed block appended to the repo's CLAUDE.md. */
+export function bgsdClaudeMdBlock() {
+  return [
+    CLAUDE_MD_SENTINEL,
+    "## bgsd (this is a bgsd repo)",
+    "",
+    'This repository is orchestrated by **bgsd** (the Conductor, "Kiwi"), an',
+    "autonomous, self-verifying layer on top of GSD.",
+    "",
+    "**Where the history lives.** Every bgsd session is logged under `.bgsd/`.",
+    "When you need context on what was built or changed, read there, even outside",
+    "a bgsd session:",
+    "- `.bgsd/ledger.md`: an index of every session (the request and the outcome).",
+    "- `.bgsd/seshs/<run-id>/`: the per-session record (RUN.md, AGENTS.md for what",
+    "  each subagent did, plus the aggregated planning markdown).",
+    '- Search it all with `node "${CLAUDE_PLUGIN_ROOT}/scripts/kb.mjs" --query "<terms>"`',
+    '  (for example, "auth middleware").',
+    "",
+    "**Before building.** If the user asks you to build, change, or fix something",
+    "and has NOT already started a session, first ask whether they want to run it",
+    'as a bgsd session (`/bgsd-sesh "<their request>"`) for the full verified,',
+    "parallel pipeline. If yes, start it. If they decline or want something quick,",
+    "just do it directly as normal Claude Code. Default to asking; never silently",
+    "force a session.",
+    CLAUDE_MD_SENTINEL,
+  ].join("\n");
+}
+
+/**
+ * Return CLAUDE.md contents with the bgsd block present exactly once.
+ * Idempotent: if the sentinel is already present, the input is returned
+ * unchanged.
+ *
+ * @param {string} existing  current CLAUDE.md contents ("" if none)
+ * @returns {{ content: string, changed: boolean }}
+ */
+export function mergeClaudeMd(existing) {
+  const text = existing ?? "";
+  if (text.includes(CLAUDE_MD_SENTINEL)) {
+    return { content: text, changed: false };
+  }
+  const sep = text.length === 0 || text.endsWith("\n") ? "" : "\n";
+  const lead = text.length === 0 ? "" : "\n";
+  return { content: `${text}${sep}${lead}${bgsdClaudeMdBlock()}\n`, changed: true };
+}
+
+// ---------------------------------------------------------------------------
 // Idempotent action planner
 // ---------------------------------------------------------------------------
 
@@ -276,6 +328,7 @@ export function planInit(state) {
   if (!state.bgsdConfigExists) actions.push({ type: "write_config" });
   if (!state.bgsdMdExists) actions.push({ type: "write_bgsd_md" });
   if (!state.gitignoreHasBlock) actions.push({ type: "update_gitignore" });
+  if (!state.claudeMdHasBlock) actions.push({ type: "write_claude_md" });
   if (!state.planningConfigExists) {
     actions.push({ type: "ensure_gsd_config", integrationBranch: state.integrationBranch });
   }
@@ -312,6 +365,7 @@ export function initPaths(root) {
     ledger: j(root, ".bgsd", "ledger.md"),
     seshsDir: j(root, ".bgsd", "seshs"),
     gitignore: j(root, ".gitignore"),
+    claudeMd: j(root, "CLAUDE.md"),
     planningConfig: j(root, ".planning", "config.json"),
   };
 }
@@ -342,6 +396,9 @@ export function detectInitState(deps) {
     gitignoreHasBlock:
       deps.exists(paths.gitignore) &&
       deps.readFile(paths.gitignore).includes(GITIGNORE_SENTINEL),
+    claudeMdHasBlock:
+      deps.exists(paths.claudeMd) &&
+      deps.readFile(paths.claudeMd).includes(CLAUDE_MD_SENTINEL),
     integrationBranch,
     baseBranch,
     config,
@@ -421,6 +478,15 @@ export function executeInit(deps) {
         if (changed) {
           deps.writeFile(gitignorePath, content);
           performed.push("update_gitignore");
+        }
+        break;
+      }
+      case "write_claude_md": {
+        const existing = deps.exists(paths.claudeMd) ? deps.readFile(paths.claudeMd) : "";
+        const { content, changed } = mergeClaudeMd(existing);
+        if (changed) {
+          deps.writeFile(paths.claudeMd, content);
+          performed.push("write_claude_md");
         }
         break;
       }
