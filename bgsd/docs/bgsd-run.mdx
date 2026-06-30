@@ -1,11 +1,13 @@
 ---
 title: "/bgsd-run reference"
-description: "The /bgsd-run Conductor pipeline: decompose a prompt into a verified dependency graph, fan out across parallel worktrees, run Loop 1 per worktree, conflict-check and merge into a rehearsal branch, and checkpoint at every wave boundary."
+description: "The /bgsd-run Conductor pipeline: decompose a prompt into a verified dependency graph, fan out across parallel worktrees, run Loop 1 per worktree, conflict-check and merge into the standing next integration branch, and checkpoint at every wave boundary."
 ---
 
 # /bgsd-run — Project Orchestrator (Kiwi, the Conductor)
 
-`/bgsd-run "<prompt>"` is bgsd's project-mode entrypoint. It takes one large prompt, decomposes it into a dependency graph of whole-GSD-pipeline units, spawns them in parallel across isolated git worktrees, runs Loop 1 (verify→fix) per worktree, conflict-checks and merges verified branches into a single `rehearsal/<run-id>` integration branch in dependency order, and checkpoints to you at every merge boundary.
+`/bgsd-run "<prompt>"` is bgsd's project-mode entrypoint. It takes one large prompt, decomposes it into a dependency graph of whole-GSD-pipeline units, spawns them in parallel across isolated git worktrees, runs Loop 1 (verify→fix) per worktree, conflict-checks and merges verified branches into the standing **`next`** integration branch in dependency order, and checkpoints to you at every merge boundary.
+
+`next` is the one standing integration branch (its name is configurable in `BGSD.md`); it is the rehearsal mirror of production. Agents never write to `main`; the `next` → `main` merge is a manual, human-only step. At the start of every run, `next` is ensured to exist and fast-forwarded from `main` (this is part of the `/bgsd-init` preflight).
 
 **Default: `--dry-run`.** No worktrees, processes, or merges are created unless you explicitly pass `--live` after reading the human-gated checklist below.
 
@@ -49,13 +51,13 @@ flowchart TD
     N -->|"go"| O
     N -->|"abort"| ABORTED["aborted\nall branches + ledger preserved"]
 
-    O["Next wave OR assemble rehearsal\nrehearsalBranch = rehearsal/<run-id>"] --> P
+    O["Next wave OR integrate on next\nintegrationBranch = next (configurable)\nbranches deleted post-merge except next"] --> P
 
     P["Doc Aggregation\naggregateRun → RUN.md + AGENTS.md\nledger.md updated"] --> Q
 
     Q["Reversible Cleanup\nplanBranchCleanup\nbranch-recovery.json written first"] --> DONE
 
-    DONE["done\nrehearsal/<run-id> ready for inspection\nnext/main never written"]
+    DONE["done\nnext holds the integrated build, ready for inspection\nmain never written by an agent"]
 ```
 
 ---
@@ -69,9 +71,9 @@ flowchart TD
 | `spawning` | Worktree plan computed; spawn plan printed in `--dry-run`. |
 | `executing` | Scheduler dispatching units wave-by-wave. |
 | `verifying` | Loop 1 running per worktree. |
-| `merging` | Conflict pre-check + dependency-ordered merge into `rehearsal/<run-id>`. |
+| `merging` | Conflict pre-check + dependency-ordered merge into the standing `next` branch. |
 | `checkpoint` | Conductor paused at merge boundary; waiting for your go/no-go. |
-| `done` | All waves complete; rehearsal branch ready. |
+| `done` | All waves complete; `next` holds the integrated build, ready for inspection. |
 | `aborted` | You typed `abort` or called `--abort`; all artifacts preserved. |
 | `blocked` | Unrecoverable scheduler error; run record preserved. |
 | `needs_input` | A unit raised an unanswerable escalation. |
@@ -178,10 +180,10 @@ The spawn and status-read boundaries are fully dependency-injected, so the entir
 
 ## Conflict pre-check, merge-resolver, and escalation
 
-Before any branch is merged into `rehearsal/<run-id>`, the Conductor runs a **non-destructive** conflict pre-check:
+Before any branch is merged into `next`, the Conductor runs a **non-destructive** conflict pre-check:
 
 ```
-git merge-tree --write-tree <rehearsal-head> <unit-branch>
+git merge-tree --write-tree <next-head> <unit-branch>
 ```
 
 This is a purely in-memory three-way merge (git 2.38+). It never touches the working tree, index, or any branch refs.
@@ -200,9 +202,9 @@ Merge order is a deterministic function of the dependency graph: `computeMergeOr
 
 ---
 
-## Rehearsal assembly, doc aggregation, and reversible cleanup
+## Integration on `next`, doc aggregation, and reversible cleanup
 
-After all waves complete, `rehearsal/<run-id>` is assembled from verified branches in dependency order. The rehearsal branch is **never** merged into `next` automatically; only you do that, by hand.
+After all waves complete, `next` holds the verified branches integrated in dependency order. `next` is **never** merged into `main` automatically; only you do that, by hand.
 
 **Doc aggregation** (`aggregateDocs`) produces:
 
@@ -215,7 +217,7 @@ No model calls in the aggregation path (NFR-05). `readFileFn` and `writeFn` are 
 **Reversible cleanup** (`planBranchCleanup` + `executeBranchCleanup`):
 
 - Default: `dry=true` — prints what would be deleted, writes nothing.
-- Live: `dry=false` + `--live` — writes `branch-recovery.json` (tip SHAs + `git branch <branch> <sha>` recover commands) **before** any deletion. Only merged worktree branches are deleted. `rehearsal/*` branches and unmerged branches are **never** deleted (REHEARSE-03, NFR-08).
+- Live: `dry=false` + `--live` — writes `branch-recovery.json` (tip SHAs + `git branch <branch> <sha>` recover commands) **before** any deletion. Only merged worktree branches are deleted. The standing `next` branch and any unmerged branches are **never** deleted (REHEARSE-03, NFR-08).
 
 ---
 
@@ -255,7 +257,7 @@ Mints the run ID, resolves the graph, prints the spawn plan, and exits. No workt
 
 **Live run — work through this checklist every time:**
 
-1. **Branch safety.** You are on a feature branch, NOT `next`.
+1. **Branch safety.** You are not on `main`. Integration targets the standing `next` branch; agents never write to `main`.
    ```bash
    git branch --show-current
    ```
@@ -267,7 +269,7 @@ Mints the run ID, resolves the graph, prints the spawn plan, and exits. No workt
 4. **Stay awake.** `caffeinate -dimsu &` is running so the Mac does not sleep mid-run.
 5. **Watch the terminal.** This is NOT fire-and-forget. You must be present to approve merge-boundary checkpoints.
 6. **Understand the scope.** Two or more concurrent `claude -p` processes will be spawned. Real git commits will land on worktree branches.
-7. **`rehearsal/<run-id>` only.** `next` is never touched. Only you merge `rehearsal/<run-id>` into `next`, by hand.
+7. **`next` is the integration branch.** Verified branches merge into `next`. `main` is never touched by an agent; only you merge `next` into `main`, by hand.
 
 **Run the live path:**
 
@@ -305,7 +307,7 @@ Kiwi: Merge-Boundary Checkpoint (Wave 0)  [ckpt-1234-abc]
   >
 ```
 
-- **Merged cleanly:** units whose Loop 1 passed and whose branch merged into `rehearsal/<run-id>` without conflicts.
+- **Merged cleanly:** units whose Loop 1 passed and whose branch merged into `next` without conflicts.
 - **Held back:** units that failed Loop 1, had unresolvable merge conflicts, or whose resolver confidence was below 0.80. These are **never** silently merged (NFR-06).
 
 Type `go` to proceed to the next wave, or `abort` to stop cleanly.
@@ -355,7 +357,7 @@ Example: `bgsd-0042-add-user-auth-and-rate`
 
 | Rule | Detail |
 |------|--------|
-| **NFR-01 (branch safety)** | bgsd never writes to `next`. All work lands on `<run-id>/<slug>` branches, assembled into `rehearsal/<run-id>`. Only you merge `rehearsal/<run-id>` into `next`. |
+| **NFR-01 (branch safety)** | Agents never write to `main`. All work lands on `<run-id>/<slug>` branches, integrated into the standing `next` branch. Only you merge `next` into `main`, by hand. |
 | **NFR-06 (no silent green)** | Units that fail Loop 1 or have unresolved conflicts are held back. The checkpoint shows exactly what was held and why. |
 | **NFR-08 (bounded, reversible autonomy)** | Every loop is bounded by `max_iterations`; every run is bounded by `--budget-cap`; every wave requires your go/no-go; branch cleanup writes a recovery file before deleting anything. |
 | **`--dry-run` default** | Accidental live spawns are impossible without `--live`. |
