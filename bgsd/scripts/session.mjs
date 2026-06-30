@@ -1058,6 +1058,21 @@ if (
       } catch (err) {
         process.stdout.write(`  preflight skipped (${err.message})\n`);
       }
+      // Conductor dependency preflight: ensure the engine + verify tooling are present.
+      try {
+        const { isGsdInstalled, GSD_MARKETPLACE_SOURCE, GSD_PLUGIN_NAME } = await import("./gsdinstall-live.mjs");
+        if (isGsdInstalled()) {
+          process.stdout.write(`  deps: gsd-core (engine) installed ✓\n`);
+        } else {
+          process.stdout.write(
+            `  deps: gsd-core (engine) missing. Kiwi installs it with:\n` +
+            `        claude plugin marketplace add ${GSD_MARKETPLACE_SOURCE} && claude plugin install ${GSD_PLUGIN_NAME} --scope user\n`
+          );
+        }
+      } catch (err) {
+        process.stdout.write(`  deps: gsd-core check skipped (${err.message})\n`);
+      }
+      process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
       process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
     }
     process.exit(0);
