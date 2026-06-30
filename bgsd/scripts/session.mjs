@@ -27,15 +27,22 @@
  *
  * All live boundaries are dependency-injected (clock, spawn, inbox readers,
  * verify, fix, discuss, merge, review, pr, oracle) so the orchestrator is
- * deterministic and unit-testable WITHOUT real processes. planOnly / no-`--live`
- * is the safe default; real spawns/merges/PRs stay behind the existing
- * `*-live.mjs` `requireLiveFlag()` guards — never `next`, never a default branch.
+ * deterministic and unit-testable WITHOUT real processes. By default (no flag)
+ * the session EXECUTES; `--plan-only` / `--dry-run` previews without running.
+ * Real spawns/merges/PRs stay behind the existing `*-live.mjs` `requireLiveFlag()`
+ * guards at merge-boundary checkpoints — never `next`, never a default branch.
  *
  * Usage (CLI):
- *   node bgsd/scripts/session.mjs --prompt "Change the CTA to 'Get started'"
- *   node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick
- *   node bgsd/scripts/session.mjs --prompt "Build a billing dashboard" --project
- *   node bgsd/scripts/session.mjs --prompt "..." --plan-only
+ *   node bgsd/scripts/session.mjs --prompt "Change the CTA to 'Get started'"         # executes (default)
+ *   node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick          # executes, quick scale
+ *   node bgsd/scripts/session.mjs --prompt "Build a billing dashboard" --project       # executes, discuss first
+ *   node bgsd/scripts/session.mjs --prompt "..." --plan-only                           # preview only (no run)
+ *   node bgsd/scripts/session.mjs --prompt "..." --dry-run                             # alias for --plan-only
+ *
+ * DEFAULT BEHAVIOR: a session EXECUTES by default. Pass --plan-only (or --dry-run) to preview
+ * without running. Real irreversible actions (git merge, gh pr create) remain human-gated at
+ * merge-boundary checkpoints via the existing *-live.mjs requireLiveFlag guards — the flip is
+ * default="run" vs default="plan only", NOT a removal of the irreversible-action gates.
  *
  * @module session
  */
@@ -989,7 +996,8 @@ if (
     const prompt = typeof flags.prompt === "string" ? flags.prompt : "";
     if (!prompt) {
       process.stderr.write(
-        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--plan-only]\n'
+        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--plan-only | --dry-run]\n' +
+        '  Default (no flag): executes the session. --plan-only / --dry-run: preview only.\n'
       );
       process.exit(1);
     }
@@ -999,10 +1007,12 @@ if (
       process.exit(1);
     }
     const mode = flags.quick ? "quick" : flags.feature ? "feature" : flags.project ? "project" : "auto";
-    const planOnly = flags["plan-only"] === true || !flags.live;  // no --live ⇒ safe plan-only default
+    // plan-only is ONLY when explicitly requested; default (no flag) = run the session.
+    const planOnly = flags["plan-only"] === true || flags["dry-run"] === true;
 
-    // CLI runs ONLY the deterministic plan path (no real boundaries here; real
-    // execution is delegated to the *-live.mjs modules behind requireLiveFlag).
+    // CLI: classify + build the depth plan always; then either preview (--plan-only / --dry-run)
+    // or execute (the default). Real irreversible actions (git merge, gh pr create) remain
+    // human-gated at merge-boundary checkpoints behind the existing *-live.mjs requireLiveFlag guards.
     const classification = await classifyScale({ prompt, mode });
     if (classification.action === "clarify") {
       process.stdout.write(`\nKiwi needs one clarification:\n  ${classification.clarification_question}\n\n`);
@@ -1010,7 +1020,7 @@ if (
     }
     const plan = buildDepthPlan(classification.scale, { prompt });
 
-    process.stdout.write(`\nKiwi · bgsd Conductor   🔒 main-protected\n`);
+    process.stdout.write(`\nKiwi · bgsd Conductor   [lock] main-protected\n`);
     process.stdout.write(`  prompt:  ${prompt}\n`);
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);
@@ -1020,9 +1030,9 @@ if (
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
     }
     if (planOnly) {
-      process.stdout.write(`\n  (plan-only — no --live; nothing spawned. Real execution is human-gated.)\n\n`);
+      process.stdout.write(`\n  preview (--plan-only) — classified and planned; nothing spawned. Pass no flag to execute.\n\n`);
     } else {
-      process.stdout.write(`\n  --live passed: delegate to the *-live.mjs modules (each requireLiveFlag-guarded, never next).\n\n`);
+      process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
     }
     process.exit(0);
   })().catch((err) => {

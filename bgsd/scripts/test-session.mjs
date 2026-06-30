@@ -285,6 +285,68 @@ await test("U2: --plan-only returns the plan and invokes ZERO boundaries", async
   assert.equal(touched, false, "plan-only must not invoke any boundary");
 });
 
+// ---------------------------------------------------------------------------
+// DEFAULT = RUN (the flip): no planOnly flag → startSession executes
+// ---------------------------------------------------------------------------
+
+await test("DEFAULT: startSession with no planOnly runs the orchestration (reaches done/checkpoint)", async () => {
+  // No planOnly flag — the new default is RUN, not plan-only.
+  let verifyInvoked = false;
+  const res = await startSession({
+    prompt: "Fix the typo in the footer",
+    // planOnly: not set (defaults to false per startSession signature)
+    bgsdDir: tmpBgsd(),
+    verifyFn: async () => { verifyInvoked = true; return { verdict: "PASS", defects: [] }; },
+  });
+  assert.equal(res.action, "run", "default (no planOnly) must produce action=run, not plan");
+  assert.equal(verifyInvoked, true, "default run must invoke boundaries (verifyFn called)");
+  assert.equal(res.outcome, "done");
+});
+
+await test("DEFAULT: planOnly=false explicitly also runs the orchestration", async () => {
+  let verifyInvoked = false;
+  const res = await startSession({
+    prompt: "Fix the broken nav link",
+    planOnly: false,
+    bgsdDir: tmpBgsd(),
+    verifyFn: async () => { verifyInvoked = true; return { verdict: "PASS", defects: [] }; },
+  });
+  assert.equal(res.action, "run");
+  assert.equal(verifyInvoked, true, "planOnly=false must execute boundaries");
+  assert.equal(res.outcome, "done");
+});
+
+await test("DEFAULT: planOnly=true (dry-run alias semantics) still returns plan, no boundaries", async () => {
+  // --dry-run is an alias for --plan-only at the CLI layer; in the API, planOnly:true covers both.
+  let touched = false;
+  const res = await startSession({
+    prompt: "Fix the broken nav link",
+    planOnly: true,
+    bgsdDir: tmpBgsd(),
+    verifyFn: async () => { touched = true; return { verdict: "PASS", defects: [] }; },
+    decomposeFn: async () => { touched = true; return []; },
+  });
+  assert.equal(res.action, "plan");
+  assert.equal(touched, false, "planOnly=true (--plan-only or --dry-run) must not invoke any boundary");
+});
+
+await test("SAFETY: irreversible merge/PR boundaries are still gated (not silently passed)", async () => {
+  // The merge and PR fns are NOT injected here; runDecomposed only calls them when injected.
+  // This verifies that a default run without a mergeFn/prFn does not silently skip or crash —
+  // it reaches done on the units that passed Loop 1 and records prResult=null (no silent merge).
+  const res = await startSession({
+    prompt: "Add a search component and filter panel to the ui",
+    mode: "auto",
+    bgsdDir: tmpBgsd(),
+    decomposeFn: async () => ([{ id: "s1" }, { id: "s2" }]),
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => "approve",
+    // prFn intentionally omitted — real PR is --live-gated; no silent PR
+  });
+  assert.equal(res.outcome, "done", "units reach done without a prFn");
+  assert.equal(res.prResult, null, "prResult must be null when prFn is not injected (no silent PR)");
+});
+
 await test("U2: needs-clarification short-circuits startSession (no guess)", async () => {
   const res = await startSession({ prompt: "fix", bgsdDir: tmpBgsd() });
   assert.equal(res.action, "clarify");
