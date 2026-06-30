@@ -7,9 +7,11 @@
  * date at the start of every sesh. This module is the pure, dependency-injected
  * brain for that: it decides WHAT to do, and an injected executor does it.
  *
- * gsd-core is a Claude Code plugin (the open-gsd/gsd-core repo ships a
- * `.claude-plugin/plugin.json`). The real commands live in gsdinstall-live.mjs;
- * this file has zero side effects so it unit-tests against mocked deps.
+ * gsd-core is the npm package `@opengsd/gsd-core` (NOT a Claude Code plugin),
+ * installed/updated by the same non-interactive command
+ * `npx -y @opengsd/gsd-core@latest --claude --global`. The real commands live in
+ * gsdinstall-live.mjs; this file has zero side effects so it unit-tests against
+ * mocked deps.
  *
  * PURITY (NFR-05)
  * ===============

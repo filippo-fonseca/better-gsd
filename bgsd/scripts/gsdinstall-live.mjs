@@ -1,188 +1,204 @@
 #!/usr/bin/env node
 /**
- * gsdinstall-live.mjs — real seam for ensuring gsd-core (Claude Code plugin)
+ * gsdinstall-live.mjs — real seam for ensuring gsd-core (the bgsd engine)
  *
- * Wires the actual Claude Code plugin CLI into the pure ensureGsd (gsdinstall.mjs)
- * and guards the mutating commands (install/update) behind --live, mirroring
- * init-live.mjs / run-live.mjs. Without --live it prints a read-only PLAN (what
- * it WOULD do); with --live it performs install/update.
+ * bgsd is "gsd-agnostic": it does NOT vendor GSD. It drives the user's own
+ * `gsd-core` install, and the Conductor ENSURES gsd-core is present + current at
+ * the start of every sesh, out of the box, with no manual step. This file is the
+ * real side-effect seam wired into the pure ensureGsd (gsdinstall.mjs).
  *
- * COMMANDS (researched against open-gsd/gsd-core + Claude Code 2.1.x, 2026-06)
+ * DISTRIBUTION (researched + verified against @opengsd/gsd-core v1.6.x, 2026-06)
  * ===========================================================================
- * gsd-core ships a `.claude-plugin/plugin.json` (commands `/gsd-core:*`), so the
- * PREFERRED path is the native Claude Code plugin system:
+ * gsd-core is NOT a Claude Code plugin (the open-gsd/gsd-core repo has no plugin
+ * marketplace), so `claude plugin list` will never show it. It is the npm package
+ * `@opengsd/gsd-core`, installed by its own CLI installer:
  *
- *   DETECT:  claude plugin list --json
- *            -> parse JSON; gsd-core is present iff some entry's `id` is
- *               "gsd-core" or starts with "gsd-core@<marketplace>".
- *            Fully non-interactive.
+ *   INSTALL/UPDATE (same command):
+ *     npx -y @opengsd/gsd-core@latest --claude --global
  *
- *   INSTALL: claude plugin marketplace add open-gsd/gsd-core   (idempotent: adds
- *               the repo as a marketplace; gsd-core ships its own plugin.json)
- *            claude plugin install gsd-core --scope user       (per gsd-core docs)
- *            Both non-interactive; `marketplace add` is a no-op if already added.
+ *   `--claude` selects the Claude Code runtime and `--global` selects the global
+ *   config directory, so the installer runs with NO prompts (fully
+ *   non-interactive). Re-running the same command installs OR updates to latest:
+ *   install and update are literally the same invocation.
  *
- *   UPDATE:  claude plugin update gsd-core --scope user
- *            Non-interactive. (Claude Code notes a restart is needed to APPLY a
- *            plugin update; the command itself returns immediately.)
+ *   DETECT: the installer writes the `/gsd-*` slash-commands into the user's
+ *   global Claude Code config directory as skill folders (e.g.
+ *   `skills/gsd-help/SKILL.md`, `skills/gsd-new-project/SKILL.md`) plus a
+ *   `gsd-install-state.json` marker at the config-dir root. Detection is purely
+ *   filesystem-based: we look for those known gsd command files under the config
+ *   dir. This is dependency-injected so tests can point it at a temp dir.
  *
- * FALLBACK (npx): the same system also publishes the npm package
- *   `@opengsd/gsd-core` (installer `npx @opengsd/gsd-core@latest`). We do NOT use
- *   it here because its installer is INTERACTIVE — it prompts for runtime
- *   (Claude Code / OpenCode / Gemini / ...) and global-vs-local — so it can hang
- *   a non-interactive sesh. The Claude Code plugin path above is preferred and
- *   non-interactive; the npx route is the documented manual fallback only.
- *   (Note: the deprecated `get-shit-done-cc` npm package under the old `gsd-build`
- *   org is unrelated to the current open-gsd/gsd-core plugin.)
+ * The global config directory is `$CLAUDE_CONFIG_DIR` when set, else `~/.claude`
+ * (the same resolution Claude Code itself uses).
+ *
+ * NO --live GUARD ON MUTATIONS
+ * ============================
+ * Unlike init-live.mjs / run-live.mjs, install/update here are NOT gated behind
+ * --live. The whole point is that they run automatically at sesh start. They are
+ * safe, idempotent setup actions (an npm installer writing into the user's own
+ * Claude config), not an irreversible repo mutation. They throw on a non-zero
+ * exit so a failed install surfaces (no silent green).
  *
  * Usage (CLI):
  *   node gsdinstall-live.mjs                  # preview the plan (no changes)
- *   node gsdinstall-live.mjs --live           # ensure gsd-core (install/update)
- *   node gsdinstall-live.mjs --live --policy never   # install-if-missing only
+ *   node gsdinstall-live.mjs --ensure         # ensure gsd-core (install/update)
+ *   node gsdinstall-live.mjs --ensure --policy never   # install-if-missing only
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 import { ensureGsd, gsdEnsurePlan, DEFAULT_UPDATE_POLICY } from "./gsdinstall.mjs";
 
 // ---------------------------------------------------------------------------
-// gsd-core identity (the Claude Code plugin name + its marketplace source)
+// gsd-core identity (the npm package + its install command)
 // ---------------------------------------------------------------------------
 
-export const GSD_PLUGIN_NAME = "gsd-core";
-/** The repo that ships `.claude-plugin/plugin.json`, added as a marketplace. */
-export const GSD_MARKETPLACE_SOURCE = "open-gsd/gsd-core";
+/** The npm package that distributes gsd-core (installed via its CLI installer). */
+export const GSD_NPM_PACKAGE = "@opengsd/gsd-core";
+
+/** The versioned spec passed to npx so install/update always lands on latest. */
+export const GSD_NPM_SPEC = `${GSD_NPM_PACKAGE}@latest`;
+
+/**
+ * The single non-interactive install/update command. `--claude` picks the Claude
+ * Code runtime and `--global` picks the global config dir, so there are no
+ * prompts. Re-running it updates to latest (install === update).
+ */
+export const GSD_INSTALL_ARGS = ["-y", GSD_NPM_SPEC, "--claude", "--global"];
+
+/**
+ * Known gsd command files the installer writes under the global config dir. We
+ * only need ONE of these to exist to consider gsd-core installed. These are the
+ * `/gsd-*` slash-commands, shipped as skill folders.
+ */
+export const GSD_COMMAND_MARKERS = [
+  join("skills", "gsd-help", "SKILL.md"),
+  join("skills", "gsd-new-project", "SKILL.md"),
+  // Root-level state file the installer maintains; a useful secondary marker.
+  "gsd-install-state.json",
+];
 
 // ---------------------------------------------------------------------------
-// Live-flag guard (mirrors init-live.mjs / run-live.mjs)
-// ---------------------------------------------------------------------------
-
-export function isLiveFlagSet() {
-  return process.argv.includes("--live");
-}
-
-export function requireLiveFlag() {
-  if (!isLiveFlagSet()) {
-    throw new Error(
-      "\n" +
-        "======================================================================\n" +
-        "  bgsd-gsdinstall: refusing to install/update gsd-core without --live.\n" +
-        "  This runs `claude plugin install/update gsd-core` on your machine.\n" +
-        "  Re-run with --live to apply, or omit it to preview the plan.\n" +
-        "======================================================================\n"
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// CLI helpers
-// ---------------------------------------------------------------------------
-
-/** Run `claude <args...>` non-interactively; return {code, stdout, stderr}. */
-function claude(args) {
-  const r = spawnSync("claude", args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return {
-    code: r.status ?? 1,
-    stdout: (r.stdout ?? "").trim(),
-    stderr: (r.stderr ?? "").trim(),
-    error: r.error,
-  };
-}
-
-/** True iff `id` names the gsd-core plugin ("gsd-core" or "gsd-core@<market>"). */
-function idIsGsdCore(id) {
-  if (typeof id !== "string") return false;
-  return id === GSD_PLUGIN_NAME || id.startsWith(`${GSD_PLUGIN_NAME}@`);
-}
-
-// ---------------------------------------------------------------------------
-// DETECT (read-only — no guard needed)
+// Config-dir resolution (matches Claude Code: $CLAUDE_CONFIG_DIR, else ~/.claude)
 // ---------------------------------------------------------------------------
 
 /**
- * Detect whether gsd-core is installed in the user's Claude Code, by parsing
- * `claude plugin list --json` and matching the plugin id. Read-only, fully
- * non-interactive. Returns false (and never throws) if the CLI is missing or
- * the output is unparseable, so a sesh degrades to "install" rather than crash.
+ * Resolve the global Claude Code config directory that gsd-core `--global`
+ * writes into: `$CLAUDE_CONFIG_DIR` when set and non-empty, otherwise
+ * `~/.claude`. Injectable env/home keep this testable against a temp dir.
+ *
+ * @param {object} [opts]
+ * @param {Record<string,string|undefined>} [opts.env=process.env]
+ * @param {()=>string} [opts.home=homedir]
+ * @returns {string} absolute path to the global config dir
  */
-export function isGsdInstalled() {
-  const r = claude(["plugin", "list", "--json"]);
-  if (r.code !== 0 || !r.stdout) return false;
-  let parsed;
+export function resolveClaudeConfigDir({ env = process.env, home = homedir } = {}) {
+  const fromEnv = env && env.CLAUDE_CONFIG_DIR;
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return fromEnv;
+  return join(home(), ".claude");
+}
+
+// ---------------------------------------------------------------------------
+// DETECT (read-only, filesystem-based — no guard needed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect whether gsd-core is installed by checking the filesystem for any known
+ * gsd command file under the global Claude Code config dir. gsd-core is NOT a
+ * Claude Code plugin, so we do NOT consult `claude plugin list`.
+ *
+ * Dependency-injected for tests: pass a `configDir` (e.g. a temp dir) and/or a
+ * custom `exists` predicate. Never throws; returns false on any I/O hiccup so a
+ * sesh degrades to "install" rather than crashing.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.configDir]  override the resolved config dir (tests)
+ * @param {(p:string)=>boolean} [opts.exists=existsSync]  fs probe (tests)
+ * @param {Record<string,string|undefined>} [opts.env]   env for config-dir resolution
+ * @param {()=>string} [opts.home]   home() for config-dir resolution
+ * @returns {boolean}
+ */
+export function isGsdInstalled(opts = {}) {
+  const exists = opts.exists ?? existsSync;
+  const configDir =
+    opts.configDir ?? resolveClaudeConfigDir({ env: opts.env, home: opts.home });
   try {
-    parsed = JSON.parse(r.stdout);
+    return GSD_COMMAND_MARKERS.some((rel) => {
+      try {
+        return exists(join(configDir, rel));
+      } catch (_) {
+        return false;
+      }
+    });
   } catch (_) {
     return false;
   }
-  if (!Array.isArray(parsed)) return false;
-  return parsed.some((p) => p && idIsGsdCore(p.id ?? p.name));
 }
 
 // ---------------------------------------------------------------------------
-// INSTALL / UPDATE (real side effects — guarded by --live)
+// INSTALL / UPDATE (real side effects — safe, idempotent, NOT --live-gated)
 // ---------------------------------------------------------------------------
 
 /**
- * Install gsd-core via the Claude Code plugin system (preferred, non-interactive):
- *   1. `claude plugin marketplace add open-gsd/gsd-core`  (idempotent)
- *   2. `claude plugin install gsd-core --scope user`
- * Guarded by --live. Throws on failure so the sesh surfaces it (no silent green).
+ * Run the gsd-core installer non-interactively. install and update are the same
+ * command; `which` only changes the narration. Streams the installer's output
+ * (stdio:"inherit") so the user sees real progress. Throws on a non-zero exit or
+ * a spawn error so a failed setup is never silently swallowed.
+ *
+ * @param {object} [opts]
+ * @param {(msg:string)=>void} [opts.log]   narration sink
+ * @param {(cmd:string,args:string[],o:object)=>{status:number|null,error?:Error}} [opts.spawn]
+ *        injectable spawnSync (tests pass a stub so no real npx runs)
+ * @param {"install"|"update"} [which="install"]
  */
-export function installGsd({ log } = {}) {
-  requireLiveFlag();
+function runGsdInstaller({ log, spawn } = {}, which = "install") {
   const say = log ?? (() => {});
-
-  say(`adding marketplace ${GSD_MARKETPLACE_SOURCE}`);
-  const add = claude(["plugin", "marketplace", "add", GSD_MARKETPLACE_SOURCE]);
-  // `marketplace add` is idempotent; only a hard CLI failure (not "already
-  // added") should abort. We don't fail the whole step on a non-zero here
-  // because re-adding an existing marketplace returns non-zero on some builds;
-  // the install step below is the real gate.
-  if (add.error) {
-    throw new Error(`claude plugin marketplace add failed to spawn: ${add.error.message}`);
+  const run = spawn ?? spawnSync;
+  say(
+    which === "update"
+      ? `updating ${GSD_NPM_PACKAGE} to latest (npx ${GSD_INSTALL_ARGS.join(" ")})`
+      : `installing ${GSD_NPM_PACKAGE} (npx ${GSD_INSTALL_ARGS.join(" ")})`
+  );
+  const r = run("npx", GSD_INSTALL_ARGS, { stdio: "inherit", encoding: "utf8" });
+  if (r && r.error) {
+    throw new Error(`npx ${GSD_NPM_SPEC} failed to spawn: ${r.error.message}`);
   }
-
-  say(`installing ${GSD_PLUGIN_NAME}`);
-  const inst = claude(["plugin", "install", GSD_PLUGIN_NAME, "--scope", "user"]);
-  if (inst.code !== 0) {
+  const code = r ? r.status ?? 1 : 1;
+  if (code !== 0) {
     throw new Error(
-      `claude plugin install ${GSD_PLUGIN_NAME} failed (exit ${inst.code}): ${
-        inst.stderr || inst.stdout || "no output"
-      }`
+      `npx ${GSD_NPM_SPEC} --claude --global ${which} failed (exit ${code})`
     );
   }
 }
 
 /**
- * Update gsd-core to latest via `claude plugin update gsd-core --scope user`.
- * Non-interactive (a restart is required to APPLY the update, but the command
- * returns immediately). Guarded by --live. Throws on failure.
+ * Install gsd-core (out of the box, no prompts). Throws on failure.
+ * @param {object} [opts] see runGsdInstaller
  */
-export function updateGsd({ log } = {}) {
-  requireLiveFlag();
-  const say = log ?? (() => {});
-  say(`updating ${GSD_PLUGIN_NAME} to latest`);
-  const upd = claude(["plugin", "update", GSD_PLUGIN_NAME, "--scope", "user"]);
-  if (upd.code !== 0) {
-    throw new Error(
-      `claude plugin update ${GSD_PLUGIN_NAME} failed (exit ${upd.code}): ${
-        upd.stderr || upd.stdout || "no output"
-      }`
-    );
-  }
+export function installGsd(opts = {}) {
+  runGsdInstaller(opts, "install");
+}
+
+/**
+ * Update gsd-core to latest. Same command as install (re-running installs latest).
+ * Throws on failure.
+ * @param {object} [opts] see runGsdInstaller
+ */
+export function updateGsd(opts = {}) {
+  runGsdInstaller(opts, "update");
 }
 
 // ---------------------------------------------------------------------------
 // Deps builder + sesh entrypoint
 // ---------------------------------------------------------------------------
 
-/** Build the real deps for ensureGsd (detection is always live; mutations guarded). */
-export function liveDeps({ log, updatePolicy } = {}) {
+/** Build the real deps for ensureGsd. Detection + mutations all use the real fs/npx. */
+export function liveDeps({ log, updatePolicy, configDir } = {}) {
   return {
-    isInstalled: () => isGsdInstalled(),
+    isInstalled: () => isGsdInstalled({ configDir }),
     install: () => installGsd({ log }),
     update: () => updateGsd({ log }),
     log: log ?? (() => {}),
@@ -192,11 +208,11 @@ export function liveDeps({ log, updatePolicy } = {}) {
 
 /**
  * Sesh preflight: ensure gsd-core is installed + (per policy) current using the
- * real Claude Code plugin CLI. Called at the start of every /bgsd-sesh so the
- * user's gsd-core is never missing or stale. Mutations require --live.
+ * real npx installer. Called at the start of every /bgsd-sesh so the user's
+ * gsd-core engine is never missing or stale, automatically.
  */
-export function ensureGsdLive({ log, updatePolicy } = {}) {
-  return ensureGsd(liveDeps({ log, updatePolicy }));
+export function ensureGsdLive({ log, updatePolicy, configDir } = {}) {
+  return ensureGsd(liveDeps({ log, updatePolicy, configDir }));
 }
 
 // ---------------------------------------------------------------------------
@@ -209,25 +225,31 @@ function readPolicyArg() {
   return DEFAULT_UPDATE_POLICY;
 }
 
+/** --ensure (or legacy --live) actually performs install/update; default previews. */
+function isEnsureRequested() {
+  return process.argv.includes("--ensure") || process.argv.includes("--live");
+}
+
 export function main() {
   const out = (s) => process.stdout.write(s);
   const updatePolicy = readPolicyArg();
+  const configDir = resolveClaudeConfigDir();
 
-  if (!isLiveFlagSet()) {
-    const installed = isGsdInstalled();
+  if (!isEnsureRequested()) {
+    const installed = isGsdInstalled({ configDir });
     const actions = gsdEnsurePlan({ installed, updatePolicy });
-    out(`\nbgsd-gsdinstall preview — plugin: ${GSD_PLUGIN_NAME}\n`);
-    out(`  marketplace source:  ${GSD_MARKETPLACE_SOURCE}\n`);
+    out(`\nbgsd-gsdinstall preview — package: ${GSD_NPM_PACKAGE}\n`);
+    out(`  install command:     npx ${GSD_INSTALL_ARGS.join(" ")}\n`);
+    out(`  config dir:          ${configDir}\n`);
     out(`  currently installed: ${installed ? "yes" : "no"}\n`);
     out(`  update policy:       ${updatePolicy}\n`);
     out(`  planned actions:     ${actions.length ? actions.join(", ") : "(none)"}\n`);
-    out(`\n  Re-run with --live to apply.\n`);
+    out(`\n  Re-run with --ensure to apply.\n`);
     return;
   }
 
-  requireLiveFlag();
-  const res = ensureGsdLive({ log: (m) => out(`  ${m}\n`), updatePolicy });
-  out(`\nbgsd-gsdinstall complete — plugin: ${GSD_PLUGIN_NAME}\n`);
+  const res = ensureGsdLive({ log: (m) => out(`  ${m}\n`), updatePolicy, configDir });
+  out(`\nbgsd-gsdinstall complete — package: ${GSD_NPM_PACKAGE}\n`);
   out(`  installed:      ${res.installed ? "yes" : "no"}\n`);
   out(`  performed:      ${res.performed.length ? res.performed.join(", ") : "(none)"}\n`);
   out(`  already current:${res.alreadyCurrent ? " yes" : " no"}\n`);
