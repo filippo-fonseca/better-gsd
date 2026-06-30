@@ -7,6 +7,8 @@ description: "Table of contents for all bgsd doc pages — start with the Conduc
 
 bgsd is an open-source Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
 
+A repo is set up once with the idempotent `/bgsd-init` command (also run automatically as a `/bgsd-sesh` preflight): it creates the standing **`next`** integration branch off the auto-detected base branch, scaffolds the persistent `.bgsd/` master folder (`seshs/`, `ledger.md`, `config.json`), and writes a user-editable `BGSD.md` settings file. The pipeline integrates everything on `next`; agents never write to `main`, and the `next` → `main` merge is always manual and human-only.
+
 All pages are valid standalone Mintlify MDX. They are intentionally kept outside GSD's vendored nav config (`mint.json` / `docs.json`) — editing that file would violate the "never edit vendored GSD" rule. To surface bgsd in the docs site nav, add a single group entry to the Mintlify nav config pointing at these pages (see the note at the bottom of any page).
 
 ---
@@ -35,15 +37,15 @@ These pages document what the Conductor runs internally. You never call these co
 
 ### v2 — Conductor pipeline
 
-- **[/bgsd-run reference](./bgsd-run.mdx)** — The Conductor state machine: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and wave scheduler, conflict pre-check and merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
+- **[/bgsd-run reference](./bgsd-run.mdx)** — The Conductor state machine: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and wave scheduler, conflict pre-check and merge-resolver, integration onto the standing `next` branch, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
 
-- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the main-protected indicator.
+- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `main-protected` indicator (marking that `main` is never written by an agent).
 
 ### v3 — Integration loop + human handoff
 
-- **[/bgsd-integrate + /bgsd-user-eval reference](./bgsd-loop2-review.mdx)** — Loop 2 integration verify→fix over `rehearsal/<run-id>`: boot the integrated app, run the Integration Tester, dispatch parallel fix agents, re-merge, and re-verify in a bounded loop until clean or a stop condition fires. Followed by the User Review Gate: auto-boot, per-criterion checklist, GSD-style selector verdict (approve / request-changes / abort / type-your-own), `review.json` output, and the never-auto-pass rule.
+- **[/bgsd-integrate + /bgsd-user-eval reference](./bgsd-loop2-review.mdx)** — Loop 2 integration verify→fix on the standing `next` branch: boot the integrated app, run the Integration Tester, dispatch parallel fix agents, re-merge, and re-verify in a bounded loop until clean or a stop condition fires. Followed by the User Review Gate: auto-boot `next`, per-criterion checklist, GSD-style selector verdict (approve / request-changes / abort / type-your-own), `review.json` output, and the never-auto-pass rule.
 
-- **[/bgsd-feedback + CHANGELOG→PR reference](./bgsd-feedback-changelog.mdx)** — Feedback mode ingestion and routing: full re-run of both loops on your findings vs `--fast` parallel fix agents with no verification (always `UNVERIFIED`). Per-agent CHANGELOG aggregation across Loop 1, Loop 2, and feedback rounds. PR body assembly as a pure deterministic string. Guarded `gh pr create` against a non-default branch behind `--live`, with the never-touch-`next` rule enforced unconditionally.
+- **[/bgsd-feedback + CHANGELOG→PR reference](./bgsd-feedback-changelog.mdx)** — Feedback mode ingestion and routing: full re-run of both loops on your findings vs `--fast` parallel fix agents with no verification (always `UNVERIFIED`). Per-agent CHANGELOG aggregation across Loop 1, Loop 2, and feedback rounds. PR body assembly as a pure deterministic string. Guarded `gh pr create` into `next` behind `--live`, with the agents-never-write-to-`main` rule (the guard refuses `main`/`master` as PR base) enforced unconditionally.
 
 ---
 
@@ -66,9 +68,9 @@ These pages document what the Conductor runs internally. You never call these co
 | Understand the full orchestration state machine | [/bgsd-run](./bgsd-run.mdx) |
 | Watch in-flight workers live | [/bgsd-status](./bgsd-status.mdx) |
 | Run Loop 2 integration verify→fix | [/bgsd-integrate + /bgsd-user-eval](./bgsd-loop2-review.mdx) |
-| Review the rehearsal build by hand | [User Review Gate](./bgsd-loop2-review.mdx#user-review-gate) |
+| Review the integrated build on `next` by hand | [User Review Gate](./bgsd-loop2-review.mdx#user-review-gate) |
 | Feed findings back into the pipeline | [/bgsd-feedback](./bgsd-feedback-changelog.mdx) |
-| Open a real PR with the CHANGELOG | [CHANGELOG→PR](./bgsd-feedback-changelog.mdx#guarded-pr-creation) |
+| Open a real PR (into `next`) with the CHANGELOG | [CHANGELOG→PR](./bgsd-feedback-changelog.mdx#guarded-pr-creation) |
 | Connect Hyperpolymath captures | [Hyperpolymath capture](./hyperpolymath-capture.mdx) |
 | Understand the voice contract | [bgsd/PERSONALITY.md](../PERSONALITY.md) |
 | Read the project milestone history | [.planning/PROJECT.md](../../.planning/PROJECT.md) |
