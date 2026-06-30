@@ -448,6 +448,16 @@ export async function runLiveRun({
 
   const checkpointFn = (checkpoint) => liveCheckpointFn(checkpoint);
 
+  // Live context-management hook (CTX-02): each poll cycle, read every in-flight
+  // agent's recorded context_bytes from its control file, classify pressure from
+  // config-driven thresholds, persist it, and dispatch compact/relaunch through
+  // the real (--live) seams in context.mjs.
+  const onPollFn = await buildLiveContextOnPollFn({
+    runId: runIdForStatus,
+    bgsdDir,
+    plans,
+  });
+
   return runLifecycle({
     runPath,
     units,
@@ -461,7 +471,94 @@ export async function runLiveRun({
     maxConcurrency,
     pollIntervalMs: 2_000,
     pollTimeoutMs:  300_000,
+    onPollFn,
   });
+}
+
+/**
+ * Build the live context-management poll hook for runLifecycle.
+ *
+ * Reads thresholds from the repo's resolved bgsd config (BGSD.md → defaults),
+ * then returns an async (inFlightUnitIds[]) => void that the scheduler calls
+ * each poll cycle. Internally it delegates to context.runContextTick with live
+ * injections:
+ *   - readBytesFn:  reads the agent's control-file context_bytes from disk.
+ *       HONEST SCOPE: that byte value is written by the live `claude -p` agent,
+ *       whose spawn (liveSpawnFn) is itself partly stubbed — so today this reads
+ *       whatever the agent has recorded (0 until the spawn reports real tokens).
+ *       The decision + seams are fully wired; only the byte SOURCE is pending.
+ *   - recordFn:     persists {context_bytes, context_pressure} via updateContextUsage.
+ *   - compactFn:    liveCompact (writes handoff manifest + relaunches).
+ *   - relaunchFn:   liveRelaunch (reads manifest + re-spawns claude -p).
+ *
+ * HUMAN-GATED: refuses without --live (NFR-07).
+ *
+ * @param {object} opts
+ * @param {string} opts.runId
+ * @param {string} opts.bgsdDir
+ * @param {Map}    opts.plans   WorktreePlan map (for worktree paths)
+ * @returns {Promise<Function>}
+ */
+export async function buildLiveContextOnPollFn({ runId, bgsdDir, plans }) {
+  requireLiveFlag();
+
+  const ctx = await import(`file://${resolve(__dir, "context.mjs")}`);
+  const control = await import(`file://${resolve(__dir, "control.mjs")}`);
+  const { parseBgsdMd, defaultBgsdConfig } = await import(`file://${resolve(__dir, "init.mjs")}`);
+
+  // Resolve config-driven thresholds (BGSD.md context block → makeThresholds).
+  let config;
+  try {
+    const bgsdMdPath = join(REPO_ROOT, "BGSD.md");
+    config = existsSync(bgsdMdPath) ? parseBgsdMd(readFileSync(bgsdMdPath, "utf8")) : defaultBgsdConfig();
+  } catch (_) {
+    config = defaultBgsdConfig();
+  }
+  const thresholds = ctx.thresholdsFromConfig(config);
+
+  const dir = bgsdDir ?? join(REPO_ROOT, ".bgsd");
+  const controlDir = join(dir, "runs", runId, "control");
+  const controlPathFor = (agentId) => join(controlDir, `${agentId}.json`);
+
+  const readBytesFn = (agentId) => {
+    const p = controlPathFor(agentId);
+    if (!existsSync(p)) return 0;
+    try {
+      return control.readControlFile(p).context_bytes ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  };
+
+  const recordFn = (agentId, usage) => {
+    const p = controlPathFor(agentId);
+    if (existsSync(p)) control.updateContextUsage(p, usage);
+  };
+
+  const compactFn = (agentId) =>
+    ctx.liveCompact({
+      agentId,
+      controlPath:  controlPathFor(agentId),
+      manifestPath: join(controlDir, `${agentId}.handoff.json`),
+      worktreePath: plans?.get(agentId)?.path,
+    });
+
+  const relaunchFn = (agentId) =>
+    ctx.liveRelaunch({
+      agentId,
+      manifestPath: join(controlDir, `${agentId}.handoff.json`),
+      worktreePath: plans?.get(agentId)?.path,
+    });
+
+  return (inFlightUnitIds) =>
+    ctx.runContextTick({
+      agentIds: inFlightUnitIds,
+      readBytesFn,
+      recordFn,
+      compactFn,
+      relaunchFn,
+      thresholds,
+    });
 }
 
 // ---------------------------------------------------------------------------

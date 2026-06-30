@@ -48,7 +48,9 @@
  *   import {
  *     // pressure monitor
  *     estimatePressure, pressureDecision,
- *     DEFAULT_CONTEXT_THRESHOLDS, makeThresholds,
+ *     DEFAULT_CONTEXT_THRESHOLDS, makeThresholds, thresholdsFromConfig,
+ *     // poll-loop decision dispatch (dependency-injected)
+ *     decideContextAction, runContextTick,
  *     // pointers-not-blobs handoff
  *     writeHandoffManifest, readHandoffManifest,
  *     // shared cache
@@ -69,6 +71,7 @@ import {
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -191,6 +194,26 @@ export function makeThresholds({
 }
 
 /**
+ * Build thresholds from a bgsd config's `context` section (init.mjs
+ * defaultBgsdConfig). This is the seam that makes the thresholds
+ * config-driven: a user editing BGSD.md's `context` block changes when the
+ * Conductor compacts/relaunches. Missing keys fall back to the defaults.
+ *
+ * @param {object} config  Resolved bgsd config (parseBgsdMd output)
+ * @param {number} [bytesPerToken=3]
+ * @returns {{ windowBytes: number, elevatedFraction: number, criticalFraction: number }}
+ */
+export function thresholdsFromConfig(config, bytesPerToken = 3) {
+  const ctx = (config && config.context) || {};
+  return makeThresholds({
+    contextTokens:    ctx.max_window_tokens ?? 1_000_000,
+    bytesPerToken,
+    elevatedFraction: ctx.compact_at ?? 0.70,
+    criticalFraction: ctx.relaunch_at ?? 0.90,
+  });
+}
+
+/**
  * Estimate context pressure from accumulated byte size.
  *
  * Pure function — no I/O, no side effects. Accepts an injected size (bytes)
@@ -231,6 +254,101 @@ export function pressureDecision(level) {
     default:
       throw new Error(`pressureDecision: unknown pressure level "${level}"`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Poll-loop decision dispatch (CTX-02) — dependency-injected, unit-testable
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide the action for one agent from its recorded context_bytes.
+ *
+ * Pure: composes estimatePressure + pressureDecision so the Conductor poll
+ * loop has a single call site. No I/O, no model, no process spawn.
+ *
+ * @param {object} opts
+ * @param {number} opts.contextBytes        The agent's accumulated bytes (proxy)
+ * @param {object} [opts.thresholds]        Thresholds (default DEFAULT_CONTEXT_THRESHOLDS)
+ * @returns {{ pressure: "normal"|"elevated"|"critical", action: "continue"|"compact"|"clear+relaunch" }}
+ */
+export function decideContextAction({ contextBytes, thresholds = DEFAULT_CONTEXT_THRESHOLDS }) {
+  const pressure = estimatePressure({ accumulatedBytes: contextBytes ?? 0, thresholds });
+  const action = pressureDecision(pressure);
+  return { pressure, action };
+}
+
+/**
+ * Run one context-management tick across a set of agents.
+ *
+ * This is the decision logic the Conductor's poll loop runs each cycle: for
+ * every agent, read its recorded context_bytes, classify pressure, and dispatch
+ * the action (elevated → compactFn, critical → relaunchFn). EVERYTHING is
+ * dependency-injected so this is unit-testable with mocks and NEVER requires a
+ * real `claude -p` process:
+ *
+ *   - readBytesFn(agentId)        => number  — the agent's accumulated bytes.
+ *                                   HONEST SCOPE: in a live run this byte signal
+ *                                   comes from the real `claude -p` agent (which
+ *                                   is itself partly stubbed); in tests it is a
+ *                                   mock that feeds rising byte counts. The
+ *                                   PLUMBING + DECISION + SEAMS are fully wired;
+ *                                   only this byte source becomes real once the
+ *                                   live spawn is wired.
+ *   - recordFn(agentId, usage)    => void    — persist {context_bytes, context_pressure}
+ *                                   (live: control.updateContextUsage; tests: mock).
+ *   - compactFn(agentId)          => Promise — act on "compact"   (live: liveCompact).
+ *   - relaunchFn(agentId)         => Promise — act on "clear+relaunch" (live: liveRelaunch).
+ *
+ * @param {object} opts
+ * @param {string[]} opts.agentIds            Agent ids to evaluate this tick
+ * @param {Function} opts.readBytesFn         (agentId) => number   — INJECTED
+ * @param {Function} [opts.recordFn]          (agentId, {context_bytes, context_pressure}) => void
+ * @param {Function} opts.compactFn           async (agentId) => void  — INJECTED
+ * @param {Function} opts.relaunchFn          async (agentId) => void  — INJECTED
+ * @param {object}   [opts.thresholds]        Thresholds (default DEFAULT_CONTEXT_THRESHOLDS)
+ * @returns {Promise<Array<{ agent_id, context_bytes, pressure, action, dispatched }>>}
+ */
+export async function runContextTick({
+  agentIds,
+  readBytesFn,
+  recordFn,
+  compactFn,
+  relaunchFn,
+  thresholds = DEFAULT_CONTEXT_THRESHOLDS,
+}) {
+  if (typeof readBytesFn !== "function") {
+    throw new Error("runContextTick: readBytesFn must be injected (use a mock in tests)");
+  }
+  if (typeof compactFn !== "function") {
+    throw new Error("runContextTick: compactFn must be injected (use a mock in tests)");
+  }
+  if (typeof relaunchFn !== "function") {
+    throw new Error("runContextTick: relaunchFn must be injected (use a mock in tests)");
+  }
+
+  const summary = [];
+
+  for (const agentId of agentIds ?? []) {
+    const contextBytes = await readBytesFn(agentId);
+    const { pressure, action } = decideContextAction({ contextBytes, thresholds });
+
+    if (typeof recordFn === "function") {
+      recordFn(agentId, { context_bytes: contextBytes, context_pressure: pressure });
+    }
+
+    let dispatched = "continue";
+    if (action === "compact") {
+      await compactFn(agentId);
+      dispatched = "compact";
+    } else if (action === "clear+relaunch") {
+      await relaunchFn(agentId);
+      dispatched = "clear+relaunch";
+    }
+
+    summary.push({ agent_id: agentId, context_bytes: contextBytes, pressure, action, dispatched });
+  }
+
+  return summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -443,26 +561,29 @@ export function cachePut(cacheDir, key, result) {
  * @returns {Promise<void>}
  * @throws {Error} if --live is not in process.argv
  */
-export async function liveCompact({ agentId, controlPath, manifestPath }) {
+export async function liveCompact({ agentId, controlPath, manifestPath, worktreePath, pointers, meta }) {
   requireLiveFlag();
 
-  // LIVE SEAM POINT: in a fully-wired live run, this would invoke the Claude Code
-  // compaction mechanism (e.g. /compact command, API call, or process signal).
-  // The exact API is not yet determined; the seam is here to be wired in.
-  //
-  // What the live path WILL do:
-  //   1. Write a pre-compaction pointer manifest to manifestPath (if not already done)
-  //      so the agent can resume from committed state after compaction.
-  //   2. Signal the agent's Claude Code session to compact its context window.
-  //   3. Log the compaction event to the agent's control file.
-  //
-  // For now this is a structured no-op that documents the intent.
+  // Claude Code exposes no programmatic in-place context compaction for a
+  // headless `claude -p` agent. So we implement "compact" AS a
+  // relaunch-with-handoff: we write the pointers-not-blobs manifest (committed
+  // state, not the fat transcript), then re-spawn `claude -p` seeded from that
+  // manifest. The fresh window is small (CTX-01); this is the honest analogue
+  // of compaction given the available surface.
+  const resolvedManifest =
+    manifestPath ?? join(dirname(controlPath), `${agentId}.handoff.json`);
+
+  if (pointers) {
+    writeHandoffManifest(resolvedManifest, pointers, { agent_id: agentId, reason: "compact", ...(meta ?? {}) });
+  }
+
   process.stderr.write(
-    `[context] liveCompact: would compact context for agent ${agentId}\n` +
+    `[context] liveCompact (= relaunch-with-handoff): agent ${agentId}\n` +
     `  controlPath:  ${controlPath}\n` +
-    (manifestPath ? `  manifestPath: ${manifestPath}\n` : "") +
-    `  (live --live path; compaction API not yet wired)\n`
+    `  manifestPath: ${resolvedManifest}\n`
   );
+
+  return liveRelaunch({ agentId, manifestPath: resolvedManifest, worktreePath });
 }
 
 /**
@@ -486,20 +607,54 @@ export async function liveCompact({ agentId, controlPath, manifestPath }) {
 export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   requireLiveFlag();
 
-  // LIVE SEAM POINT: in a fully-wired live run, this would:
-  //   1. Read the handoff manifest at manifestPath to get all relevant pointers.
-  //   2. Spawn a fresh `claude -p` process in the worktree with:
-  //        --context-file <manifestPath>   (or prepend the manifest content)
-  //        pinned to the worktree's committed state (not the stale transcript).
-  //   3. Update the agent's control file to record the re-launch.
-  //
-  // This is a structured no-op documenting the intent (NFR-05).
+  // Read the handoff manifest (pointers, not the fat transcript) so the new
+  // agent's window starts small (CTX-01, NFR-09). readHandoffManifest throws
+  // loudly if the manifest is missing/corrupt (NFR-06: no silent green).
+  const manifest = readHandoffManifest(manifestPath);
+  const pointerCount = Object.keys(manifest.pointers ?? {}).length;
+
   process.stderr.write(
-    `[context] liveRelaunch: would re-launch agent ${agentId}\n` +
-    `  manifestPath: ${manifestPath}\n` +
-    `  worktreePath: ${worktreePath}\n` +
-    `  (live --live path; process spawn not yet wired)\n`
+    `[context] liveRelaunch: re-launching agent ${agentId}\n` +
+    `  manifestPath: ${manifestPath} (${pointerCount} pointers)\n` +
+    `  worktreePath: ${worktreePath}\n`
   );
+
+  // Re-spawn a fresh headless `claude -p` in the agent's worktree, seeded from
+  // the manifest. This mirrors liveSpawnFn's spawn shape in run-live.mjs.
+  //
+  // HONEST SCOPE: this spawn is the same seam liveSpawnFn uses, which is itself
+  // partly stubbed pending the finalized `/bgsd-run-agent` entrypoint + the
+  // real per-token byte signal the agent reports back. The PLUMBING (manifest
+  // read + spawn invocation) is fully wired here; it becomes a live process the
+  // moment liveSpawnFn's spawn is uncommented. We invoke through spawnSync so
+  // the seam is real and observable rather than a "would re-launch" no-op.
+  const result = spawnSync(
+    "claude",
+    [
+      "-p",
+      "/bgsd-run-agent",
+      "--worktree", worktreePath ?? "",
+      "--agent-id", agentId,
+      "--resume-manifest", manifestPath,
+    ],
+    { cwd: worktreePath ?? process.cwd(), stdio: "inherit" }
+  );
+
+  // spawnSync sets result.error when the binary is missing (e.g. `claude` not
+  // on PATH in a sandbox). Surface it rather than pretending the relaunch
+  // succeeded (NFR-06).
+  if (result.error) {
+    throw new Error(
+      `liveRelaunch: failed to spawn 'claude -p' for agent ${agentId}: ${result.error.message}`
+    );
+  }
+  if (typeof result.status === "number" && result.status !== 0) {
+    throw new Error(
+      `liveRelaunch: 'claude -p' exited with status ${result.status} for agent ${agentId}`
+    );
+  }
+
+  return { agentId, manifestPath, worktreePath, pointerCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +673,8 @@ if (
   process.stdout.write("context.mjs — Phase 8 Conductor Context Management (library module)\n");
   process.stdout.write("Import and use its exported functions from the Conductor or tests.\n");
   process.stdout.write("\nExported surface:\n");
-  process.stdout.write("  Pressure monitor: estimatePressure, pressureDecision, makeThresholds\n");
+  process.stdout.write("  Pressure monitor: estimatePressure, pressureDecision, makeThresholds, thresholdsFromConfig\n");
+  process.stdout.write("  Poll dispatch:    decideContextAction, runContextTick (dependency-injected)\n");
   process.stdout.write("  Handoff:          writeHandoffManifest, readHandoffManifest\n");
   process.stdout.write("  Cache:            cacheKey, cacheGet, cachePut, cacheHas\n");
   process.stdout.write("  Live boundary:    liveCompact, liveRelaunch (require --live)\n");

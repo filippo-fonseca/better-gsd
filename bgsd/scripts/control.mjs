@@ -26,6 +26,12 @@
  *   escalations:   Escalation[]
  *   restart_count: number   — how many times this agent has been restarted
  *   inbox_path:    string|null — path to <agent-id>.inbox.md when the Conductor answered a blocker
+ *   context_bytes:    number   — accumulated context size (byte proxy for tokens)
+ *                               in this agent's window. The Conductor reads this
+ *                               each poll cycle to estimate pressure (see context.mjs).
+ *   context_pressure: enum|null — last classified pressure: "normal"|"elevated"|"critical"
+ *                               (null until first measured). Persisted so a restart
+ *                               survives the in-flight pressure state.
  * }
  *
  * HEARTBEAT STATE MACHINE (CTRL-02)
@@ -64,6 +70,7 @@
  * Usage (library):
  *   import {
  *     createControlFile, readControlFile, updateControlFile,
+ *     updateContextUsage,
  *     recordAssumption, raiseBlocker, addEscalation,
  *     aggregateOpenBlockers, aggregateEscalations,
  *     classifyHeartbeat, computeRestartDecision
@@ -110,6 +117,9 @@ export const STATUSES = Object.freeze([
 
 /** Heartbeat vitality classifications. */
 export const HEARTBEAT_STATES = Object.freeze(["alive", "stale", "dead"]);
+
+/** Valid context-pressure values recorded on a control file (see context.mjs). */
+export const CONTEXT_PRESSURES = Object.freeze(["normal", "elevated", "critical"]);
 
 /** Restart decision outcomes. */
 export const RESTART_DECISIONS = Object.freeze([
@@ -188,6 +198,22 @@ export function validateControlFile(obj) {
   if ("restart_count" in obj) {
     if (typeof obj.restart_count !== "number" || !Number.isInteger(obj.restart_count) || obj.restart_count < 0) {
       throw new Error(`control file field "restart_count" must be a non-negative integer`);
+    }
+  }
+
+  // context_bytes must be a non-negative number when present (byte proxy for tokens)
+  if ("context_bytes" in obj && obj.context_bytes !== null) {
+    if (typeof obj.context_bytes !== "number" || obj.context_bytes < 0) {
+      throw new Error(`control file field "context_bytes" must be a non-negative number`);
+    }
+  }
+
+  // context_pressure must be one of the known levels (or null) when present
+  if ("context_pressure" in obj && obj.context_pressure !== null) {
+    if (!CONTEXT_PRESSURES.includes(obj.context_pressure)) {
+      throw new Error(
+        `control file field "context_pressure" must be one of [${CONTEXT_PRESSURES.join(", ")}] or null, got "${obj.context_pressure}"`
+      );
     }
   }
 }
@@ -284,6 +310,10 @@ export function createControlFile(controlPath, fields) {
     escalations:   [],
     restart_count: 0,
     inbox_path:    null,
+    // Context-pressure plumbing (see context.mjs). 0 bytes / null pressure
+    // until the first measurement is recorded via updateContextUsage().
+    context_bytes:    0,
+    context_pressure: null,
   };
 
   // Validate before writing
@@ -344,6 +374,50 @@ export function touchHeartbeat(controlPath, nowFn = Date.now) {
     ...current,
     heartbeat_at: now,
     updated_at:   now,
+  };
+  validateControlFile(merged);
+  writeAtomic(controlPath, merged);
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Context-pressure usage helper (CTX-02) — records the agent's window usage
+// ---------------------------------------------------------------------------
+
+/**
+ * Record the agent's accumulated context usage on its control file.
+ *
+ * The Conductor's poll loop calls this each cycle with the agent's current
+ * accumulated byte size (a proxy for token count) and the pressure level it
+ * classified from that size (via context.mjs estimatePressure). Persisting
+ * both means a re-launched agent's pressure state survives the restart, and
+ * the Conductor's live view can render usage without re-reading the transcript.
+ *
+ * Atomic write; preserves every other field (mirrors touchHeartbeat).
+ *
+ * @param {string} controlPath  Absolute path to <agent-id>.json
+ * @param {object} usage
+ * @param {number} usage.context_bytes      Accumulated bytes in the agent's window
+ * @param {("normal"|"elevated"|"critical"|null)} [usage.context_pressure]
+ *        The classified pressure level (omit/null if not yet classified).
+ * @returns {object}  The updated control-file object
+ */
+export function updateContextUsage(controlPath, { context_bytes, context_pressure = null }) {
+  if (typeof context_bytes !== "number" || context_bytes < 0) {
+    throw new Error("updateContextUsage: context_bytes must be a non-negative number");
+  }
+  if (context_pressure !== null && !CONTEXT_PRESSURES.includes(context_pressure)) {
+    throw new Error(
+      `updateContextUsage: context_pressure must be one of [${CONTEXT_PRESSURES.join(", ")}] or null`
+    );
+  }
+  const current = readControlFile(controlPath);
+  const now = new Date().toISOString();
+  const merged = {
+    ...current,
+    context_bytes,
+    context_pressure,
+    updated_at: now,
   };
   validateControlFile(merged);
   writeAtomic(controlPath, merged);

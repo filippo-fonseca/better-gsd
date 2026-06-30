@@ -169,6 +169,25 @@ test("I07 — parseBgsdMd: partial override layers over defaults", () => {
   assert.equal(c.env.propagate, true);
 });
 
+test("I07b — defaultBgsdConfig: context window-management section + defaults", () => {
+  const c = defaultBgsdConfig();
+  assert.equal(c.context.max_window_tokens, 1_000_000);
+  assert.equal(c.context.compact_at, 0.70);
+  assert.equal(c.context.relaunch_at, 0.90);
+});
+
+test("I07c — BGSD.md documents + round-trips the context block", () => {
+  const md = renderBgsdMd(defaultBgsdConfig());
+  assert.ok(md.includes("**context**"), "prose should document the context knob");
+  assert.ok(md.includes("max_window_tokens"));
+  // partial override of the context block layers over defaults
+  const text = '```json bgsd-settings\n{ "context": { "compact_at": 0.5 } }\n```';
+  const c = parseBgsdMd(text);
+  assert.equal(c.context.compact_at, 0.5);
+  assert.equal(c.context.relaunch_at, 0.90, "untouched context keys keep defaults");
+  assert.equal(c.context.max_window_tokens, 1_000_000);
+});
+
 // ---------------------------------------------------------------------------
 // .gitignore merge
 // ---------------------------------------------------------------------------
