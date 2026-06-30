@@ -17,7 +17,7 @@ The roadmap is de-risked hardest-first around the **central design knot**: GSD's
 **Ordering note:** Phases run in E-numeric order, but the riskiest, most load-bearing piece — the **decision-oracle + confidence + auto-answer seam (E4)** — is the center of gravity. It is front-loaded right after its three input dependencies are in place (the intake spec E1, the brainstorm decision record E2, the preference profile E3). E5 (escalation) consumes E4's confidence output + the v2 control-file protocol; E6 documents the surface last.
 
 - [x] **Phase E1: NL/Voice Intake → Rich Intent Spec** - NL/voice description → Haiku spec-gen → a large, chunked, indexed Markdown intent spec, fed into `gsd-new-project` through the seam
-- [ ] **Phase E2: Active Upfront Brainstorm + Decision Record** - The interactive, selector-driven upfront discussion (phases/scope/gray-areas) that front-loads intent into a sealed, queryable decision record
+- [x] **Phase E2: Active Upfront Brainstorm + Decision Record** - The interactive, selector-driven upfront discussion (phases/scope/gray-areas) that front-loads intent into a sealed, queryable decision record
 - [ ] **Phase E3: Preference Profile** - Derive a structured, source-tagged preference profile from the brainstorm answers — the secondary, lower-weight oracle source
 - [ ] **Phase E4: Decision-Oracle + Confidence Scoring + discuss-phase Auto-Answer Seam** *(THE CENTRAL KNOT)* - The oracle store + deterministic confidence score + the auto-answer-into-`discuss-phase` seam (non-interactive GSD modes + the v2 inbox/re-launch path), gated by the confidence threshold
 - [ ] **Phase E5: Confidence-Gated Human Escalation via Selectors** - Below-threshold/abstain → reuse the v2 control-file escalation as exactly one consolidated GSD-style selector question; answers enrich the oracle; rarity surfaced in `/bgsd-status`
@@ -121,7 +121,7 @@ Phases execute in E-numeric order: E1 → E2 → E3 → E4 → E5 → E6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | E1. NL/Voice Intake → Rich Intent Spec | 1/1 | Complete | 2026-06-29 |
-| E2. Active Upfront Brainstorm + Decision Record (INTERACTIVE) | 0/1 | Pending | — |
+| E2. Active Upfront Brainstorm + Decision Record (INTERACTIVE) | 1/1 | Complete | 2026-06-29 |
 | E3. Preference Profile | 0/1 | Pending | — |
 | E4. Decision-Oracle + Confidence + Auto-Answer Seam (CENTRAL KNOT) | 0/1 | Pending | — |
 | E5. Confidence-Gated Human Escalation via Selectors | 0/1 | Pending | — |
