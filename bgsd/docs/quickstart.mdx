@@ -14,7 +14,7 @@ bgsd is an additive Claude Code plugin that layers autonomous, self-verifying te
 ```mermaid
 flowchart TD
     A[Install bgsd plugin] --> B[Add Playwright MCP]
-    B --> C[Restart Claude Code]
+    B --> C[/reload-plugins or restart]
     C --> D{/bgsd-verify}
     D -->|--boot app-dir| E[runtime-isolate.sh boots app]
     D -->|url provided| F[Attach to running app]
@@ -35,22 +35,22 @@ flowchart TD
 
 ## Step 1: Install the bgsd plugin
 
-Run these commands from the repo root (where `bgsd/` lives):
+bgsd is an installable, standalone Claude Code plugin. Add the marketplace and install it:
 
 ```bash
-claude plugin marketplace add ./bgsd     # register the local Directory-source marketplace
-claude plugin install bgsd@bgsd-local    # install the bgsd plugin (user scope)
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
 ```
 
-Restart Claude Code. The `/bgsd-verify` command binds at startup and appears after restart.
+Then run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind.
 
-> **Why this works without editing GSD:** bgsd registers a *Directory* marketplace source that reads the live `bgsd/` directory. GSD's own `.claude-plugin/plugin.json` is never touched. See `bgsd/docs/INTEGRATION-NOTES.md` for the full decision record.
+> **bgsd is gsd-agnostic.** It does not vendor or bundle GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (Kiwi) keeps that dependency current for you: at the start of every `/bgsd-sesh`, Kiwi ensures `gsd-core` is installed and up to date (under the hood: `claude plugin marketplace add open-gsd/gsd-core`, `claude plugin install gsd-core --scope user`, and `claude plugin update gsd-core` to refresh). You never manage GSD by hand. After a plugin update, Claude Code needs `/reload-plugins` or a restart to apply, and Kiwi flags that when it happens.
 
 ---
 
 ## Step 2: Add Playwright MCP
 
-`/bgsd-verify` drives a real browser via `@playwright/mcp`. Add it once per machine:
+bgsd's verification drives a real browser via `@playwright/mcp`. The Conductor ensures this browser tooling (used for the computer-use / vision verification that powers Loop 1 and Loop 2) is available at sesh start, so a normal `/bgsd-sesh` provisions it for you. To run the standalone canary proof below before your first session, add it once per machine:
 
 ```bash
 claude mcp add playwright -- npx @playwright/mcp@0.0.76
