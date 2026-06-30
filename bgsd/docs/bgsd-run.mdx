@@ -1,0 +1,399 @@
+---
+title: "/bgsd-run reference"
+description: "The /bgsd-run Conductor pipeline: decompose a prompt into a verified dependency graph, fan out across parallel worktrees, run Loop 1 per worktree, conflict-check and merge into a rehearsal branch, and checkpoint at every wave boundary."
+---
+
+# /bgsd-run — Project Orchestrator (Kiwi, the Conductor)
+
+`/bgsd-run "<prompt>"` is bgsd's project-mode entrypoint. It takes one large prompt, decomposes it into a dependency graph of whole-GSD-pipeline units, spawns them in parallel across isolated git worktrees, runs Loop 1 (verify→fix) per worktree, conflict-checks and merges verified branches into a single `rehearsal/<run-id>` integration branch in dependency order, and checkpoints to you at every merge boundary.
+
+**Default: `--dry-run`.** No worktrees, processes, or merges are created unless you explicitly pass `--live` after reading the human-gated checklist below.
+
+---
+
+## Conductor pipeline
+
+```mermaid
+flowchart TD
+    A["Prompt\n/bgsd-run \"...\"\nmint run-id bgsd-NNNN-slug"] --> B
+
+    B["Decompose\nOpus/xhigh\nbuildUnits → RUN.md"] --> C
+
+    C["Dependency Graph\nbuildGraph → verifyGraph\ncycle-check + overlap heuristic"] --> D
+
+    D["Topological Waves\ntopoWaves\nwave 0 = no-dep units"] --> E
+
+    E["Worktree Fan-Out\nper-unit: worktree + branch + port\ncontrol file written"] --> F
+
+    F["Wave Scheduler\nrunScheduler\ndispatch ≤ maxConcurrency per wave"] --> G
+
+    G["Per-Worktree Loop 1\nclaude -p /gsd-execute-phase\nverify→fix until PASS / blocked"] --> H
+
+    H{"Loop 1 outcome"}
+    H -->|"PASS"| I
+    H -->|"blocked / failed"| J
+
+    I["Conflict Pre-Check\ngit merge-tree --write-tree\nnon-destructive dry-run"] --> K
+
+    J["Unit held back\nNFR-06: no silent green"] --> L
+
+    K{"Pre-check result"}
+    K -->|"clean"| L
+    K -->|"conflict"| M
+
+    M["Merge-Resolver Agent\nOpus/high injected boundary\nconfidence >= 0.80 → merge\nconfidence < 0.80 → escalate"] --> L
+
+    L["Merge-Boundary Checkpoint\nKiwi pauses: merged / held / blockers\nYOU type go or abort"] --> N
+
+    N{"go / abort"}
+    N -->|"go"| O
+    N -->|"abort"| ABORTED["aborted\nall branches + ledger preserved"]
+
+    O["Next wave OR assemble rehearsal\nrehearsalBranch = rehearsal/<run-id>"] --> P
+
+    P["Doc Aggregation\naggregateRun → RUN.md + AGENTS.md\nledger.md updated"] --> Q
+
+    Q["Reversible Cleanup\nplanBranchCleanup\nbranch-recovery.json written first"] --> DONE
+
+    DONE["done\nrehearsal/<run-id> ready for inspection\nnext/main never written"]
+```
+
+---
+
+## Lifecycle states
+
+| State | Description |
+|-------|-------------|
+| `created` | Run record minted; prompt captured. |
+| `decomposed` | Units and waves written to `run.json`. |
+| `spawning` | Worktree plan computed; spawn plan printed in `--dry-run`. |
+| `executing` | Scheduler dispatching units wave-by-wave. |
+| `verifying` | Loop 1 running per worktree. |
+| `merging` | Conflict pre-check + dependency-ordered merge into `rehearsal/<run-id>`. |
+| `checkpoint` | Conductor paused at merge boundary; waiting for your go/no-go. |
+| `done` | All waves complete; rehearsal branch ready. |
+| `aborted` | You typed `abort` or called `--abort`; all artifacts preserved. |
+| `blocked` | Unrecoverable scheduler error; run record preserved. |
+| `needs_input` | A unit raised an unanswerable escalation. |
+
+Every transition is timestamped and written atomically to `.bgsd/runs/<run-id>/run.json` (write temp + rename). An interrupted run resumes from persisted state without re-spawning completed worktrees.
+
+---
+
+## Decomposition and the verified DAG
+
+The Conductor makes exactly one expensive model call (Opus/xhigh) to decompose the prompt. The response is parsed by `parseDecompositionResponse()` into raw unit descriptors, then `buildUnits()` assigns stable IDs (`unit-<slug>-<4hex>`), computes per-unit difficulty scores, and derives model posture:
+
+| Difficulty score | Executor | Researcher | Verifier |
+|-----------------|----------|------------|---------|
+| >= 0.70 (high) | opus / xhigh | sonnet / high | haiku / low |
+| >= 0.40 (medium) | sonnet / high | haiku / medium | haiku / low |
+| < 0.40 (low) | haiku / medium | haiku / medium | haiku / low |
+
+The posture is written to each worktree's `.planning/config.json` via the config seam only. Zero edits to vendored GSD.
+
+`buildGraph()` constructs the adjacency map, then `verifyGraph()` runs:
+
+1. **Cycle check** (DFS): a cyclic graph is never marked ready.
+2. **Unknown dep check**: referenced dep IDs that do not exist as nodes.
+3. **False-independence heuristic**: pairs of units that declare no dependency but whose `touched` surfaces overlap (exact path match or prefix match). These are flagged and surfaced so the Conductor can force an explicit dep — biasing toward declaring a dependency rather than risking a hidden conflict.
+
+A graph that fails the cycle or unknown-dep checks is re-decomposed or escalated; it is never marked ready (NFR-06).
+
+`topoWaves()` produces the ordered array of waves: `waves[0]` = units with no deps, `waves[1]` = units whose only deps are in `waves[0]`, and so on. Unit IDs within a wave are sorted for determinism.
+
+---
+
+## Control-file protocol and heartbeat/restart
+
+Each worktree agent owns one control file at:
+
+```
+.bgsd/runs/<run-id>/control/<agent-id>.json
+```
+
+**Schema (key fields):**
+
+| Field | Description |
+|-------|-------------|
+| `agent_id` | Stable agent identifier. |
+| `phase` | Current GSD phase: `discuss`, `ui`, `plan`, `execute`, `verify`, `fixing`, `done`, `blocked`, `failed`. |
+| `status` | `running`, `stalled`, `blocked`, `needs_input`, `done`, `failed`. |
+| `heartbeat_at` | ISO timestamp, updated each poll cycle. |
+| `progress` | `{ iteration, max_iterations, note }` for the Loop 1 counter. |
+| `commits` | SHAs this agent has made. |
+| `assumptions` | Documented assumptions the agent is continuing under. |
+| `blockers` | Hard blockers: the agent exits cleanly and waits for an answer. |
+| `escalations` | Unanswerable high-severity blockers that must reach you. |
+| `restart_count` | How many times this agent has been restarted. |
+| `inbox_path` | Set by the Conductor when it writes a blocker answer. |
+
+**Heartbeat state machine:**
+
+| Vitality | Condition | Decision |
+|----------|-----------|----------|
+| `alive` | `heartbeat_at` within 2 min | Continue |
+| `stale` | 2–5 min old | Watch |
+| `dead` | > 5 min old, `restart_count < 3` | `eligible_for_restart` |
+| `dead` | > 5 min old, `restart_count >= 3` | `give_up` → escalate to you |
+
+The actual restart is dependency-injected (`restartFn`). In tests it is a mock; in live runs it spawns a fresh `claude -p` on the same worktree, resuming from committed state.
+
+**Blocker resolution flow:**
+
+1. Worker writes blocker to control file and sets `status: blocked`.
+2. Conductor reads the blocker, answers from context (REQUIREMENTS, codebase, prior runs), writes `<agent-id>.inbox.md`, and sets `inbox_path` on the control file.
+3. Worker re-launches, reads the inbox, and resumes.
+4. If the Conductor cannot answer (unanswerable, high severity): `addEscalation()` parks the unit in `needs_input` and surfaces exactly one consolidated question to you at the next merge-boundary checkpoint.
+
+All writes are atomic (write temp + rename). Schema validation rejects malformed control files (NFR-06: no silent green on corrupt state).
+
+---
+
+## Worktree fan-out and the wave scheduler
+
+For each unit the Conductor plans:
+
+```
+.bgsd/runs/<run-id>/worktrees/<unit-id>/   worktree root
+<run-id>/<unit-slug>                        git branch
+```
+
+Port and ephemeral DB seeds are hashed deterministically from the unit ID so parallel worktrees never collide.
+
+The **wave scheduler** (`runScheduler`) drives execution:
+
+1. For each wave: partition units into eligible (deps all done, not previously failed) vs blocked.
+2. Split eligible units into batches of `maxConcurrency` (default 4).
+3. `Promise.all` to spawn all units in a batch concurrently (via injected `spawnFn`).
+4. Poll each in-flight unit via injected `readStatusFn` until all reach a terminal state (`done`, `failed`, or `dead`).
+5. For any failed unit: collect all transitive dependents across later waves and mark them `blocked` (NFR-06: no silent green).
+6. Proceed to next batch, then next wave, only after the previous batch fully terminates.
+
+Units that time out (default: 5 minutes per batch) are treated as `dead` and their dependents are blocked.
+
+The spawn and status-read boundaries are fully dependency-injected, so the entire scheduler is unit-testable with mocked implementations and zero real process spawning.
+
+---
+
+## Conflict pre-check, merge-resolver, and escalation
+
+Before any branch is merged into `rehearsal/<run-id>`, the Conductor runs a **non-destructive** conflict pre-check:
+
+```
+git merge-tree --write-tree <rehearsal-head> <unit-branch>
+```
+
+This is a purely in-memory three-way merge (git 2.38+). It never touches the working tree, index, or any branch refs.
+
+**Merge decision flow:**
+
+| Pre-check result | Action |
+|-----------------|--------|
+| Clean | Call `mergeFn` (injected). Mark unit `merged`. |
+| Conflict; resolver confidence >= 0.80 | Auto-apply resolution. Call `mergeFn`. |
+| Conflict; resolver confidence < 0.80 | Call `escalateFn`. Mark unit `needs_input`. Hold back. |
+
+The resolver (`resolverFn`) and the actual git merge (`mergeFn`) are both injected. In tests they are mocks; in live runs they invoke the real Opus/high resolver agent and `liveGitMergeFn` (behind `--live`). Low-confidence conflicts are **never** auto-applied; they surface at the merge-boundary checkpoint with the conflict diff and proposed resolution attached.
+
+Merge order is a deterministic function of the dependency graph: `computeMergeOrder()` iterates the topological waves and ensures deps are merged before dependents.
+
+---
+
+## Rehearsal assembly, doc aggregation, and reversible cleanup
+
+After all waves complete, `rehearsal/<run-id>` is assembled from verified branches in dependency order. The rehearsal branch is **never** merged into `next` automatically; only you do that, by hand.
+
+**Doc aggregation** (`aggregateDocs`) produces:
+
+- `.bgsd/runs/<run-id>/RUN.md` — prompt, decomposition, graph, per-worktree timeline.
+- `.bgsd/runs/<run-id>/AGENTS.md` — per-subagent: asked/did/assumed/blocked/committed.
+- `.bgsd/ledger.md` — append-only global run ledger (run-id, state, merged count, prompt).
+
+No model calls in the aggregation path (NFR-05). `readFileFn` and `writeFn` are injectable for tests.
+
+**Reversible cleanup** (`planBranchCleanup` + `executeBranchCleanup`):
+
+- Default: `dry=true` — prints what would be deleted, writes nothing.
+- Live: `dry=false` + `--live` — writes `branch-recovery.json` (tip SHAs + `git branch <branch> <sha>` recover commands) **before** any deletion. Only merged worktree branches are deleted. `rehearsal/*` branches and unmerged branches are **never** deleted (REHEARSE-03, NFR-08).
+
+---
+
+## Context management
+
+The Conductor never holds the whole run in context. It reads and writes small control + ledger files and passes pointers (file paths), not blobs.
+
+**Context-pressure monitor** (`estimatePressure`):
+
+| Pressure | Threshold (200k-token window) | Action |
+|----------|-------------------------------|--------|
+| `normal` | < 70% of window | `continue` |
+| `elevated` | 70–90% | `compact` |
+| `critical` | >= 90% | `clear+relaunch` |
+
+Thresholds scale for large (1M-token) windows via `makeThresholds({ contextTokens })`.
+
+**Handoff:** when re-launching a compacted agent, the Conductor writes a pointer manifest (`writeHandoffManifest`) containing file paths to the control file, plan, requirements excerpt, and inbox. The new agent loads from disk, not from a bloated transcript (CTX-01, NFR-09).
+
+**Research cache:** a content-addressed cache at `.bgsd/cache/<SHA-256-of-key>.json` ensures parallel worktrees that research the same question never pay twice. First-writer-wins; atomic writes. Zero model calls in the cache path.
+
+---
+
+## HUMAN-GATED: the `--live` flag
+
+> **This section is critical. Read it before every live run.**
+
+The live path spawns **real** headless `claude -p` Pipeline Agents across real git worktrees. It is off by default and requires explicit opt-in.
+
+**Dry-run (always safe, always the default):**
+
+```bash
+node bgsd/scripts/run.mjs --prompt "Add user auth and rate limiting"
+```
+
+Mints the run ID, resolves the graph, prints the spawn plan, and exits. No worktrees, no branches, no processes created.
+
+**Live run — work through this checklist every time:**
+
+1. **Branch safety.** You are on a feature branch, NOT `next`.
+   ```bash
+   git branch --show-current
+   ```
+2. **Budget cap.** Set a per-run token/cost cap:
+   ```bash
+   --budget-cap 5.00   # or: export BGSD_BUDGET_CAP=5.00
+   ```
+3. **Disk space.** `.bgsd/runs/<run-id>/worktrees/` needs room for N worktree checkouts.
+4. **Stay awake.** `caffeinate -dimsu &` is running so the Mac does not sleep mid-run.
+5. **Watch the terminal.** This is NOT fire-and-forget. You must be present to approve merge-boundary checkpoints.
+6. **Understand the scope.** Two or more concurrent `claude -p` processes will be spawned. Real git commits will land on worktree branches.
+7. **`rehearsal/<run-id>` only.** `next` is never touched. Only you merge `rehearsal/<run-id>` into `next`, by hand.
+
+**Run the live path:**
+
+```bash
+node bgsd/scripts/run-live.mjs --live --prompt "Add user auth and rate limiting"
+```
+
+**Abort at any time:**
+
+```bash
+# At a merge-boundary checkpoint: type 'abort'
+# Or, from a second terminal:
+node bgsd/scripts/run.mjs --abort <run-id>
+```
+
+All branches, control files, and the run record are preserved on abort. No orphaned processes (abort signals all workers to exit cleanly).
+
+---
+
+## Merge-boundary checkpoints
+
+At every wave boundary, Kiwi **pauses** and shows:
+
+```
+======================================================================
+Kiwi: Merge-Boundary Checkpoint (Wave 0)  [ckpt-1234-abc]
+======================================================================
+
+  Merged cleanly (2): unit-user-auth-a1b2, unit-rate-limit-c3d4
+  Held back     (1):  unit-api-surface-e5f6
+
+  Kiwi is waiting for your go/no-go to proceed to the next wave.
+  Type 'go' to continue or 'abort' to stop the run.
+
+  >
+```
+
+- **Merged cleanly:** units whose Loop 1 passed and whose branch merged into `rehearsal/<run-id>` without conflicts.
+- **Held back:** units that failed Loop 1, had unresolvable merge conflicts, or whose resolver confidence was below 0.80. These are **never** silently merged (NFR-06).
+
+Type `go` to proceed to the next wave, or `abort` to stop cleanly.
+
+---
+
+## Run record
+
+`.bgsd/runs/<run-id>/run.json` is the single source of truth, written atomically on every transition.
+
+| Field | Description |
+|-------|-------------|
+| `run_id` | The run identifier (`bgsd-<NNNN>-<slug>`). |
+| `prompt` | The original decomposition prompt. |
+| `state` | Current lifecycle state. |
+| `created_at` | ISO timestamp of run creation. |
+| `transitions` | Ordered list of `{ from, to, at, meta }` transitions. |
+| `checkpoints` | Merge-boundary checkpoint records. |
+| `units` | Unit IDs in this run. |
+| `waves` | Wave grouping: `[{ wave: 0, units: [...] }, ...]`. |
+| `scheduler_result` | Summary from the wave scheduler. |
+| `abort_reason` | Set on abort; null otherwise. |
+
+**Run-ID format:** `bgsd-<NNNN>-<slug>`
+
+- `NNNN`: zero-padded sequence number from `.bgsd/run-counter` (incremented atomically).
+- `slug`: first 5 words of the prompt, sanitized, 24 chars max.
+
+Example: `bgsd-0042-add-user-auth-and-rate`
+
+---
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--prompt "<text>"` | Yes | The prompt to decompose into units. |
+| `--dry-run` | No (default) | Resolve the graph and print the spawn plan without launching anything. |
+| `--live` | **Human-gated** | Engage real multi-process orchestration. See checklist above. |
+| `--max-concurrency <n>` | No (default: 4) | Maximum concurrent worktrees in a wave. |
+| `--budget-cap <$>` | Recommended with `--live` | Per-run token/cost cap (also: `BGSD_BUDGET_CAP`). |
+| `--abort <run-id>` | No | Abort an in-flight run. |
+
+---
+
+## Safety guarantees
+
+| Rule | Detail |
+|------|--------|
+| **NFR-01 (branch safety)** | bgsd never writes to `next`. All work lands on `<run-id>/<slug>` branches, assembled into `rehearsal/<run-id>`. Only you merge `rehearsal/<run-id>` into `next`. |
+| **NFR-06 (no silent green)** | Units that fail Loop 1 or have unresolved conflicts are held back. The checkpoint shows exactly what was held and why. |
+| **NFR-08 (bounded, reversible autonomy)** | Every loop is bounded by `max_iterations`; every run is bounded by `--budget-cap`; every wave requires your go/no-go; branch cleanup writes a recovery file before deleting anything. |
+| **`--dry-run` default** | Accidental live spawns are impossible without `--live`. |
+
+---
+
+## Related files
+
+| Path | Purpose |
+|------|---------|
+| `bgsd/scripts/run.mjs` | Run lifecycle state machine (dry-run CLI + library) |
+| `bgsd/scripts/decompose.mjs` | Prompt decomposition + unit building + model posture |
+| `bgsd/scripts/graph.mjs` | DAG construction, cycle detection, wave grouping |
+| `bgsd/scripts/control.mjs` | Control-file protocol + heartbeat/restart |
+| `bgsd/scripts/scheduler.mjs` | Wave scheduler (injected spawn + status poll) |
+| `bgsd/scripts/conflict.mjs` | Conflict pre-check + merge-resolver + escalation |
+| `bgsd/scripts/rehearsal.mjs` | Rehearsal assembly + doc aggregation + cleanup |
+| `bgsd/scripts/context.mjs` | Context-pressure monitor + handoff + research cache |
+| `bgsd/commands/bgsd-run.md` | Slash-command definition |
+| `.bgsd/runs/<run-id>/run.json` | Run state (gitignored runtime artifact) |
+| `.bgsd/runs/<run-id>/control/` | Per-worker control files |
+| `.bgsd/ledger.md` | Global append-only run ledger |
+
+---
+
+## Adding this page to the docs site
+
+This page (`bgsd/docs/bgsd-run.mdx`) is valid standalone Mintlify MDX, intentionally kept outside GSD's vendored nav config (`mint.json` / `docs.json`). When a maintainer is ready to surface it, add a group entry to the Mintlify nav config:
+
+```json
+{
+  "group": "bgsd",
+  "pages": [
+    "bgsd/docs/quickstart",
+    "bgsd/docs/bgsd-verify",
+    "bgsd/docs/bgsd-queue",
+    "bgsd/docs/bgsd-run",
+    "bgsd/docs/bgsd-status"
+  ]
+}
+```

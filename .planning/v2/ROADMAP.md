@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Rehearsal Assembly + Doc Aggregation + Cleanup** - Assemble `rehearsal/<run-id>`, aggregate each worktree's `.planning/` into the run ledger + CHANGELOG, and clean up merged branches reversibly
 - [x] **Phase 7: Live Colorful Status View (Kiwi)** - Always-on `/bgsd-status` view on ui.mjs — per-worktree badges, stage, loop counts, merge state, budget/context telemetry, the 🔒 main-protected indicator
 - [x] **Phase 8: Conductor Context Management** - Pointers-not-blobs handoff, deterministic context-pressure monitoring, compaction/clear/re-launch orchestration, and a shared research/prompt cache so context never overflows
-- [ ] **Phase 9: Diagram-First Docs** - `/bgsd-run` + Conductor and `/bgsd-status` + Kiwi pages, GSD-Mintlify style, including the exact human-gated `--live` steps
+- [x] **Phase 9: Diagram-First Docs** - `/bgsd-run` + Conductor and `/bgsd-status` + Kiwi pages, GSD-Mintlify style, including the exact human-gated `--live` steps
 
 ## Phase Details
 
@@ -171,4 +171,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Rehearsal Assembly + Doc Aggregation + Cleanup | 1/1 | Complete | 2026-06-29 |
 | 7. Live Colorful Status View (Kiwi) | 1/1 | Complete | 2026-06-29 |
 | 8. Conductor Context Management | 1/1 | Complete | 2026-06-29 |
-| 9. Diagram-First Docs | 0/1 | Pending | — |
+| 9. Diagram-First Docs | 1/1 | Complete | 2026-06-29 |
