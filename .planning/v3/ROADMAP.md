@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Live Integration Run** *(HUMAN-GATED live run)* - The real end-to-end Loop 2 — actually booting the `rehearsal/<run-id>` app and driving real Integration-Tester→fix cycles to a clean integration — behind `loop2-live.mjs` + `requireLiveFlag()`, off by default, `--dry-run` default, human-supervised, never CI, never `next`
 - [x] **Phase 3: User Review Gate + `/bgsd-user-eval`** *(INTERACTIVE human gate)* - The mandatory human review stop abstracted to `rehearsal/<run-id>`: `/bgsd-user-eval` auto-boots servers + localhost URL + checklist, and a GSD-style selector Q&A captures approve/request-changes/abort into `review.json` — gate state machine deterministic with the prompt injected, never auto-passed
 - [x] **Phase 4: Feedback Mode — `/bgsd-feedback [--fast]`** - Ingest user feedback into traceable items and route it: full mode re-runs both loops on the items; `--fast` skips the loops for parallel/single fix agents with no computer-use verification — reusing the Loop 1 + Loop 2 controllers unchanged, bounded and recorded
-- [ ] **Phase 5: Per-Agent CHANGELOG Into the PR** *(HUMAN-GATED real PR creation)* - Aggregate each agent's changes into a per-agent CHANGELOG (enriching the v2 `generateChangelog()` seed), assemble the exact PR description (pure string, unit-tested), surface it at the review gate, and wire it into a real `gh pr create` against a NON-default branch behind `changelog-pr-live.mjs` + `requireLiveFlag()`
+- [x] **Phase 5: Per-Agent CHANGELOG Into the PR** *(HUMAN-GATED real PR creation)* - Aggregate each agent's changes into a per-agent CHANGELOG (enriching the v2 `generateChangelog()` seed), assemble the exact PR description (pure string, unit-tested), surface it at the review gate, and wire it into a real `gh pr create` against a NON-default branch behind `changelog-pr-live.mjs` + `requireLiveFlag()`
 - [ ] **Phase 6: Diagram-First Docs** - `/bgsd-user-eval` + Review Gate + Loop 2 page and `/bgsd-feedback` + CHANGELOG-into-PR page, GSD-Mintlify style, including the exact human-gated `--live` steps
 
 ## Phase Details
@@ -128,5 +128,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Live Integration Run (HUMAN-GATED) | 1/1 | Complete | 2026-06-29 |
 | 3. User Review Gate + `/bgsd-user-eval` (INTERACTIVE) | 1/1 | Complete | 2026-06-29 |
 | 4. Feedback Mode — `/bgsd-feedback [--fast]` | 1/1 | Complete | 2026-06-29 |
-| 5. Per-Agent CHANGELOG Into the PR (HUMAN-GATED) | 0/1 | Pending | — |
+| 5. Per-Agent CHANGELOG Into the PR (HUMAN-GATED) | 1/1 | Complete | 2026-06-29 |
 | 6. Diagram-First Docs | 0/1 | Pending | — |
