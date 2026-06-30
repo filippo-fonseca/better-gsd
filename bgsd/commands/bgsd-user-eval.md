@@ -11,7 +11,7 @@
 Loop 2 returns a clean integration pass, the Conductor advances the run into a
 `review` lifecycle state and opens the User Review Gate. This command:
 
-1. Auto-boots the integrated `rehearsal/<run-id>` servers and prints the
+1. Auto-boots the integrated `next` servers and prints the
    localhost URL for you to click and verify by hand.
 2. Displays a concrete, per-criterion test checklist derived from the run's
    acceptance criteria and the `integration-report.json`.
@@ -30,7 +30,7 @@ advances the run toward PR creation.
 
 ```
 Loop 1 (per-worktree verify→fix)
-  → Rehearsal assembly (rehearsal/<run-id>)
+  → Merge into next (integration assembly)
     → Loop 2 (integration verify→fix)   ← MUST return PASS
       → /bgsd-user-eval (User Review Gate)  ← YOU ARE HERE
         → /bgsd-feedback (if request-changes)
@@ -41,12 +41,12 @@ Loop 1 (per-worktree verify→fix)
 
 ## Boot + localhost URL (REVIEW-02)
 
-`/bgsd-user-eval` auto-boots the servers for `rehearsal/<run-id>` using the
+`/bgsd-user-eval` auto-boots the servers for `next` using the
 v0/v2 `runtime-isolate.sh` convention (one integrated server, not per-worktree).
 Once booted, it prints:
 
 ```
-Rehearsal app: http://localhost:3099
+Integrated app (next): http://localhost:3099
 (open in your browser to verify by hand)
 ```
 
@@ -55,7 +55,7 @@ Rehearsal app: http://localhost:3099
 | Mode | Behavior |
 |------|----------|
 | `--dry-run` (default) | Prints the boot plan. No process is started. |
-| `--live` | Boots the real rehearsal app. Human-supervised only. Never in CI. |
+| `--live` | Boots the real integrated `next` app. Human-supervised only. Never in CI. |
 
 ---
 
@@ -84,7 +84,7 @@ You work through this checklist while the app is open in your browser.
 After reviewing, you are presented with a **GSD-style selector**:
 
 ```
-Your verdict on the rehearsal branch — pick one:
+Your verdict on the integrated next branch — pick one:
 
   [approve]          Approve — integration looks good. Advance to PR creation.
   [request-changes]  Request changes — describe what's wrong → /bgsd-feedback.
@@ -150,7 +150,7 @@ When a run is in `review` or `needs_input` state, `/bgsd-status` shows:
 
 ```
 ── 👁 User Review Gate  [👁 REVIEW]
-  ⚠ NEEDS YOUR EVAL:  Run /bgsd-user-eval to boot the rehearsal app and submit your verdict.
+  ⚠ NEEDS YOUR EVAL:  Run /bgsd-user-eval to boot the integrated next app and submit your verdict.
 ```
 
 The constant `🔒 main-protected` indicator is always visible in the banner.
@@ -163,7 +163,7 @@ The constant `🔒 main-protected` indicator is always visible in the banner.
 # Dry-run (default): show the boot plan + checklist, do NOT boot
 node "${CLAUDE_PLUGIN_ROOT}/scripts/review.mjs" --run-id bgsd-0001-my-feature
 
-# Live (human-supervised only): boot the real rehearsal app
+# Live (human-supervised only): boot the real integrated next app
 node "${CLAUDE_PLUGIN_ROOT}/scripts/review.mjs" --live --run-id bgsd-0001-my-feature
 ```
 
