@@ -116,8 +116,8 @@ export function requireLiveFlag() {
 // Branch safety guard (NFR-01) — mirrors requireNotNextBranch() from run-live.mjs
 // ---------------------------------------------------------------------------
 
-/** Default production / default branch names that the PR base must never be. */
-const DEFAULT_BRANCHES = Object.freeze(["next", "main", "master"]);
+/** Production branch names a PR base must never be. `next` is allowed (it is the PR target). */
+const DEFAULT_BRANCHES = Object.freeze(["main", "master"]);
 
 /**
  * Refuse to create a PR whose base branch is a default/production branch.

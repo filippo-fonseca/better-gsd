@@ -86,6 +86,7 @@
 
 import { spawnSync }         from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { integrationBranchForRun, isProductionBranch } from "./integration.mjs";
 import { resolve, join, dirname }   from "node:path";
 import { fileURLToPath }            from "node:url";
 
@@ -161,13 +162,13 @@ export function requireLiveFlag() {
  *
  * @throws {Error} if the current branch is a protected branch
  */
-export function requireNotNextBranch() {
+export function requireNotProductionBranch() {
   const result = spawnSync("git", ["branch", "--show-current"], {
     cwd:      REPO_ROOT,
     encoding: "utf8",
   });
   const branch = (result.stdout ?? "").trim();
-  if (branch === "next" || branch === "main" || branch === "master") {
+  if (isProductionBranch(branch)) {
     throw new Error(
       `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n` +
       `bgsd NEVER writes to the production branch during a live integration run.\n` +
@@ -430,9 +431,9 @@ export async function runLiveLoop2({
   loopOpts = {},
 }) {
   requireLiveFlag();
-  requireNotNextBranch();
+  requireNotProductionBranch();
 
-  const branch  = rehearsalBranch ?? `rehearsal/${runId}`;
+  const branch  = rehearsalBranch ?? integrationBranchForRun(runId);
   const bgsd    = bgsdDir ?? join(REPO_ROOT, ".bgsd");
 
   process.stderr.write(
@@ -515,7 +516,7 @@ if (
 
   // Also check branch safety at CLI invocation time.
   try {
-    requireNotNextBranch();
+    requireNotProductionBranch();
   } catch (err) {
     process.stderr.write(err.message);
     process.exit(1);

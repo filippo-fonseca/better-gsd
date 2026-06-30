@@ -83,6 +83,7 @@
 
 import { createHash } from "node:crypto";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { integrationBranchForRun } from "./integration.mjs";
 import { join, dirname } from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -296,7 +297,7 @@ export function writeIntegrationLog({
 export async function runLoop2(opts) {
   const {
     runId,
-    rehearsalBranch = `rehearsal/${runId}`,
+    rehearsalBranch = integrationBranchForRun(runId),
     verify,
     fix,
     reMerge,

@@ -65,6 +65,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { isProductionBranch } from "./integration.mjs";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,15 +137,15 @@ export function requireLiveFlag() {
  *
  * @throws {Error} if the current branch is `next`
  */
-export function requireNotNextBranch() {
+export function requireNotProductionBranch() {
   const result = spawnSync("git", ["branch", "--show-current"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
   });
   const branch = (result.stdout ?? "").trim();
-  if (branch === "next" || branch === "main" || branch === "master") {
+  if (isProductionBranch(branch)) {
     throw new Error(
-      `\nNFR-01 VIOLATION: run-live.mjs refuses to run on branch "${branch}".\n` +
+      `\nNFR-01 VIOLATION: run-live.mjs refuses to run on production branch "${branch}".\n` +
       `bgsd NEVER writes to the production branch.\n` +
       `Switch to a feature branch (e.g. feat/bgsd-v0) and try again.\n`
     );
@@ -171,7 +172,7 @@ export function requireNotNextBranch() {
  */
 export async function liveSpawnFn(unitId, plan) {
   requireLiveFlag();
-  requireNotNextBranch();
+  requireNotProductionBranch();
 
   const { path: wtPath, branch, port } = plan ?? {};
   if (!wtPath || !branch) {
@@ -426,7 +427,7 @@ export async function runLiveRun({
   maxConcurrency = 4,
 }) {
   requireLiveFlag();
-  requireNotNextBranch();
+  requireNotProductionBranch();
 
   // Lazy import the pure lifecycle controller
   const { runLifecycle } = await import(`file://${resolve(__dir, "run.mjs")}`);

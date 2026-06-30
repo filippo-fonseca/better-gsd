@@ -338,11 +338,8 @@ await test("isLiveFlagSet: returns false in test environment", () => {
     "isLiveFlagSet() should return false in test environment (no --live in argv)");
 });
 
-await test("requireNotDefaultBranch: throws for 'next'", () => {
-  assert.throws(
-    () => requireNotDefaultBranch("next"),
-    /NFR-01 VIOLATION/
-  );
+await test("requireNotDefaultBranch: passes for 'next' (integration branch is allowed)", () => {
+  requireNotDefaultBranch("next"); // next is the PR target now, not production
 });
 
 await test("requireNotDefaultBranch: throws for 'main'", () => {
@@ -368,18 +365,16 @@ await test("requireNotDefaultBranch: passes for a feature branch", () => {
   requireNotDefaultBranch("feat/bgsd-v0");
 });
 
-await test("liveCreatePr: refuses 'next' as base even conceptually (before --live check)", () => {
-  // requireNotDefaultBranch fires BEFORE requireLiveFlag, so this throws
-  // regardless of --live being absent — the branch guard is always first.
-  assert.throws(
-    () => liveCreatePr({
+await test("liveCreatePr: accepts 'next' as base (dry preview, no throw)", () => {
+  // next is now the integration target: the branch guard passes, and without
+  // --live liveCreatePr returns a dry preview rather than throwing.
+  assert.doesNotThrow(() =>
+    liveCreatePr({
       base:  "next",
-      head:  "rehearsal/run-2026",
+      head:  "feat/some-unit",
       title: "test PR",
       body:  "test body",
-    }),
-    /NFR-01 VIOLATION/,
-    "liveCreatePr must refuse 'next' as base unconditionally"
+    })
   );
 });
 

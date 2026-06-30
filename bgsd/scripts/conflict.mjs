@@ -65,6 +65,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { integrationBranchForRun } from "./integration.mjs";
 import { dirname }   from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -557,7 +558,7 @@ export function liveGitMergeFn(unitId, runId, { cwd = process.cwd(), branchRef }
   const branch = branchRef ?? `${runId}/${unitId}`;
 
   const result = spawnSync("git", ["merge", "--no-ff", branch, "-m",
-    `chore(bgsd): merge ${branch} into rehearsal/${runId} [auto]`], {
+    `chore(bgsd): merge ${branch} into ${integrationBranchForRun(runId)} [auto]`], {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",

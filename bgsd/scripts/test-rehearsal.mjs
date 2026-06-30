@@ -501,8 +501,8 @@ await test("RH25 — planBranchCleanup: merged units go to toDelete, rehearsal/*
   assert.ok(toDelete.every((b) => !b.branch.startsWith("rehearsal/")),
     "no rehearsal/* in toDelete");
 
-  const rehearsalEntry = toRetain.find((b) => b.branch.startsWith("rehearsal/"));
-  assert.ok(rehearsalEntry, "rehearsal branch in toRetain");
+  const integrationEntry = toRetain.find((b) => b.branch === "next");
+  assert.ok(integrationEntry, "integration branch (next) in toRetain");
 });
 
 await test("RH26 — planBranchCleanup: held units are never in toDelete", () => {
@@ -823,7 +823,7 @@ await test("RH41 — full pipeline: plan → execute → aggregate → changelog
     runId,
   });
   assert.equal(toDelete.length, assemblyOrder.length, "assembled units scheduled for cleanup");
-  assert.ok(toRetain.some((b) => b.branch.startsWith("rehearsal/")), "rehearsal branch retained");
+  assert.ok(toRetain.some((b) => b.branch === "next"), "integration branch (next) retained");
 
   // 6. Dry-run cleanup
   const cleanupResult = await executeBranchCleanup({

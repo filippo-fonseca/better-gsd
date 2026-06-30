@@ -694,11 +694,11 @@ await testAsync("R29 — liveCheckpointFn: throws without --live", async () => {
 
 process.stdout.write("\n--- rehearsal + ledger helpers ---\n");
 
-test("R30 — rehearsalBranch: returns rehearsal/<run-id>", () => {
+test("R30 — rehearsalBranch: returns the integration branch (next)", () => {
   const branch = rehearsalBranch("bgsd-0001-my-feature");
-  assert.equal(branch, "rehearsal/bgsd-0001-my-feature");
-  // Must never be next, main, or develop
-  assert.doesNotMatch(branch, /^(next|main|master|dev|develop)$/i);
+  assert.equal(branch, "next");
+  // Worktree branches assemble INTO this standing branch; never main/master.
+  assert.doesNotMatch(branch, /^(main|master)$/i);
 });
 
 test("R31 — appendLedgerEntry: creates ledger.md if missing + appends entry", () => {

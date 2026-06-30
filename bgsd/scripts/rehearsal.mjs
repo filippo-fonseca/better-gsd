@@ -105,6 +105,7 @@ import { spawnSync } from "node:child_process";
 
 // Re-use computeMergeOrder from conflict.mjs for dependency ordering (REHEARSE-01).
 import { computeMergeOrder } from "./conflict.mjs";
+import { integrationBranchForRun } from "./integration.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -285,7 +286,7 @@ export function liveAssembleFn(unitId, runId, { cwd = process.cwd(), branchRef }
       "--no-ff",
       branch,
       "-m",
-      `chore(bgsd): assemble ${branch} into rehearsal/${runId} [auto]`,
+      `chore(bgsd): assemble ${branch} into ${integrationBranchForRun(runId)} [auto]`,
     ],
     { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" }
   );
@@ -706,10 +707,10 @@ export function planBranchCleanup({ mergedUnits, heldUnits = [], runId, unitBran
     branch: branchFn(runId, unitId),
   }));
 
-  // Also retain the rehearsal branch itself (always — REHEARSE-03)
+  // Also retain the standing integration branch (never deleted — REHEARSE-03)
   toRetain.push({
-    unitId: "__rehearsal__",
-    branch: `rehearsal/${runId}`,
+    unitId: "__integration__",
+    branch: integrationBranchForRun(runId),
   });
 
   return { toDelete, toRetain };

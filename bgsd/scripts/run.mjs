@@ -62,6 +62,7 @@ import {
   existsSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
+import { integrationBranchForRun } from "./integration.mjs";
 import { fileURLToPath } from "node:url";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -692,7 +693,7 @@ export async function runLifecycle({
  * @returns {string}
  */
 export function rehearsalBranch(runId) {
-  return `rehearsal/${runId}`;
+  return integrationBranchForRun(runId);
 }
 
 // ---------------------------------------------------------------------------
@@ -792,7 +793,7 @@ if (
       `  Lifecycle would progress:\n` +
       `    created → decomposed → spawning → executing → verifying →\n` +
       `    merging → checkpoint → done\n\n` +
-      `  Rehearsal branch: rehearsal/${runId}\n\n` +
+      `  Integration branch: ${rehearsalBranch(runId)}\n\n` +
       `  [dry-run] No worktrees, processes, or merges were created.\n` +
       `            Use run-live.mjs --live to run for real (human-gated).\n\n`
     );

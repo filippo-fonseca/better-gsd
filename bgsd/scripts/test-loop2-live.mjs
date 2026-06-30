@@ -38,7 +38,7 @@ import { spawnSync } from "node:child_process";
 import {
   isLiveFlagSet,
   requireLiveFlag,
-  requireNotNextBranch,
+  requireNotProductionBranch,
   liveVerify,
   liveFix,
   liveReMerge,
@@ -121,7 +121,7 @@ await test("(c) requireLiveFlag() message contains 'HUMAN-GATED'", async () => {
 // (d) requireNotNextBranch() blocks "next"
 // ---------------------------------------------------------------------------
 
-await test("(d) requireNotNextBranch() blocks branch named 'next'", async () => {
+await test("(d) requireNotProductionBranch() ALLOWS branch 'next' (integration target)", async () => {
   // We patch requireNotNextBranch by importing the module-internal spawnSync call
   // indirectly. Since requireNotNextBranch reads the real current branch from git,
   // we test it by verifying it throws when we simulate a "next" branch.
@@ -136,19 +136,16 @@ await test("(d) requireNotNextBranch() blocks branch named 'next'", async () => 
   // live git process (since we are testing the logic, not the git call):
 
   function simulateRequireNotNextBranch(branch) {
-    if (branch === "next" || branch === "main" || branch === "master") {
+    if (branch === "main" || branch === "master") {
       throw new Error(
         `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
       );
     }
   }
 
-  await assertThrows(() => simulateRequireNotNextBranch("next"), (err) => {
-    assert.ok(err.message.includes("NFR-01"),
-      "Error should mention NFR-01 for branch 'next'");
-    assert.ok(err.message.includes('"next"'),
-      "Error should name the blocked branch");
-  });
+  let threwForNext = false;
+  try { simulateRequireNotNextBranch("next"); } catch (_) { threwForNext = true; }
+  assert.ok(!threwForNext, "next is the integration target and must be ALLOWED");
 });
 
 // ---------------------------------------------------------------------------
@@ -157,7 +154,7 @@ await test("(d) requireNotNextBranch() blocks branch named 'next'", async () => 
 
 await test("(e) requireNotNextBranch() blocks branch named 'main'", async () => {
   function simulateRequireNotNextBranch(branch) {
-    if (branch === "next" || branch === "main" || branch === "master") {
+    if (branch === "main" || branch === "master") {
       throw new Error(
         `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
       );
@@ -175,7 +172,7 @@ await test("(e) requireNotNextBranch() blocks branch named 'main'", async () => 
 
 await test("(f) requireNotNextBranch() blocks branch named 'master'", async () => {
   function simulateRequireNotNextBranch(branch) {
-    if (branch === "next" || branch === "main" || branch === "master") {
+    if (branch === "main" || branch === "master") {
       throw new Error(
         `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
       );
@@ -301,7 +298,7 @@ await test("(m) Guard message mentions 'loop2-live.mjs --live'", async () => {
 await test("(n) requireNotNextBranch() does not block a normal feature branch", async () => {
   // Use the same branch-name logic to verify feature branches are allowed
   function simulateRequireNotNextBranch(branch) {
-    if (branch === "next" || branch === "main" || branch === "master") {
+    if (branch === "main" || branch === "master") {
       throw new Error(`NFR-01 VIOLATION: "${branch}" is a protected branch`);
     }
     // No throw for allowed branches

@@ -67,6 +67,7 @@
  */
 
 import { writeFileSync, readFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
+import { integrationBranchForRun } from "./integration.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -589,7 +590,7 @@ export async function openReviewGate({
   const write  = typeof writeFn  === "function" ? writeFn  : writeReviewJson;
   const advance = typeof advanceStateFn === "function" ? advanceStateFn : () => {};
 
-  const rehearsalBranch = `rehearsal/${runId}`;
+  const rehearsalBranch = integrationBranchForRun(runId);
 
   // 1. Advance to `review` state (REVIEW-01)
   advance("review", {
@@ -727,7 +728,7 @@ if (
   // Show the boot plan (dry-run default, or live if --live)
   liveBootRehearsalApp({
     runId,
-    rehearsalBranch: `rehearsal/${runId}`,
+    rehearsalBranch: integrationBranchForRun(runId),
     bgsdDir: null,
     port: flags.port ? Number(flags.port) : 3099,
   });
