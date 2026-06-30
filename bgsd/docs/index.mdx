@@ -35,6 +35,12 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 - **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `🔒 main-protected` indicator.
 
+### v3 — Integration Loop + Human Handoff
+
+- **[/bgsd-integrate + /bgsd-user-eval reference](./bgsd-loop2-review.mdx)** — Loop 2 integration verify→fix over `rehearsal/<run-id>`: boot the integrated app, run the Integration Tester, dispatch parallel fix agents, re-merge, and re-verify in a bounded loop until clean or a stop condition fires. Followed by the User Review Gate: auto-boot, per-criterion checklist, GSD-style selector verdict (approve / request-changes / abort / type-your-own), `review.json` output, and the never-auto-pass rule.
+
+- **[/bgsd-feedback + CHANGELOG→PR reference](./bgsd-feedback-changelog.mdx)** — Feedback mode ingestion and routing: full re-run of both loops on your findings vs `--fast` parallel fix agents with no verification (always `UNVERIFIED`). Per-agent CHANGELOG aggregation across Loop 1, Loop 2, and feedback rounds. PR body assembly as a pure deterministic string. Guarded `gh pr create` against a non-default branch behind `--live`, with the never-touch-`next` rule enforced unconditionally.
+
 ---
 
 ## Background and decisions
@@ -52,6 +58,10 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 | Add an item to the fix queue | [/bgsd-queue](./bgsd-queue.mdx#subcommands) |
 | Run a full orchestrated project | [/bgsd-run](./bgsd-run.mdx#human-gated-the---live-flag) |
 | Watch in-flight workers live | [/bgsd-status](./bgsd-status.mdx) |
+| Run Loop 2 integration verify→fix | [/bgsd-integrate + /bgsd-user-eval](./bgsd-loop2-review.mdx) |
+| Review the rehearsal build by hand | [User Review Gate](./bgsd-loop2-review.mdx#user-review-gate) |
+| Feed findings back into the pipeline | [/bgsd-feedback](./bgsd-feedback-changelog.mdx) |
+| Open a real PR with the CHANGELOG | [CHANGELOG→PR](./bgsd-feedback-changelog.mdx#guarded-pr-creation) |
 | Connect Hyperpolymath captures | [Hyperpolymath capture](./hyperpolymath-capture.mdx) |
 | Understand the voice contract | [bgsd/PERSONALITY.md](../PERSONALITY.md) |
 | Read the project milestone history | [.planning/PROJECT.md](../../.planning/PROJECT.md) |
@@ -71,6 +81,8 @@ These pages render standalone without any nav config change. When a maintainer i
     "bgsd/docs/bgsd-queue",
     "bgsd/docs/bgsd-run",
     "bgsd/docs/bgsd-status",
+    "bgsd/docs/bgsd-loop2-review",
+    "bgsd/docs/bgsd-feedback-changelog",
     "bgsd/docs/hyperpolymath-capture"
   ]
 }
