@@ -5,7 +5,16 @@ description: "Table of contents for all bgsd doc pages — start with the Conduc
 
 # bgsd Documentation
 
-bgsd is an open-source Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
+bgsd is an open-source, installable Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
+
+## Install
+
+```bash
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
+
+Then run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (Kiwi) keeps that dependency current and ensures the Playwright browser tooling is available, all at the start of every `/bgsd-sesh`. You just talk to the Conductor; it sets up what it needs. See the [Quickstart](./quickstart.mdx) for the full walkthrough.
 
 A repo is set up once with the idempotent `/bgsd-init` command (also run automatically as a `/bgsd-sesh` preflight): it creates the standing **`next`** integration branch off the auto-detected base branch, scaffolds the persistent `.bgsd/` master folder (`seshs/`, `ledger.md`, `config.json`), and writes a user-editable `BGSD.md` settings file. The pipeline integrates everything on `next`; agents never write to `main`, and the `next` → `main` merge is always manual and human-only.
 
