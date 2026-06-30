@@ -4,7 +4,7 @@
 > `/bgsd-sesh "<whatever I need>"` is the single entry point to bgsd. Kiwi, the
 > Conductor, is always on. By default, the session **runs immediately** — classify,
 > plan, and execute. Pass `--plan-only` (or `--dry-run`) to preview without running.
-> Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `next`.
+> Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `main`.
 
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
@@ -62,7 +62,7 @@ on a tiny 1-unit prompt still produces a feature depth plan; a `--quick` flag on
 a large prompt still forces the quick path. The flag is the contract.
 
 Passing any two of `--quick`, `--feature`, `--project` together is a usage error.
-A flag never disables verification and never lets bgsd write `next` or any default branch.
+A flag never disables verification and never lets bgsd write `main` or any production branch.
 
 ---
 
@@ -167,9 +167,9 @@ manually" path does not exist.
   run executes the orchestration pipeline, but real irreversible actions (git merge,
   gh pr create) are human-gated at merge-boundary checkpoints. They require the
   explicit `--live` opt-in on the underlying `*-live.mjs` module.
-- **`next` is never written.** Every real boundary keeps its existing
-  `requireLiveFlag()` / `requireNotNextBranch` / `requireNotDefaultBranch` guard.
-  bgsd assembles into `rehearsal/<run-id>`; only you merge that to `next` by hand.
+- **`main` is never written.** Every real boundary keeps its existing
+  `requireLiveFlag()` / `requireNotProductionBranch` / `requireNotDefaultBranch` guard.
+  bgsd assembles into the standing `next` branch; only you merge `next` → `main` by hand.
 - **No silent green.** Verification is never skipped; the review gate is never
   auto-passed; escalations surface a real question rather than a guess.
 
