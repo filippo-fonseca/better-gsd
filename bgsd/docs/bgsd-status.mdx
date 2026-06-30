@@ -20,7 +20,7 @@ flowchart TD
     C --> D["Worker table\n── Workers (3 total) ──────────────────────\n[⟳ RUNNING]  agent-a1b2  [execute]  iter 2/5  1 commit\n        branch: bgsd-0042-add-user-auth/unit-auth-c3d4\n[? NEEDS INPUT]  agent-e5f6  [blocked]\n        ⚠ NEEDS YOUR INPUT: Which DB migration strategy? [high]\n[✓ DONE]  agent-g7h8  [done]  iter 1/5  3 commits\n──────────────────────────────────────────"]
     D --> E["Merge history\nwave 0: 2 merged  0 held  ✓ approved\nwave 1: 1 merged  1 held  ⏳ pending"]
     E --> F["Budget and context\nTokens: 24,500 / 100,000  24% of cap  [█████░░░░░░░░░░░░░░░]\nCost:   $0.0031 / $5.00 cap\nWorkers: 3  fan-out: ×6\nCtx pressure: NORMAL"]
-    F --> G["Footer\n🔒 main-protected  integrates on next — main never written by an agent  2026-06-29 14:03:22 UTC"]
+    F --> G["Footer\n🔒 main-protected  integrates on next; main never written by an agent  2026-06-29 14:03:22 UTC"]
 ```
 
 ---
