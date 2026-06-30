@@ -20,7 +20,7 @@ The roadmap is de-risked hardest-first around the **central design knot**: GSD's
 - [x] **Phase E2: Active Upfront Brainstorm + Decision Record** - The interactive, selector-driven upfront discussion (phases/scope/gray-areas) that front-loads intent into a sealed, queryable decision record
 - [x] **Phase E3: Preference Profile** - Derive a structured, source-tagged preference profile from the brainstorm answers — the secondary, lower-weight oracle source
 - [x] **Phase E4: Decision-Oracle + Confidence Scoring + discuss-phase Auto-Answer Seam** *(THE CENTRAL KNOT)* - The oracle store + deterministic confidence score + the auto-answer-into-`discuss-phase` seam (non-interactive GSD modes + the v2 inbox/re-launch path), gated by the confidence threshold
-- [ ] **Phase E5: Confidence-Gated Human Escalation via Selectors** - Below-threshold/abstain → reuse the v2 control-file escalation as exactly one consolidated GSD-style selector question; answers enrich the oracle; rarity surfaced in `/bgsd-status`
+- [x] **Phase E5: Confidence-Gated Human Escalation via Selectors** - Below-threshold/abstain → reuse the v2 control-file escalation as exactly one consolidated GSD-style selector question; answers enrich the oracle; rarity surfaced in `/bgsd-status`
 - [ ] **Phase E6: Diagram-First Docs** - `/bgsd-intake` + upfront-brainstorm and decision-oracle + proxy-Q&A pages, GSD-Mintlify style, including the selector-always rule and the auto-answer/escalation decision diagram
 
 ## Phase Details
@@ -124,7 +124,7 @@ Phases execute in E-numeric order: E1 → E2 → E3 → E4 → E5 → E6
 | E2. Active Upfront Brainstorm + Decision Record (INTERACTIVE) | 1/1 | Complete | 2026-06-29 |
 | E3. Preference Profile | 1/1 | Complete | 2026-06-29 |
 | E4. Decision-Oracle + Confidence + Auto-Answer Seam (CENTRAL KNOT) | 1/1 | Complete | 2026-06-29 |
-| E5. Confidence-Gated Human Escalation via Selectors | 0/1 | Pending | — |
+| E5. Confidence-Gated Human Escalation via Selectors | 1/1 | Complete | 2026-06-29 |
 | E6. Diagram-First Docs | 0/1 | Pending | — |
 
 ---
