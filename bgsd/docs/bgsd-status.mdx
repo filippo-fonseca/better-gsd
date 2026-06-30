@@ -20,7 +20,7 @@ flowchart TD
     C --> D["Worker table\n── Workers (3 total) ──────────────────────\n[⟳ RUNNING]  agent-a1b2  [execute]  iter 2/5  1 commit\n        branch: bgsd-0042-add-user-auth/unit-auth-c3d4\n[? NEEDS INPUT]  agent-e5f6  [blocked]\n        ⚠ NEEDS YOUR INPUT: Which DB migration strategy? [high]\n[✓ DONE]  agent-g7h8  [done]  iter 1/5  3 commits\n──────────────────────────────────────────"]
     D --> E["Merge history\nwave 0: 2 merged  0 held  ✓ approved\nwave 1: 1 merged  1 held  ⏳ pending"]
     E --> F["Budget and context\nTokens: 24,500 / 100,000  24% of cap  [█████░░░░░░░░░░░░░░░]\nCost:   $0.0031 / $5.00 cap\nWorkers: 3  fan-out: ×6\nCtx pressure: NORMAL"]
-    F --> G["Footer\n🔒 main-protected  rehearsal/* only — next/main never written by bgsd  2026-06-29 14:03:22 UTC"]
+    F --> G["Footer\n🔒 main-protected  integrates on next — main never written by an agent  2026-06-29 14:03:22 UTC"]
 ```
 
 ---
@@ -143,10 +143,12 @@ The butler voice lives in the **narration line only** — the one-line summary r
 | Run state | Kiwi narration |
 |-----------|---------------|
 | `decomposed` | `"Kiwi is decomposing your prompt, sir — the dependency graph is being assembled."` |
-| `executing` | `"3 workers underway, sir — wave 2 of 3."` |
+| `executing` | `"3 workers underway, sir — wave 2 of 3. 4/4 agents finished, 2/4 verified and merged into next."` |
 | `checkpoint` | `"Kiwi needs your go/no-go at the merge boundary, sir. Please review and respond."` |
-| `done` | `"Run complete, sir — 4 units merged successfully. Rehearsal branch is ready for inspection."` |
+| `done` | `"Run complete, sir — 4 units merged into next. The integrated build is ready for your inspection."` |
 | `aborted` | `"Run aborted, sir. All branches and control files have been preserved."` |
+
+Alongside this one-line summary, the Conductor narrates the pipeline conversationally during a session: the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. (This richer narration layer is being wired now.)
 
 **Structured outputs are never in-character.** Badge labels, state names, verdicts, JSON reports, and YAML fields stay strictly literal. The butler voice is a costume on top of rigorous state rendering, not a substitute for it. A `FAILED` unit is rendered as `[✗ FAILED]`, not softened to anything else.
 
@@ -195,7 +197,7 @@ node bgsd/scripts/status.mjs --watch 5      # refresh every 5s
 |---------|--------------|
 | `/bgsd-run "<prompt>"` | Start a new project orchestration run. |
 | `/bgsd-abort` | Stop an in-flight run cleanly; all branches and control files are preserved. |
-| `/bgsd-clean-branches` | Prune `rehearsal/*` branches already merged into the base branch; never deletes an unmerged branch. |
+| `/bgsd-clean-branches` | Prune merged worktree/unit branches already integrated into `next`; never deletes the standing `next` branch or any unmerged branch. |
 
 ---
 
