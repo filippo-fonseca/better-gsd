@@ -286,3 +286,4 @@ The old commands still work and map to internal session stages:
 | `/bgsd-feedback` | feedback ingestion when you report an issue mid-session |
 | `/bgsd-changelog` | CHANGELOG → PR assembly |
 | `/bgsd-status` | the always-on live view, shown continuously |
+| `/bgsd-resume` | pick up an interrupted session from `.bgsd/runs/` (auto-selects the latest in-flight run) |
