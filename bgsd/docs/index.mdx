@@ -1,0 +1,79 @@
+---
+title: "bgsd Documentation"
+description: "Table of contents for all bgsd doc pages — from quickstart to full command references."
+---
+
+# bgsd Documentation
+
+bgsd is an open-source Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. These pages document every command, every hard rule, and every seam from v0 through v2.
+
+All pages are valid standalone Mintlify MDX. They are intentionally kept outside GSD's vendored nav config (`mint.json` / `docs.json`) — editing that file would violate the "never edit vendored GSD" rule. To surface bgsd in the docs site nav, add a single group entry to the Mintlify nav config pointing at these pages (see the note at the bottom of any page).
+
+---
+
+## Getting started
+
+- **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Start here.
+
+---
+
+## Command references
+
+### v0 — Standalone Tester
+
+- **[/bgsd-verify reference](./bgsd-verify.mdx)** — Full reference for the verify command: arguments, acceptance-criteria input formats (`--criteria` file or `--inline` string), the `verification-report.json` schema (all fields and types), and detailed driver-ladder behavior (pre-flight probe, rung-by-rung procedure, `console_reliable` flag, and hard rules).
+
+### v1 — Fix-stream
+
+- **[/bgsd-queue reference](./bgsd-queue.mdx)** — Fix-stream lifecycle diagram, state machine (all states and terminal conditions), subcommands (`add`, `status`, `start`), classification rules and routing table, Loop 1 controller algorithm and stop conditions, queue store format, and quick-reference script invocations.
+
+- **[Hyperpolymath capture→queue cron](./hyperpolymath-capture.mdx)** — How bgsd turns Hyperpolymath items into `/bgsd-queue` entries: the capture seam contract, dry-run cron invocation modes, idempotency via content-key dedup, launchd scheduling, and the human-gated live hookup (guards, refusal behavior, and step-by-step activation).
+
+### v2 — Conductor (Kiwi)
+
+- **[/bgsd-run reference](./bgsd-run.mdx)** — The full Conductor pipeline: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and the wave scheduler, conflict pre-check and merge-resolver, rehearsal assembly, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
+
+- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `🔒 main-protected` indicator.
+
+---
+
+## Background and decisions
+
+- **[INTEGRATION-NOTES.md](./INTEGRATION-NOTES.md)** — Plugin loading decisions (why a Directory marketplace source instead of editing GSD's plugin manifest), MCP invocation decisions (why a general-purpose subagent instead of the named plugin subagent), and references to the Claude Code bugs that motivate each choice.
+
+---
+
+## Quick links
+
+| I want to... | Go to |
+|---|---|
+| Install and run the canary proof | [Quickstart](./quickstart.mdx) |
+| Understand the verdict contract | [/bgsd-verify](./bgsd-verify.mdx#the-report-schema) |
+| Add an item to the fix queue | [/bgsd-queue](./bgsd-queue.mdx#subcommands) |
+| Run a full orchestrated project | [/bgsd-run](./bgsd-run.mdx#human-gated-the---live-flag) |
+| Watch in-flight workers live | [/bgsd-status](./bgsd-status.mdx) |
+| Connect Hyperpolymath captures | [Hyperpolymath capture](./hyperpolymath-capture.mdx) |
+| Understand the voice contract | [bgsd/PERSONALITY.md](../PERSONALITY.md) |
+| Read the project milestone history | [.planning/PROJECT.md](../../.planning/PROJECT.md) |
+
+---
+
+## Adding these pages to the Mintlify docs site nav
+
+These pages render standalone without any nav config change. When a maintainer is ready to surface all bgsd pages in the nav, add one group entry to the Mintlify nav config (`mint.json` or `docs.json`):
+
+```json
+{
+  "group": "bgsd",
+  "pages": [
+    "bgsd/docs/quickstart",
+    "bgsd/docs/bgsd-verify",
+    "bgsd/docs/bgsd-queue",
+    "bgsd/docs/bgsd-run",
+    "bgsd/docs/bgsd-status",
+    "bgsd/docs/hyperpolymath-capture"
+  ]
+}
+```
+
+That one addition is the only change needed. It does not touch any vendored GSD files.
