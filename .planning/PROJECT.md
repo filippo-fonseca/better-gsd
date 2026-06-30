@@ -55,7 +55,7 @@ If this isn't reliable, nothing downstream (loops, orchestration) matters. v0 ex
 ## Future Milestones (per Part 8 of the PRD + live addenda)
 
 - **v1 — Fix-stream mode (`/bgsd-queue`) + Loop 1. ✅ BUILT (2026-06-29).** Queue → classify/route to GSD → execute → Tester → Ralph stop-hook. Lowest-risk autonomy; one worktree + one loop. Deterministic core + 85 unit tests across queue/route/loop1/capture; the two live runs (Loop 1 autonomous spawn, Hyperpolymath cron) are guarded behind `--live` and remain human-gated. Roadmap: `.planning/v1/`.
-- **v2 — Project orchestrator (`/bgsd-run`) + parallelism + Loop 1 across worktrees.** Conductor (Kiwi): decomposition, dependency graph, headless spawning, control-file protocol, heartbeat/restart, conflict pre-check + merge-resolver, `rehearsal/<run-id>`, doc aggregation, branch cleanup, with Conductor→user checkpoints at merge boundaries.
+- **v2 — Project orchestrator (`/bgsd-run`) — Conductor (Kiwi). ✅ BUILT (2026-06-29).** Decomposition, dependency graph, headless spawning, control-file protocol, heartbeat/restart, conflict pre-check + merge-resolver, `rehearsal/<run-id>`, doc aggregation, reversible branch cleanup, Conductor→user checkpoints at merge boundaries, the live colorful `/bgsd-status` view, and context management. 9 phases; deterministic core unit-tested (14 suites green across v0+v1+v2); the live multi-process orchestration run is guarded behind `--live` (human-gated). Roadmap `.planning/v2/`. Intake/proxy extension (E1–E6) drafted in `.planning/v2-intake/`.
 - **v3 — Loop 2 (integration) + User Review Gate + feedback mode.** `/bgsd-user-eval`, `/bgsd-feedback [--fast]`, per-agent CHANGELOG into the PR.
 
 **Live addenda captured (post-PRD clarifications — all land in v2+/Conductor scope unless noted):**
@@ -89,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone** (via `/gsd-complete-milestone`): full review; confirm Core Value priority; audit Out of Scope; promote next version (v1) into Active.
 
 ---
-*Last updated: 2026-06-29 — Milestones v0 (proven) + v1 (built; live runs human-gated) complete. Next: v2 (Conductor / Kiwi).*
+*Last updated: 2026-06-29 — v0 (proven) + v1 + v2 (built; live runs human-gated) complete. Next: v3 (Loop 2 + feedback) and the v2-intake extension. Landing page + docs in progress.*
