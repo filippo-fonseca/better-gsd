@@ -1058,19 +1058,27 @@ if (
       } catch (err) {
         process.stdout.write(`  preflight skipped (${err.message})\n`);
       }
-      // Conductor dependency preflight: ensure the engine + verify tooling are present.
+      // Conductor dependency preflight: ENSURE the engine is present + current,
+      // out of the box. gsd-core is the npm package @opengsd/gsd-core, installed
+      // (and updated) by the same non-interactive command. If it is missing we
+      // install it now; if present we refresh it to latest. Resilient: any
+      // failure is reported, never crashes the session.
       try {
-        const { isGsdInstalled, GSD_MARKETPLACE_SOURCE, GSD_PLUGIN_NAME } = await import("./gsdinstall-live.mjs");
-        if (isGsdInstalled()) {
-          process.stdout.write(`  deps: gsd-core (engine) installed ✓\n`);
+        const { isGsdInstalled, ensureGsdLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
+        const wasInstalled = isGsdInstalled();
+        if (wasInstalled) {
+          process.stdout.write(`  deps: gsd-core (engine) installed ✓ — refreshing to latest\n`);
         } else {
-          process.stdout.write(
-            `  deps: gsd-core (engine) missing. Kiwi installs it with:\n` +
-            `        claude plugin marketplace add ${GSD_MARKETPLACE_SOURCE} && claude plugin install ${GSD_PLUGIN_NAME} --scope user\n`
-          );
+          process.stdout.write(`  deps: gsd-core (engine) missing — installing ${GSD_NPM_PACKAGE} now\n`);
         }
+        const res = ensureGsdLive({ log: (m) => process.stdout.write(`        ${m}\n`) });
+        const did = res.performed.length ? res.performed.join(", ") : "already current";
+        process.stdout.write(`  deps: gsd-core ready ✓  [${did}]\n`);
       } catch (err) {
-        process.stdout.write(`  deps: gsd-core check skipped (${err.message})\n`);
+        process.stdout.write(
+          `  deps: gsd-core ensure FAILED (${err.message}). ` +
+          `Install manually: npx -y @opengsd/gsd-core@latest --claude --global\n`
+        );
       }
       process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
       process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
