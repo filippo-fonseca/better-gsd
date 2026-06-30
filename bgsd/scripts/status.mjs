@@ -82,6 +82,7 @@ const BADGE_DEFS = {
   "blocked":     { color: yellow,       symbol: "⏸", label: "BLOCKED"     },
   "needs_input": { color: brightCyan,   symbol: "?", label: "NEEDS INPUT" },
   "needs-input": { color: brightCyan,   symbol: "?", label: "NEEDS INPUT" },
+  "review":      { color: brightCyan,   symbol: "👁", label: "REVIEW"      },
   "done":        { color: brightGreen,  symbol: "✓", label: "DONE"        },
   "failed":      { color: brightRed,    symbol: "✗", label: "FAILED"      },
   "stalled":     { color: yellow,       symbol: "⏸", label: "STALLED"     },
@@ -102,17 +103,22 @@ function hr(width = 52) {
 // ---------------------------------------------------------------------------
 
 const RUN_STATE_COLORS = {
-  created:     dim,
-  decomposed:  cyan,
-  spawning:    brightYellow,
-  executing:   brightYellow,
-  verifying:   brightYellow,
-  merging:     magenta,
-  checkpoint:  brightCyan,
-  done:        brightGreen,
-  aborted:     brightRed,
-  blocked:     yellow,
-  needs_input: brightCyan,
+  created:       dim,
+  decomposed:    cyan,
+  spawning:      brightYellow,
+  executing:     brightYellow,
+  verifying:     brightYellow,
+  merging:       magenta,
+  checkpoint:    brightCyan,
+  integrating:   magenta,
+  review:        brightCyan,
+  done:          brightGreen,
+  aborted:       brightRed,
+  blocked:       yellow,
+  needs_input:   brightCyan,
+  integration_done:    brightGreen,
+  integration_failed:  brightRed,
+  integration_blocked: yellow,
 };
 
 function colorState(state) {
@@ -440,6 +446,14 @@ function kiwiNarration(run, agents) {
   if (state === "checkpoint") {
     return brightCyan("Kiwi needs your go/no-go at the merge boundary, sir. Please review and respond.");
   }
+  if (state === "integrating") {
+    return dim("Kiwi is running Loop 2 integration verify→fix over the rehearsal branch, sir.");
+  }
+  if (state === "review") {
+    return brightCyan(
+      "Kiwi needs your evaluation, sir. The rehearsal app is ready — please review and submit your verdict."
+    );
+  }
   if (state === "done") {
     return brightGreen(`Run complete, sir — ${done} unit${done !== 1 ? "s" : ""} merged successfully. Rehearsal branch is ready for inspection.`);
   }
@@ -494,6 +508,32 @@ export function renderStatus({ run, agents = [], telemetry = null }) {
     parts.push(bold(white("  Merge State")));
     parts.push(hr(52));
     parts.push(mergeSection);
+    parts.push("");
+  }
+
+  // 5b. Review gate section — REVIEW-04: distinct badge + Kiwi "needs your eval" line
+  if (run && (run.state === "review" || run.state === "needs_input")) {
+    parts.push(hr(52));
+    parts.push(
+      bold(brightCyan("  👁 User Review Gate")) + "  " +
+      badge(run.state === "needs_input" ? "needs_input" : "review")
+    );
+    parts.push(hr(52));
+    if (run.state === "review") {
+      parts.push(
+        "  " + brightCyan("⚠ NEEDS YOUR EVAL:") + "  " +
+        bold("Run /bgsd-user-eval to boot the rehearsal app and submit your verdict.")
+      );
+    } else {
+      parts.push(
+        "  " + brightCyan("⏳ NEEDS INPUT:") + "  " +
+        bold("The review gate is waiting for your verdict. Run /bgsd-user-eval.")
+      );
+    }
+    const reviewJsonPath = run.review_json_path;
+    if (reviewJsonPath) {
+      parts.push("  " + dim(`review.json: ${reviewJsonPath}`));
+    }
     parts.push("");
   }
 

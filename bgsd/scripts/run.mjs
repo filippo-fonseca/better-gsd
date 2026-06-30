@@ -83,6 +83,9 @@ export const RUN_STATES = Object.freeze([
   "verifying",
   "merging",
   "checkpoint",
+  // v3 Loop 2 + Review Gate states (REVIEW-01..04, LOOP2-01)
+  "integrating",
+  "review",
   "done",
   "aborted",
   "blocked",
