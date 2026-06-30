@@ -67,6 +67,8 @@ import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 
+import { derivePhaseConfig, writeUnitPhaseConfig } from "./phaseconfig.mjs";
+
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
 
@@ -204,6 +206,30 @@ export function writeUnitConfig(planningDir, posture, unitId) {
   config.bgsd_unit_posture = { unit_id: unitId, ...posture };
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
   return configPath;
+}
+
+/**
+ * Write BOTH per-unit config seams to a worktree's .planning/config.json:
+ *   1. bgsd_unit_posture  — model × effort routing (GRAPH-04, writeUnitConfig)
+ *   2. bgsd_phase_config  — which GSD phases run for this unit (Phase 7)
+ *
+ * The two seams are orthogonal and must coexist: writeUnitConfig sets the
+ * posture key first, then writeUnitPhaseConfig layers the phase toggles on top
+ * without clobbering posture (both functions preserve every other key). A
+ * pipeline agent reads bgsd_phase_config to skip/add phases per worktree and
+ * bgsd_unit_posture to route models.
+ *
+ * @param {string} planningDir   path to the worktree's .planning/ directory
+ * @param {object} unit          the full unit object (has difficulty, touched,
+ *                               model_posture, id)
+ * @returns {string}  path written
+ */
+export function writeUnitWorktreeConfig(planningDir, unit) {
+  // 1. Posture first (sets bgsd_unit_posture, preserves other keys).
+  writeUnitConfig(planningDir, unit.model_posture, unit.id);
+  // 2. Phase config next (sets bgsd_phase_config, preserves bgsd_unit_posture).
+  const phaseConfig = derivePhaseConfig(unit);
+  return writeUnitPhaseConfig(planningDir, phaseConfig, unit.id);
 }
 
 // ---------------------------------------------------------------------------

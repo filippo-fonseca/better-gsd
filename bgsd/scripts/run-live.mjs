@@ -191,7 +191,7 @@ export async function liveSpawnFn(unitId, plan) {
 
   // LIVE SEAM POINT: in a fully-wired live run, this would:
   //   spawnSync("git", ["worktree", "add", wtPath, "-b", branch, baseRef], ...)
-  //   writeUnitConfig(join(wtPath, ".planning"), posture, unitId)
+  //   writeUnitWorktreeConfig(join(wtPath, ".planning"), unit)  // posture + phase config
   //   spawnSync("claude", ["-p", "/gsd-execute-phase", "--worktree", wtPath], ...)
   //
   // The actual spawn is intentionally NOT executed here; the human runs this
