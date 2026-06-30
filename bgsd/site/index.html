@@ -1437,39 +1437,46 @@
   <div class="container">
     <div class="section-header center">
       <span class="kicker"><span class="num">06</span> · installation</span>
-      <h2 id="install-heading" class="section-title">Three steps to install. One command to run everything.</h2>
+      <h2 id="install-heading" class="section-title">Two commands to install. One command to run everything.</h2>
     </div>
 
     <div class="install-card">
       <h3>Install bgsd</h3>
       <p class="intro">
-        Run from the repo root where <code>bgsd/</code> lives. bgsd loads as a second plugin via a local
-        marketplace — GSD's own plugin manifest is never touched.
+        bgsd is an installable, standalone Claude Code plugin. Add the marketplace, install the plugin,
+        and reload. It is <strong style="color:var(--fg)">gsd-agnostic</strong>: it does not vendor GSD.
+        It uses the user-installed <code>gsd-core</code> plugin, and the Conductor (Kiwi) sets up what it
+        needs (gsd-core, Playwright) at the start of every sesh. You just talk to it.
       </p>
 
       <div class="step-label">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 18 22 12 16 6"/><path d="M8 6 2 12 8 18"/></svg>
-        Step 1 — Register and install the plugin
+        Step 1 — Add the marketplace and install the plugin
       </div>
       <div class="code">
-        <span class="c"># Register the local marketplace source</span><br>
-        <span class="cmd">claude</span> plugin marketplace add <span class="path">./bgsd</span><br><br>
-        <span class="c"># Install the bgsd plugin (user scope)</span><br>
-        <span class="cmd">claude</span> plugin install <span class="flag">bgsd@bgsd-local</span>
+        <span class="c"># Add the bgsd marketplace, then install the plugin</span><br>
+        <span class="cmd">claude</span> plugin marketplace add <span class="path">filippo-fonseca/better-gsd</span><br>
+        <span class="cmd">claude</span> plugin install <span class="flag">bgsd@better-gsd</span><br><br>
+        <span class="c"># Then reload so the /bgsd-* commands bind</span><br>
+        /reload-plugins                                  <span class="c"># or restart Claude Code</span>
       </div>
 
       <div class="step-label">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 18 22 12 16 6"/><path d="M8 6 2 12 8 18"/></svg>
-        Step 2 — Add Playwright MCP
+        Step 2 — Talk to the Conductor; it provisions the rest
       </div>
       <div class="code">
-        <span class="c"># Add once per machine — pinned version</span><br>
+        <span class="c"># Kiwi ensures gsd-core is installed and up to date at sesh start</span><br>
+        <span class="c"># (claude plugin install gsd-core --scope user; claude plugin update gsd-core)</span><br>
+        <span class="c"># and ensures the Playwright browser tooling is available.</span><br>
+        <span class="c"># You do not run these by hand.</span><br><br>
+        <span class="c"># Optional, to add Playwright yourself for the canary proof below:</span><br>
         <span class="cmd">claude</span> mcp add playwright <span class="flag">--</span> npx <span class="path">@playwright/mcp@0.0.76</span>
       </div>
 
       <div class="step-label">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 18 22 12 16 6"/><path d="M8 6 2 12 8 18"/></svg>
-        Step 3 — Restart Claude Code, run the canary proof, then start a session
+        Step 3 — Optionally run the canary proof, then start a session
       </div>
       <div class="code">
         <span class="c"># Canary proof: clean route (expect PASS)</span><br>
@@ -1497,7 +1504,10 @@
           stripped from production builds. <code>/bgsd-init</code> creates the standing
           <code>next</code> integration branch off your base branch, scaffolds the persistent
           <code>.bgsd/</code> master folder, and writes a user-editable <code>BGSD.md</code> settings
-          file. Once the canary passes, <code>/bgsd-sesh</code> is all you need.
+          file. The Conductor ensures <code>gsd-core</code> is installed and kept up to date for you
+          (and runs <code>claude plugin update gsd-core</code> to refresh it); after any plugin update,
+          Claude Code needs <code>/reload-plugins</code> or a restart to apply, and Kiwi flags it.
+          Once installed, <code>/bgsd-sesh</code> is all you need.
         </span>
       </p>
     </div>
