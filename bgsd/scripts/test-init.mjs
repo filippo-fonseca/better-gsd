@@ -175,7 +175,8 @@ test("I07 — parseBgsdMd: partial override layers over defaults", () => {
 test("I08 — mergeGitignore: empty gains block", () => {
   const { content, changed } = mergeGitignore("");
   assert.equal(changed, true);
-  assert.ok(content.includes(".bgsd/runs/"));
+  assert.ok(content.includes(".bgsd/*"));
+  assert.ok(content.includes("!.bgsd/seshs/"));
   assert.ok(content.includes("# bgsd — runtime artifacts (local only)"));
 });
 
@@ -189,7 +190,7 @@ test("I09 — mergeGitignore: idempotent", () => {
 test("I10 — mergeGitignore: preserves existing content", () => {
   const { content } = mergeGitignore("node_modules\ndist\n");
   assert.ok(content.startsWith("node_modules\ndist\n"));
-  assert.ok(content.includes(".bgsd/run-counter"));
+  assert.ok(content.includes(".bgsd-tmp/"));
 });
 
 // ---------------------------------------------------------------------------
@@ -279,7 +280,7 @@ test("I14 — executeInit: fresh repo performs full bootstrap", () => {
   assert.ok(files.has("/repo/.bgsd/config.json"));
   assert.ok(files.has("/repo/BGSD.md"));
   assert.ok(files.has("/repo/.bgsd/ledger.md"));
-  assert.ok(files.get("/repo/.gitignore").includes(".bgsd/runs/"));
+  assert.ok(files.get("/repo/.gitignore").includes(".bgsd/*"));
   assert.ok(branches.has("next"));
   assert.deepEqual(calls.createBranch[0], ["next", "main"]);
 });

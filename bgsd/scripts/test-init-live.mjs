@@ -103,7 +103,7 @@ test("L02 — executeInit (live deps) bootstraps a real repo", () => {
     assert.ok(existsSync(join(dir, "BGSD.md")), "BGSD.md");
     assert.ok(existsSync(join(dir, ".bgsd", "ledger.md")), "ledger.md");
     assert.ok(existsSync(join(dir, ".bgsd", "seshs", ".gitkeep")), "seshs/.gitkeep");
-    assert.ok(readFileSync(join(dir, ".gitignore"), "utf8").includes(".bgsd/runs/"));
+    assert.ok(readFileSync(join(dir, ".gitignore"), "utf8").includes(".bgsd/*"));
 
     const branches = sh(dir, ["git", "branch", "--list", "next"]);
     assert.ok(branches.includes("next"), "next branch created");

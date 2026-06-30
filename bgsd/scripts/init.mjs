@@ -206,13 +206,20 @@ export function parseBgsdMd(text) {
 
 const GITIGNORE_SENTINEL = "# bgsd — runtime artifacts (local only)";
 
-/** The block bgsd appends to .gitignore. Committed: seshs/, ledger.md, config.json, BGSD.md. */
+/**
+ * The block bgsd appends to .gitignore. Allowlist form: ignore ALL runtime
+ * children of .bgsd/ (runs/, queue/, cache/, run-counter, ...) and commit only
+ * the persistent records (seshs/, ledger.md, config.json). BGSD.md sits at the
+ * repo root and is committed by default.
+ */
 const GITIGNORE_BLOCK = [
   GITIGNORE_SENTINEL,
-  ".bgsd/runs/",
-  ".bgsd/run-counter",
+  "# Ignore all runtime artifacts; commit only the persistent records.",
+  ".bgsd/*",
+  "!.bgsd/seshs/",
+  "!.bgsd/ledger.md",
+  "!.bgsd/config.json",
   ".bgsd-tmp/",
-  "# committed on purpose: .bgsd/seshs/, .bgsd/ledger.md, .bgsd/config.json, BGSD.md",
 ].join("\n");
 
 /**
