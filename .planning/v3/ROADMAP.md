@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 **Ordering note:** Phases run in numeric order, but the riskiest live wiring is front-loaded right after its one hard dependency is in place: Phase 1 builds the deterministic Loop 2 controller, then Phase 2 (the live integration run) is the single primary human-gated phase. Real PR creation (Phase 5) is exercised only under the same `--live` gate. The User Review Gate (Phase 3) is interactive-by-design — built with an injected prompt (mocked in tests), the real human interaction never simulated away as a pass.
 
-- [ ] **Phase 1: Loop 2 — Integration Verify→Fix Controller (mocked Tester/fix)** - The deterministic integration-level Ralph loop over `rehearsal/<run-id>` — boot-the-integrated-app + Integration Tester (`integration-report.json`) + parallel fix agents + re-merge + re-verify + stop conditions, reusing the v1 `runLoop1` DI shape with verify/fix injected and unit-tested under mocked boundaries
+- [x] **Phase 1: Loop 2 — Integration Verify→Fix Controller (mocked Tester/fix)** - The deterministic integration-level Ralph loop over `rehearsal/<run-id>` — boot-the-integrated-app + Integration Tester (`integration-report.json`) + parallel fix agents + re-merge + re-verify + stop conditions, reusing the v1 `runLoop1` DI shape with verify/fix injected and unit-tested under mocked boundaries
 - [ ] **Phase 2: Live Integration Run** *(HUMAN-GATED live run)* - The real end-to-end Loop 2 — actually booting the `rehearsal/<run-id>` app and driving real Integration-Tester→fix cycles to a clean integration — behind `loop2-live.mjs` + `requireLiveFlag()`, off by default, `--dry-run` default, human-supervised, never CI, never `next`
 - [ ] **Phase 3: User Review Gate + `/bgsd-user-eval`** *(INTERACTIVE human gate)* - The mandatory human review stop abstracted to `rehearsal/<run-id>`: `/bgsd-user-eval` auto-boots servers + localhost URL + checklist, and a GSD-style selector Q&A captures approve/request-changes/abort into `review.json` — gate state machine deterministic with the prompt injected, never auto-passed
 - [ ] **Phase 4: Feedback Mode — `/bgsd-feedback [--fast]`** - Ingest user feedback into traceable items and route it: full mode re-runs both loops on the items; `--fast` skips the loops for parallel/single fix agents with no computer-use verification — reusing the Loop 1 + Loop 2 controllers unchanged, bounded and recorded
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Loop 2 — Integration Verify→Fix Controller (mocked Tester/fix) | 0/1 | Pending | — |
+| 1. Loop 2 — Integration Verify→Fix Controller (mocked Tester/fix) | 1/1 | Complete | 2026-06-29 |
 | 2. Live Integration Run (HUMAN-GATED) | 0/1 | Pending | — |
 | 3. User Review Gate + `/bgsd-user-eval` (INTERACTIVE) | 0/1 | Pending | — |
 | 4. Feedback Mode — `/bgsd-feedback [--fast]` | 0/1 | Pending | — |
