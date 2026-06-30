@@ -7,9 +7,32 @@ description: "The single entry point for bgsd: talk to the Conductor (Kiwi) and 
 
 `/bgsd-sesh "<prompt>"` is the only interface you ever use. The Conductor (codename Kiwi) is always on.
 
-You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and **runs the full pipeline immediately**. Pass `--plan-only` (or `--dry-run`) to preview the plan without executing anything. Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `next`.
+You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and **runs the full pipeline immediately**. Pass `--plan-only` (or `--dry-run`) to preview the plan without executing anything. The pipeline integrates everything on the standing **`next`** branch; the `next` → `main` merge is a manual, human-only step. The one hard invariant is that **agents never write to `main`** (the production branch).
 
-You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly — those are internal stages the Conductor runs for you.
+You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly; those are internal stages the Conductor runs for you.
+
+## One-time setup: `/bgsd-init`
+
+Before the first session in a repo, run `/bgsd-init` once. It is idempotent (safe to re-run), and every `/bgsd-sesh` runs it automatically as a preflight, so you rarely call it by hand:
+
+```bash
+/bgsd-init
+```
+
+`/bgsd-init`:
+
+- creates the standing **`next`** integration branch off the auto-detected base branch (and fast-forwards it from `main` if it already exists);
+- scaffolds a persistent, committed **`.bgsd/`** master folder: `seshs/` (a queryable knowledge base of every past session), `ledger.md`, and `config.json`;
+- writes a **`BGSD.md`** settings file at the repo root (the user-editable knobs, like a CLAUDE.md for bgsd);
+- makes the GSD config bgsd-compatible.
+
+## The integration branch: `next`
+
+bgsd keeps one standing integration branch, **`next`** (the name is configurable in `BGSD.md`). It is the rehearsal mirror of production: worktree branches merge into `next`, Loop 2 verifies the integrated app on `next`, and the User Review Gate boots `next`. The `next` → `main` merge is the one step the Conductor never does for you; it is always a manual, human-only merge. At the start of every session, `next` is created if missing and fast-forwarded from `main`.
+
+## Settings: `BGSD.md`
+
+`BGSD.md` is the user-editable settings file (like a CLAUDE.md). Kiwi reads it at the start of every sesh, and can self-edit it when you ask it to change a setting in chat. Every knob ships with a default: the integration branch name, the model and effort posture, which `.env*` files propagate into worktrees, GitHub issue/PR behavior, and Kiwi's narration. Because git worktrees do not carry gitignored files, the Conductor copies the configured `.env*` files from the repo root into each worktree so apps boot.
 
 ---
 
@@ -92,14 +115,14 @@ flowchart TD
 
     H -->|quick path| I["Done\nStructured report"]
     H -->|feature path: >1 unit| J
-    H -->|project path| J["Conflict pre-check\nMerge verified branches\nrehearsal/&lt;run-id&gt;"]
+    H -->|project path| J["Conflict pre-check\nMerge verified branches into next\n(branches deleted post-merge except next)"]
 
-    J --> K["Loop 2 — integration verify→fix\nBoot rehearsal app · Integration Tester\nFix agents · re-merge · re-verify"]
+    J --> K["Loop 2 — integration verify→fix\nBoot the integrated app on next · Integration Tester\nFix agents · re-merge · re-verify"]
 
-    K --> L["User Review Gate\nPer-criterion checklist\nApprove / request-changes / abort\nNever auto-passes"]
+    K --> L["User Review Gate\nBoot next · per-criterion checklist\nApprove / request-changes / abort\nNever auto-passes"]
 
     L -->|approved| M["Feedback ingestion\n(if review findings)\nFull re-run or --fast parallel fixes"]
-    L -->|no findings| N["CHANGELOG aggregation\nPR body assembly\ngh pr create (non-default branch, --live)"]
+    L -->|no findings| N["CHANGELOG aggregation\nPR body assembly\ngh pr create (into next, --live)\nnext → main stays human-only"]
     M --> N
 
     N --> O["Done"]
@@ -117,18 +140,19 @@ You never call these. Kiwi orchestrates all of them on your behalf as part of a 
 
 | Stage | Quick path | Feature path | Project path | Details |
 |-------|:-----------:|:------------:|:------------:|---------|
+| Init / preflight | always | always | always | `/bgsd-init`: ensure `next` exists + fast-forward from `main`, scaffold `.bgsd/`, write `BGSD.md`, copy `.env*` into worktrees |
 | Scale classify | always | always | always | Reads prompt length, keyword heuristics, and your flag |
 | Intake / discuss | — | — | always | Brainstorm, clarify scope, confirm before code runs |
 | Decompose | — | some | always | Breaks prompt into a verified DAG of GSD units |
-| Worktree fan-out | optional | some, low concurrency | always | Parallel isolated git worktrees, one per unit |
+| Worktree fan-out | optional | some, low concurrency | always | Parallel isolated git worktrees, one per unit (with `.env*` copied in so apps boot) |
 | **Loop 1 — verify→fix** | **always** | **always** | **always** | Real browser check after every execution; loops until PASS |
-| Conflict pre-check + merge | — | if >1 unit | always | Detects conflicts; merges into `rehearsal/<run-id>` in dependency order |
-| **Loop 2 — integration verify→fix** | — | **if >1 unit** | **always** | End-to-end boot of integrated build; fix agents on defects |
-| User Review Gate | — | always | always | Per-criterion approval gate; never auto-passes |
+| Conflict pre-check + merge | — | if >1 unit | always | Detects conflicts; merges verified branches into the standing `next` branch in dependency order |
+| **Loop 2 — integration verify→fix** | — | **if >1 unit** | **always** | End-to-end boot of the integrated app on `next`; fix agents on defects |
+| User Review Gate | — | always | always | Boots `next`; per-criterion approval gate; never auto-passes |
 | Feedback ingestion | on request | on request | on request | Turns review findings into another fix pass |
-| CHANGELOG + PR | always | always | always | Aggregated changelog, guarded `gh pr create` |
+| CHANGELOG + PR | always | always | always | Aggregated changelog, atomic `gh pr create` into `next`; `next` → `main` stays human-only |
 
-The live status view (`/bgsd-status` machinery) runs throughout. At any moment you can see: active agents, current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure.
+Throughout the run, Kiwi narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The live status view (`/bgsd-status` machinery) runs alongside it. At any moment you can see active agents, the current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure. (The conversational narration layer is being wired now.)
 
 ---
 
@@ -141,7 +165,7 @@ This means:
 - **A one-line bug fix** still goes through the driver ladder (console → network → DOM → vision), still produces a `verification-report.json`, and still exits with a structured verdict.
 - **A twelve-unit project** goes through exactly the same loop per worktree, then a second loop over the integrated build, then your explicit sign-off.
 
-The only thing that changes is scale. The guarantees — no silent green, bounded iterations, never touching `next` — are constant.
+The only thing that changes is scale. The guarantees are constant: no silent green, bounded iterations, and agents never writing to `main` (everything integrates on `next`, and `next` → `main` stays human-only).
 
 ---
 
