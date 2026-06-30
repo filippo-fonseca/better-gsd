@@ -1,0 +1,37 @@
+{
+  "name": "better-gsd",
+  "version": "0.0.1",
+  "description": "One-line launcher for bgsd: installs the bgsd Claude Code plugin from the public GitHub marketplace and sets up the gsd-core engine. Run with npx better-gsd@latest.",
+  "bin": {
+    "better-gsd": "./install.mjs"
+  },
+  "type": "module",
+  "files": [
+    "install.mjs"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/filippo-fonseca/better-gsd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/filippo-fonseca/better-gsd.git"
+  },
+  "bugs": {
+    "url": "https://github.com/filippo-fonseca/better-gsd/issues"
+  },
+  "author": "Filippo Fonseca",
+  "keywords": [
+    "bgsd",
+    "better-gsd",
+    "gsd",
+    "claude-code",
+    "claude-code-plugin",
+    "orchestration",
+    "autonomous",
+    "verification",
+    "installer",
+    "launcher"
+  ]
+}
