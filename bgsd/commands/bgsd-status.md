@@ -34,7 +34,7 @@ Workers that need your input are sorted to the top of the table and highlighted 
 
 ### 🔒 main-protected indicator
 
-The indicator `🔒 main-protected` appears in both the banner and the footer at all times. It is a constant visual reminder that bgsd never writes to `next` or any production branch. All work lands on `rehearsal/<run-id>` and ephemeral worktree branches only. Only you merge `rehearsal/<run-id>` → `next`, by hand.
+The indicator `🔒 main-protected` appears in both the banner and the footer at all times. It is a constant visual reminder that bgsd never writes to `main` or any production branch. All work lands on the standing `next` integration branch and ephemeral worktree branches only. Only you merge `next` → `main`, by hand.
 
 ### Budget & context telemetry
 
@@ -109,7 +109,7 @@ The structured layout (section headers, indentation, separators) remains fully l
 |---------|--------------|
 | `/bgsd-run "<prompt>"` | Start a new project orchestration run |
 | `/bgsd-abort` | Stop an in-flight run cleanly, preserving all branches and control files |
-| `/bgsd-clean-branches` | Prune `rehearsal/*` branches already merged into the base branch (never touches unmerged branches) |
+| `/bgsd-clean-branches` | Prune `<run-id>/*` worktree branches already merged into `next` (never touches unmerged branches) |
 
 ---
 

@@ -42,10 +42,10 @@ supply direct free-text). It:
 Re-runs the **entire two-loop machine** on the feedback items:
 
 1. Route each item through the v1/v2 classify→route seam.
-2. Fan items into worktrees off `rehearsal/<run-id>`.
+2. Fan items into worktrees off `next`.
 3. Run Loop 1 (per-worktree verify→fix) on each worktree.
-4. Re-merge into `rehearsal/<run-id>` (conflict pre-check + dependency-ordered merge).
-5. Re-run Loop 2 (integration verify→fix) over the updated rehearsal branch.
+4. Re-merge into `next` (conflict pre-check + dependency-ordered merge).
+5. Re-run Loop 2 (integration verify→fix) over the updated `next` branch.
 6. Return to the User Review Gate.
 
 The existing Loop 1 and Loop 2 controllers are **reused unchanged** — only the
@@ -68,8 +68,8 @@ items with **no computer-use verification**:
 - For a single trivial (low-severity) item: one agent (Haiku/low effort).
 - For multiple or non-trivial items: parallel agents (Sonnet/medium effort).
 
-Fixes are applied to `rehearsal/<run-id>`. The run then returns to the User
-Review Gate — the human is the verification for `--fast`.
+Fixes are applied to `next`. The run then returns to the User
+Review Gate; the human is the verification for `--fast`.
 
 **Important: `--fast` results are always marked `UNVERIFIED`.** They can never
 produce a clean `PASS` without a real Tester pass. This is enforced structurally
@@ -219,9 +219,9 @@ sufficient — it must be in `process.argv`.
   budget cap — the same bounds as Loop 1 and Loop 2.
 - The multi/single/full/`--fast` decision is a **deterministic scored choice**
   (item count + severity) — never a model call (NFR-05).
-- Feedback fixes land on `rehearsal/<run-id>` and worktree branches only.
-  Feedback NEVER writes `next` (NFR-01). The guard hook rejects any write to
-  the default branch.
+- Feedback fixes land on `next` and worktree branches only.
+  Feedback NEVER writes `main` (NFR-01). The guard hook rejects any write to
+  the production branch.
 - The feedback round is recorded in the run ledger + CHANGELOG so the next PR
   body reflects the feedback iterations (FEEDBACK-04, Part 6).
 
