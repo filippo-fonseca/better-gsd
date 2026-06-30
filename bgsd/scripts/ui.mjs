@@ -66,6 +66,54 @@ export const brightCyan   = (t) => ansi(t, 96, 39);
 export const brightWhite  = (t) => ansi(t, 97, 39);
 
 // ---------------------------------------------------------------------------
+// Kiwi pill — the colored `kiwi · conductor` label on Kiwi's messages
+// ---------------------------------------------------------------------------
+
+// Kiwi green, as 256-color index 35 (a leafy mid-green). Used for both the
+// pill background and the foreground of the rounded end-caps so the half-circle
+// glyphs read as the rounded ends of a single pill.
+const KIWI_GREEN_256 = 35;
+
+// Rounded end-cap glyphs (Powerline). Left = U+E0B6, right = U+E0B4.
+const PILL_LEFT_CAP = "";
+const PILL_RIGHT_CAP = "";
+
+/**
+ * Render Kiwi's conversational pill: a rounded, kiwi-green label with bold
+ * white text reading `kiwi · conductor`. Prefix EVERY user-facing
+ * conversational / narration message from Kiwi with this, mirroring how
+ * gsd-verifier / gsd-executor tag their terminal output. Structured outputs
+ * (verdict lines, JSON reports, status signals) stay literal and pill-free.
+ *
+ * Pure: a string in, a string out. Color is gated on an injectable env so the
+ * helper stays testable without touching the real terminal. When NO_COLOR is
+ * set or output is not a TTY, it degrades to a plain `[kiwi · conductor]`
+ * bracket form with no ANSI.
+ *
+ * @param {string} [label="kiwi · conductor"] - Text inside the pill.
+ * @param {object} [opts]
+ * @param {object} [opts.env=process.env] - Env source (for NO_COLOR / CI).
+ * @param {boolean} [opts.isTTY] - TTY override; defaults to process.stdout.isTTY.
+ * @returns {string}
+ */
+export function kiwiPill(label = "kiwi · conductor", { env = process.env, isTTY } = {}) {
+  const tty = isTTY ?? Boolean(process.stdout.isTTY);
+  const colorOk = !env["NO_COLOR"] && !env["CI"]?.match?.(/^(true|1)$/i) && tty;
+
+  if (!colorOk) return `[${label}]`;
+
+  // Bold white text (1;97) on a kiwi-green 256-color background (48;5;35),
+  // padded with a leading and trailing space.
+  const body = `\x1b[1;97;48;5;${KIWI_GREEN_256}m ${label} \x1b[0m`;
+  // End-caps: green foreground (38;5;35) on default background so the half
+  // circles colour-match the body and read as rounded ends.
+  const leftCap = `\x1b[38;5;${KIWI_GREEN_256}m${PILL_LEFT_CAP}\x1b[0m`;
+  const rightCap = `\x1b[38;5;${KIWI_GREEN_256}m${PILL_RIGHT_CAP}\x1b[0m`;
+
+  return `${leftCap}${body}${rightCap}`;
+}
+
+// ---------------------------------------------------------------------------
 // Kiwi banner
 // ---------------------------------------------------------------------------
 
@@ -186,6 +234,8 @@ export function hr(width = 44) {
 
 if (process.argv.includes('--demo')) {
   banner({ subtitle: 'At your service, sir. Ready to run the verification suite.' });
+
+  process.stdout.write(kiwiPill() + ' Very good, sir. Let us cook.\n\n');
 
   stage('Loading context', 'phase 3 / milestone-alpha');
   stage('Running probes');
