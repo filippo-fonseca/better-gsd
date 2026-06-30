@@ -11,6 +11,20 @@ You describe what you need. Kiwi detects the scale, decides how many agents to r
 
 You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly; those are internal stages the Conductor runs for you.
 
+## Install
+
+bgsd is an installable, standalone Claude Code plugin:
+
+```bash
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
+
+Run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. That is the only setup you do by hand. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor sets up what it needs at the start of every session, so you just talk to it:
+
+- **gsd-core.** Kiwi ensures `gsd-core` is installed and kept up to date (under the hood: `claude plugin marketplace add open-gsd/gsd-core`, `claude plugin install gsd-core --scope user`, and `claude plugin update gsd-core` to refresh). You never manage GSD by hand. After a plugin update, Claude Code needs `/reload-plugins` or a restart to apply, and Kiwi flags that when it happens.
+- **Playwright.** Kiwi ensures the Playwright browser tooling (used for the computer-use / vision verification that powers Loop 1 and Loop 2) is available.
+
 ## One-time setup: `/bgsd-init`
 
 Before the first session in a repo, run `/bgsd-init` once. It is idempotent (safe to re-run), and every `/bgsd-sesh` runs it automatically as a preflight, so you rarely call it by hand:

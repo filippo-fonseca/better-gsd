@@ -170,22 +170,25 @@ All live runs are guarded behind `--live` and remain human-gated. The determinis
 
 ## Installation
 
-bgsd is a self-contained local plugin. It loads as a second plugin via a local marketplace — GSD's own `.claude-plugin/plugin.json` is never touched.
-
-**Step 1: Register and install the plugin**
+bgsd is an installable, standalone Claude Code plugin. Add the marketplace and install it:
 
 ```bash
-claude plugin marketplace add ./bgsd     # register the local Directory-source marketplace
-claude plugin install bgsd@bgsd-local    # install the bgsd plugin (user scope)
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
 ```
 
-**Step 2: Add Playwright MCP** (pinned version — do not substitute without re-running the canary proof)
+Then run `/reload-plugins` (or restart Claude Code) so the new commands bind.
 
-```bash
-claude mcp add playwright -- npx @playwright/mcp@0.0.76
-```
+That is the only install step you own. bgsd is **gsd-agnostic**: it does not vendor or bundle GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (Kiwi) keeps that dependency current for you. At the start of every `/bgsd-sesh`, Kiwi sets up what it needs so you do not have to:
 
-**Step 3: Restart Claude Code, then run the canary proof**
+- **gsd-core.** Kiwi ensures the `gsd-core` plugin is installed and up to date (under the hood: `claude plugin marketplace add open-gsd/gsd-core`, `claude plugin install gsd-core --scope user`, and `claude plugin update gsd-core` to refresh it). You never manage GSD by hand. After an update, Claude Code needs `/reload-plugins` or a restart to apply, and Kiwi tells you when that is the case.
+- **Playwright.** Kiwi ensures the Playwright browser tooling (used for the computer-use / vision verification that powers Loop 1 and Loop 2) is available.
+
+You just talk to the Conductor; it provisions gsd-core and Playwright at sesh start.
+
+**Optional: run the canary proof**
+
+The canary proof is a quick way to confirm the verify engine works end to end on your machine. It is optional; a normal `/bgsd-sesh` provisions everything it needs on its own.
 
 ```bash
 /bgsd-verify --boot bgsd/fixtures/canary-next \
@@ -194,7 +197,7 @@ claude mcp add playwright -- npx @playwright/mcp@0.0.76
 
 Expected: `PASS  .bgsd/runs/.../verification-report.json`
 
-Then verify the buggy route (the defect is a `<div>` nested inside `<p>` — invisible to a screenshot):
+Then verify the buggy route (the defect is a `<div>` nested inside `<p>`, invisible to a screenshot):
 
 ```bash
 /bgsd-verify http://localhost:<port>/buggy \
@@ -205,7 +208,7 @@ Expected: `FAIL  .bgsd/runs/.../verification-report.json`
 
 Run the fixture in `development` mode: React's `validateDOMNesting` warning is stripped from production builds.
 
-**Step 4: Start a Conductor session**
+**Start a Conductor session**
 
 ```bash
 /bgsd-sesh "your task here"              # auto-detect scale and execute (default)
