@@ -17,6 +17,7 @@ access — see "Under the hood" below).
 
 ```
 /bgsd-sesh "<whatever I need>"  [--quick | --feature | --project]
+/bgsd-sesh                       # no prompt → Kiwi proposes the next backlog item
 ```
 
 ```sh
@@ -82,9 +83,57 @@ Deterministic, zero required model calls. Kiwi reads cheap signals from the prom
 | `project` | ≥ 4 units **or** ≥ 3 surfaces **or** a long feature prompt. |
 
 If the prompt is too vague (`needs-clarification`), Kiwi asks **one** clarifying
-question in chat and re-classifies — it never silently guesses a scale (NFR-06).
+question with an **AskUserQuestion selector** (see "How Kiwi asks you things"
+below) and re-classifies; it never silently guesses a scale (NFR-06).
 A marked Haiku seam may nudge a borderline case by at most one step; the
 deterministic heuristic is always computed first and is the floor.
+
+---
+
+## Starting with no prompt — the backlog
+
+You don't always have to type what to build. bgsd keeps a persistent **backlog**
+(the queue at `.bgsd/queue/queue.json`) so scope you defer is never lost, and so
+you can open a session with nothing to say and let Kiwi pull the next thing.
+
+**Run `/bgsd-sesh` with no prompt.** Kiwi looks at the backlog first:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" peek   # the next queued item, or "(empty …)"
+```
+
+- **Backlog has a next item** → Kiwi proposes it with an AskUserQuestion selector:
+  **Start «title»** / **Pick a different backlog item** / *(type a new prompt)*.
+  On confirm, Kiwi runs a normal, properly-scaled session using that item's
+  title + body as the prompt. When that session reaches `done`, Kiwi marks the
+  item resolved so the backlog drains and never re-proposes it:
+
+  ```sh
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --note "ran sesh <id>"
+  ```
+
+  If the session fails or is abandoned, Kiwi leaves the item `queued` so it
+  surfaces again next time.
+- **Backlog is empty** → Kiwi asks (selector) what you'd like to build, with a
+  free-text option to just type it.
+
+**Deferring scope mid-session.** Whenever you and Kiwi agree to push a piece of
+scope to later ("scope #165's filter/sort later, not urgent"), Kiwi **enqueues
+it** instead of dropping it, and says so ("Queued for later — it's in the
+backlog."):
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add \
+  --title "Notion properties: filter & sort" \
+  --body  "Deferred from this sesh; MVP shipped add/edit fields, filter+sort still open." \
+  --source "defer:#165"
+```
+
+**At the end of every session.** When a session reaches its terminal state, if
+the backlog is non-empty Kiwi proposes the next item the same way — **Start
+next: «title»** / **Stop here** / *(something else)* — so the queue drains
+naturally across sessions without you re-typing anything. The full loop: defer →
+backlog → next sesh (or end-of-sesh) picks it up.
 
 ---
 
@@ -125,14 +174,36 @@ A session is a live, fully async loop. Nothing about it blocks the conversation:
    message you drop in is **ingested without halting** any agent — it can add or
    adjust work, or answer a pending question. Agents keep orchestrating.
 3. **Non-blocking questions.** When Kiwi must ask you (the oracle abstains), it
-   posts the question to the live view + the escalation inbox and marks **only
-   the dependent unit** `needs_input` (via `control.mjs`). **Every other unit
-   keeps progressing.** It is never a global blocking prompt. Your answer (via
-   the inbox) unblocks just that one unit.
+   surfaces the question as an **AskUserQuestion selector** in the live view +
+   the escalation inbox and marks **only the dependent unit** `needs_input` (via
+   `control.mjs`). **Every other unit keeps progressing.** It is never a global
+   blocking prompt. Your answer unblocks just that one unit.
 
 Most downstream questions never reach you: the oracle (`oracle.mjs:answerQuestion`)
 auto-answers from the sealed spec + decisions + profile, and the rare leftovers
 are **batched** non-blockingly via `escalate.mjs`.
+
+---
+
+## How Kiwi asks you things — always a selector, never a wall of prose
+
+Whenever Kiwi needs an answer from you, it asks with the **AskUserQuestion**
+tool: a GSD-style arrow-key selector with a few concrete options, and you can
+always type your own answer as the last choice. This is the one way Kiwi asks —
+a vague prompt to disambiguate, a scale to confirm, a gray-area decision the
+oracle escalated, the review gate, or "which backlog item next." Kiwi never
+buries a question in a paragraph of prose when a selector fits.
+
+- **2–4 options**, each a real, self-explanatory choice (label + one-line
+  description). This is exactly the shape `escalate.mjs:buildEscalationBatch`
+  already produces (`options[2–4]` + a free-text `other`); when you render an
+  escalation batch, render each item as one AskUserQuestion call.
+- **Type-your-own is always available** as the final option — you are never
+  boxed into the presented choices.
+- **One decision per question.** Independent decisions become separate
+  AskUserQuestion items, not one compound prose question.
+- Worker questions still pass through the oracle first; only genuine escalations
+  reach you, and when they do, they reach you as a selector.
 
 ---
 
