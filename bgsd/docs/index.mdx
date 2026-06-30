@@ -30,6 +30,19 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ---
 
+## New in this release
+
+Recent additions to how the Conductor runs and talks to you:
+
+- **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), Kiwi enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
+- **Selector questions.** Every question Kiwi asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with 2 to 4 concrete options and a "type your own" final option, never a wall of prose.
+- **Per-subagent context management.** Each worktree Pipeline Agent runs in its own large (~1M-token) window. The Conductor watches each agent's usage and proactively compacts it (default at 0.70 of the window) or relaunches it from a handoff manifest (default 0.90) before it overflows. Tune it with the `context` block in `BGSD.md`.
+- **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell Kiwi ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
+- **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
+- **The Kiwi pill.** Every conversational message the Conductor sends is prefixed with a small colored `kiwi · conductor` pill, so you always know it is Kiwi speaking. Structured outputs (verdict lines, report JSON) stay literal.
+
+---
+
 ## Internal stage references
 
 These pages document what the Conductor runs internally. You never call these commands directly from a `/bgsd-sesh` — Kiwi orchestrates all of them. They are reference material for contributors, advanced users, and anyone who wants to understand the mechanics.

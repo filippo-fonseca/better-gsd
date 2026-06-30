@@ -5,7 +5,14 @@ description: "Fix-stream queue for bgsd: add items, drain them through classify�
 
 # /bgsd-queue
 
-`/bgsd-queue` is bgsd's persistent fix-stream. You feed it items; it classifies each one, routes it to the right GSD quick path, executes it, verifies it with `/bgsd-verify`, and — on defects — runs a bounded verify→fix loop until the item passes or a stop condition fires. Exactly one item is active at a time.
+`/bgsd-queue` is bgsd's persistent fix-stream. You feed it items; it classifies each one, routes it to the right GSD quick path, executes it, verifies it with `/bgsd-verify`, and on defects runs a bounded verify→fix loop until the item passes or a stop condition fires. Exactly one item is active at a time.
+
+The same store doubles as the Conductor's **cross-session backlog**. When you defer scope mid-session, Kiwi enqueues it; when you run `/bgsd-sesh` with no prompt, or when a session finishes, Kiwi proposes the next backlog item via a selector. Two read/resolve subcommands back that loop:
+
+- **`peek`** prints the next queued backlog item (read-only), or an empty marker. It is what the Conductor proposes on a no-prompt sesh and at sesh end.
+- **`done <id>`** marks a Conductor-pulled item resolved (`done`, or `--failed`/`--blocked`) out-of-band of the autonomous drainer, so a backlog item is not re-proposed once it has been run as a full session.
+
+So there are two ways to drain: `start` is the autonomous drainer (each item through the quick pipeline, no confirmation), while `peek` + `done` are the Conductor-orchestrated backlog (Kiwi peeks, proposes via a selector, runs a properly-scaled session, then resolves the item).
 
 ---
 

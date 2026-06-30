@@ -998,6 +998,62 @@
         </p>
         <span class="card-tag">NFR-01..04</span>
       </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: list-checks -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+        </span>
+        <div class="card-title">A backlog that drains across sessions</div>
+        <p class="card-body">
+          Defer scope mid-session and Kiwi queues it instead of losing it. Start
+          <code>/bgsd-sesh</code> with no prompt, or finish a session, and Kiwi proposes
+          the next backlog item. Work carries over without you re-typing a thing.
+        </p>
+        <span class="card-tag">defer &rarr; backlog &rarr; next</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: mouse-pointer-click -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9l5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1"/><path d="m5.1 8-2.9-.8"/><path d="M14 4.1 12 6"/><path d="m6 12-1.9 2"/></svg>
+        </span>
+        <div class="card-title">Every question is a selector</div>
+        <p class="card-body">
+          When Kiwi needs an answer, it asks with a GSD-style arrow-key selector: a few
+          concrete options plus a type-your-own. A vague prompt, a gray-area call, the
+          review gate, "which item next" all come as a pick, never a wall of prose.
+        </p>
+        <span class="card-tag">AskUserQuestion</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: gauge -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+        </span>
+        <div class="card-title">Code-only verification when you want it</div>
+        <p class="card-body">
+          The goal-backward code check always runs. The heavier Playwright UI testing is
+          optional: pass <code>--no-usage-verification</code>, set it in <code>BGSD.md</code>,
+          or just tell Kiwi. Quick fixes and non-UI changes skip the browser, never the check.
+        </p>
+        <span class="card-tag">--no-usage-verification</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: rotate-ccw -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </span>
+        <div class="card-title">Resume an interrupted session</div>
+        <p class="card-body">
+          Lost the Claude Code instance mid-run? Every unit's progress is on disk under
+          <code>.bgsd/runs/</code>. <code>/bgsd-resume</code> finds the latest in-flight
+          session and picks it back up from each unit's last phase. <code>main</code> stays protected.
+        </p>
+        <span class="card-tag">/bgsd-resume</span>
+      </div>
     </div>
   </div>
 </section>
