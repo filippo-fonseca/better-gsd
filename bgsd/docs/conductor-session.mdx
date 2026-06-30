@@ -1,13 +1,15 @@
 ---
 title: "Conductor Session — /bgsd-sesh"
-description: "The single entry point for bgsd: talk to the Conductor (Kiwi) and let it orchestrate everything — verify, fix, decompose, fan out, merge, and review — scaled to your task."
+description: "The single entry point for bgsd: talk to the Conductor (Kiwi) and it runs the full pipeline immediately — verify, fix, decompose, fan out, merge, and review — scaled to your task. Pass --plan-only to preview instead."
 ---
 
 # Conductor Session
 
 `/bgsd-sesh "<prompt>"` is the only interface you ever use. The Conductor (codename Kiwi) is always on.
 
-You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and orchestrates the full pipeline. You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly — those are internal stages the Conductor runs for you.
+You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and **runs the full pipeline immediately**. Pass `--plan-only` (or `--dry-run`) to preview the plan without executing anything. Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `next`.
+
+You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly — those are internal stages the Conductor runs for you.
 
 ---
 
@@ -20,7 +22,7 @@ You describe what you need. Kiwi detects the scale, decides how many agents to r
 **Examples:**
 
 ```bash
-# Let the Conductor decide (auto-detect)
+# Let the Conductor decide (auto-detect) and execute immediately
 /bgsd-sesh "Fix the nav collapse on mobile below 768px"
 
 # Quick task — no discussion, direct execution, still verified
@@ -31,6 +33,10 @@ You describe what you need. Kiwi detects the scale, decides how many agents to r
 
 # Big build — Conductor discusses with you first, then full parallel pipeline
 /bgsd-sesh "Add user authentication, rate limiting, and an admin dashboard" --project
+
+# Preview only — classify + print the plan; nothing spawns or runs
+/bgsd-sesh "Add a billing dashboard" --plan-only
+/bgsd-sesh "Add a billing dashboard" --dry-run    # alias for --plan-only
 ```
 
 ---
@@ -39,12 +45,14 @@ You describe what you need. Kiwi detects the scale, decides how many agents to r
 
 | Flag | When to use | What changes |
 |------|-------------|--------------|
-| *(none)* | Always the safe default | Conductor reads the prompt and auto-routes |
-| `--quick` | You know it's small (a bug fix, a copy change, a minor tweak) | No pre-discussion, no brainstorm phase. Fast. Still fully verified — Loop 1 always runs. |
-| `--feature` | You know it's feature-sized (one coherent feature, a few units) | No pre-discussion, some parallelism, integration loop if >1 unit, formal review gate. |
-| `--project` | You know it's large (many features, broad scope) | Conductor **discusses with you first**: brainstorm, clarify ambiguity, confirm scope — before any code runs. Then full parallel pipeline. |
+| *(none)* | Default — runs immediately | Conductor reads the prompt, auto-detects scale, and executes the full pipeline. |
+| `--quick` | You know it's small (a bug fix, a copy change, a minor tweak) | No pre-discussion, no brainstorm phase. Fast. Still fully verified — Loop 1 always runs. Executes immediately. |
+| `--feature` | You know it's feature-sized (one coherent feature, a few units) | No pre-discussion, some parallelism, integration loop if >1 unit, formal review gate. Executes immediately. |
+| `--project` | You know it's large (many features, broad scope) | Conductor **discusses with you first**: brainstorm, clarify ambiguity, confirm scope. Then full parallel pipeline. Real merges/PRs are human-gated at checkpoints. |
+| `--plan-only` | You want to see the plan before committing | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing runs. |
+| `--dry-run` | Same as `--plan-only` | Alias. Identical preview behavior. |
 
-**A manual flag always wins, unconditionally.** The auto-scale thresholds apply only when no flag is given. `--feature` on a 2–3-unit task still runs the feature pipeline; `--project` on a tiny task still discusses with you first and runs the full pipeline. Every path — quick, feature, or project — exits through Loop 1 with a real browser check.
+**A manual flag always wins, unconditionally.** The auto-scale thresholds apply only when no flag is given. `--feature` on a 2-3-unit task still runs the feature pipeline; `--project` on a tiny task still discusses with you first and runs the full pipeline. Every path — quick, feature, or project — exits through Loop 1 with a real browser check.
 
 ---
 

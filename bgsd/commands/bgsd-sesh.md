@@ -1,9 +1,10 @@
 # /bgsd-sesh — the Conductor session (the one front door)
 
-> **Kiwi · bgsd Conductor — start a session**
+> **Kiwi · bgsd Conductor — run a session**
 > `/bgsd-sesh "<whatever I need>"` is the single entry point to bgsd. Kiwi, the
-> Conductor, is always on. You chat; Kiwi figures out the scale, runs the same
-> verified pipeline scaled to fit, and stays present to converse.
+> Conductor, is always on. By default, the session **runs immediately** — classify,
+> plan, and execute. Pass `--plan-only` (or `--dry-run`) to preview without running.
+> Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `next`.
 
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
@@ -19,20 +20,21 @@ access — see "Under the hood" below).
 ```
 
 ```sh
-# Auto-detect scale (the default) — dry-run / plan-only for any live-spawning depth:
+# Auto-detect scale and EXECUTE (the default — no flag needed):
 node bgsd/scripts/session.mjs --prompt "Change the CTA button to 'Get started'"
 
-# Force quick (no discussion, still verified):
+# Force quick (no discussion, still verified) and execute:
 node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick
 
-# Force feature (decompose into 1-3 units, no discussion, still verified):
+# Force feature (decompose into 1-3 units, no discussion, still verified) and execute:
 node bgsd/scripts/session.mjs --prompt "Add a search bar to the header" --feature
 
-# Force project (discuss first, full pipeline). Real spawns are human-gated:
+# Force project (discuss first, full pipeline) and execute. Real merges/PRs are human-gated:
 node bgsd/scripts/session.mjs --prompt "Build a billing dashboard with Stripe" --project
 
-# Just the deterministic plan (what scale, which engines, how deep) — no spawns:
+# Preview only — classify + plan, zero boundaries invoked, nothing spawned:
 node bgsd/scripts/session.mjs --prompt "..." --plan-only
+node bgsd/scripts/session.mjs --prompt "..." --dry-run   # alias for --plan-only
 ```
 
 ---
@@ -41,10 +43,12 @@ node bgsd/scripts/session.mjs --prompt "..." --plan-only
 
 | Flag | Mode | Meaning |
 |------|------|---------|
-| `--project` | `project` | **Forces** the full pipeline **and discussion first**: intake → brainstorm → oracle, then decompose → parallel pipeline → Loop 2 → review → PR. |
-| `--feature` | `feature` | **Forces** feature depth: decompose into 1-3 units, parallel execution, Loop 1 per worktree, merge, Loop 2, review, PR. No discussion. **Still verified.** |
-| `--quick` | `quick` | **Forces** small: one (or a few) small things, **no discussion**, **no pre-prepare**, fast, **still verified** (Loop 1 verify→fix is never skipped). |
-| *(none)* | `auto` | Kiwi **auto-detects** scale from the prompt and routes to `quick` / `feature` / `project` itself. |
+| `--project` | `project` | **Forces** the full pipeline **and discussion first**: intake → brainstorm → oracle, then decompose → parallel pipeline → Loop 2 → review → PR. Executes immediately. |
+| `--feature` | `feature` | **Forces** feature depth: decompose into 1-3 units, parallel execution, Loop 1 per worktree, merge, Loop 2, review, PR. No discussion. **Still verified.** Executes immediately. |
+| `--quick` | `quick` | **Forces** small: one (or a few) small things, **no discussion**, **no pre-prepare**, fast, **still verified** (Loop 1 verify→fix is never skipped). Executes immediately. |
+| *(none)* | `auto` | Kiwi **auto-detects** scale from the prompt and **executes** immediately. |
+| `--plan-only` | preview | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing spawns or runs. |
+| `--dry-run` | preview | **Alias for `--plan-only`.** Same preview behavior. |
 
 **Manual flags are unconditional.** When you pass `--quick`, `--feature`, or
 `--project`, the auto-scale thresholds are bypassed entirely. A `--feature` flag
@@ -128,10 +132,10 @@ are **batched** non-blockingly via `escalate.mjs`.
 
 ## Safety (inherited, never relaxed)
 
-- **`--plan-only` / no `--live` is the safe default.** It classifies, plans, and
-  (for quick) can drive the deterministic Loop 1 controller under mocks, but any
-  real spawn / merge / integration boot / PR still requires the human-gated
-  `--live` opt-in on the underlying `*-live.mjs` module.
+- **Sessions run by default; `--plan-only` / `--dry-run` previews.** The default
+  run executes the orchestration pipeline, but real irreversible actions (git merge,
+  gh pr create) are human-gated at merge-boundary checkpoints. They require the
+  explicit `--live` opt-in on the underlying `*-live.mjs` module.
 - **`next` is never written.** Every real boundary keeps its existing
   `requireLiveFlag()` / `requireNotNextBranch` / `requireNotDefaultBranch` guard.
   bgsd assembles into `rehearsal/<run-id>`; only you merge that to `next` by hand.

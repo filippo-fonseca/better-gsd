@@ -12,12 +12,14 @@ You talk to the Conductor (codename **Kiwi**). Kiwi handles everything else.
 ## The single entry point
 
 ```
-/bgsd-sesh "<whatever I need>"   [--quick | --feature | --project]
+/bgsd-sesh "<whatever I need>"   [--quick | --feature | --project] [--plan-only | --dry-run]
 ```
 
 That's it. One command, one ongoing session, always-on Conductor.
 
-You describe what you need — a bug fix, a feature, an entire project — and the Conductor auto-detects the scale, decides how many agents to spin up, and orchestrates the full pipeline. You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any other stage command directly. Those are internal stages Kiwi runs for you.
+You describe what you need — a bug fix, a feature, an entire project — and the Conductor auto-detects the scale, decides how many agents to spin up, and **runs the full pipeline immediately**. Pass `--plan-only` (or its alias `--dry-run`) to preview the plan without executing anything. Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `next`.
+
+You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any other stage command directly. Those are internal stages Kiwi runs for you.
 
 ---
 
@@ -41,10 +43,12 @@ The scale threshold is decided by the Conductor, not by you. You can override wi
 
 | Flag | Behavior |
 |------|----------|
-| *(none)* | Conductor auto-detects scale and routes. |
-| `--quick` | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Use for quick fixes or small changes. |
-| `--feature` | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Use when you know it's a feature-sized task. |
-| `--project` | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan) before running anything. Use this when you know it's a big build. |
+| *(none)* | Conductor auto-detects scale and **executes immediately**. |
+| `--quick` | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Executes immediately. |
+| `--feature` | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Executes immediately. |
+| `--project` | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan), then executes. Real merges/PRs are human-gated at checkpoints. |
+| `--plan-only` | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing executes. |
+| `--dry-run` | Alias for `--plan-only`. Same preview behavior. |
 
 A manual flag always wins, unconditionally — the auto-scale thresholds apply only in auto mode.
 
@@ -168,10 +172,12 @@ Run the fixture in `development` mode: React's `validateDOMNesting` warning is s
 **Step 4: Start a Conductor session**
 
 ```bash
-/bgsd-sesh "your task here"            # auto-detect
-/bgsd-sesh "your task here" --quick    # quick, no discussion, still verified
-/bgsd-sesh "your task here" --feature  # feature mode, some parallelism
-/bgsd-sesh "your task here" --project  # full pipeline, discuss first
+/bgsd-sesh "your task here"              # auto-detect scale and execute (default)
+/bgsd-sesh "your task here" --quick      # quick, no discussion, still verified
+/bgsd-sesh "your task here" --feature    # feature mode, some parallelism
+/bgsd-sesh "your task here" --project    # full pipeline, discuss first, then execute
+/bgsd-sesh "your task here" --plan-only  # preview only — classify + plan, nothing runs
+/bgsd-sesh "your task here" --dry-run    # alias for --plan-only
 ```
 
 ---

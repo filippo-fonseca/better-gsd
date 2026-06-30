@@ -824,7 +824,7 @@
 
         <p class="hero-lede">
           One command, one session, always-on Kiwi. The Conductor auto-scales from a quick fix to
-          a full parallel pipeline — <strong>always verified, never a silent green.</strong>
+          a full parallel pipeline and <strong>runs immediately by default.</strong> Pass <code>--plan-only</code> to preview. Real merges and PRs are human-gated. Never a silent green.
         </p>
 
         <div class="hero-actions">
@@ -1252,9 +1252,7 @@
       <span class="kicker"><span class="num">04b</span> · scale comparison</span>
       <h2 id="scale-heading" class="section-title">One flag. One guarantee. Three scales.</h2>
       <p class="section-sub">
-        A manual flag always wins, unconditionally. Auto-scale thresholds apply only when no flag is given.
-        <code>--feature</code> on a 2-unit task still runs the feature pipeline.
-        <code>--project</code> on a tiny task still discusses with you first.
+        A session <strong style="color:var(--fg)">runs by default</strong>. Pass <code>--plan-only</code> (or <code>--dry-run</code>) to preview without executing. A manual scale flag always wins, unconditionally. Real merges and PRs are human-gated at merge-boundary checkpoints and never touch <code>next</code>.
       </p>
     </div>
 
@@ -1478,10 +1476,11 @@
         /bgsd-verify <span class="path">http://localhost:&lt;port&gt;/buggy</span> \<br>
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="flag">--criteria</span> bgsd/fixtures/canary-next/acceptance.md<br><br>
         <span class="c"># Then start talking to the Conductor</span><br>
-        /bgsd-sesh <span class="path">"your task here"</span><br>
-        /bgsd-sesh <span class="path">"quick fix"</span> <span class="flag">--quick</span><br>
-        /bgsd-sesh <span class="path">"add dark-mode toggle"</span> <span class="flag">--feature</span><br>
-        /bgsd-sesh <span class="path">"big feature"</span> <span class="flag">--project</span>
+        /bgsd-sesh <span class="path">"your task here"</span>                  <span class="c"># executes (default)</span><br>
+        /bgsd-sesh <span class="path">"quick fix"</span> <span class="flag">--quick</span>              <span class="c"># force quick, still verified</span><br>
+        /bgsd-sesh <span class="path">"add dark-mode toggle"</span> <span class="flag">--feature</span>   <span class="c"># feature depth</span><br>
+        /bgsd-sesh <span class="path">"big feature"</span> <span class="flag">--project</span>           <span class="c"># discuss first, then execute</span><br>
+        /bgsd-sesh <span class="path">"..."</span> <span class="flag">--plan-only</span>               <span class="c"># preview (--dry-run alias)</span>
       </div>
 
       <p class="install-note">
@@ -1546,7 +1545,7 @@
           </tr>
           <tr>
             <td><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/></svg> Live runs are human-gated</td>
-            <td>Live multi-process orchestration and live Hyperpolymath capture both require an explicit <code>--live</code> flag. The guard checks <code>process.argv</code> — not environment variables — and throws a detailed refusal if absent.</td>
+            <td>Sessions execute by default; <code>--plan-only</code> / <code>--dry-run</code> previews. Real irreversible actions (git merge, gh pr create) are still gated at merge-boundary checkpoints behind <code>--live</code>. The guard checks <code>process.argv</code> — not environment variables — and throws a detailed refusal if absent.</td>
           </tr>
         </tbody>
       </table>
