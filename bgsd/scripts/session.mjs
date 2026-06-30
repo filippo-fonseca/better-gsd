@@ -64,8 +64,8 @@ const REPO_ROOT = resolve(__dir, "../../");
 /** The three scales the Conductor can resolve a request to. */
 export const SCALES = Object.freeze(["quick", "feature", "project"]);
 
-/** The three session modes (flag → mode mapping). */
-export const SESSION_MODES = Object.freeze(["auto", "quick", "project"]);
+/** The four session modes (flag → mode mapping). */
+export const SESSION_MODES = Object.freeze(["auto", "quick", "feature", "project"]);
 
 // ---------------------------------------------------------------------------
 // U1 — cheap, zero-model decompose-shape signals (§3.1)
@@ -228,7 +228,7 @@ function clampOneStep(heuristicScale, proposedScale) {
  *
  * @param {object} input
  * @param {string} input.prompt          The user's request.
- * @param {string} [input.mode="auto"]   auto | quick | project (flag override).
+ * @param {string} [input.mode="auto"]   auto | quick | feature | project (flag override).
  * @param {object} [opts]
  * @param {boolean} [opts.refine=false]  Activate the marked Haiku one-step seam.
  * @param {Function} [opts.refineFn]     Inject a refiner (tests); defaults to refineScaleWithModel.
@@ -256,6 +256,9 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
   // Forced modes short-circuit the heuristic (flag overrides — §3.1.3 / §5).
   if (mode === "quick") {
     return forcedResult("quick", mode, prompt);
+  }
+  if (mode === "feature") {
+    return forcedResult("feature", mode, prompt);
   }
   if (mode === "project") {
     return forcedResult("project", mode, prompt);
@@ -523,7 +526,7 @@ export function defaultInboxReader(inboxDir) {
  *
  * @param {object} opts
  * @param {string}  opts.prompt
- * @param {string}  [opts.mode="auto"]      auto | quick | project
+ * @param {string}  [opts.mode="auto"]      auto | quick | feature | project
  * @param {boolean} [opts.planOnly=false]   return the plan, invoke ZERO boundaries
  * @param {string}  [opts.bgsdDir]          .bgsd dir (tests point this at a tmp dir)
  *
@@ -986,15 +989,16 @@ if (
     const prompt = typeof flags.prompt === "string" ? flags.prompt : "";
     if (!prompt) {
       process.stderr.write(
-        'Usage: session.mjs --prompt "<request>" [--quick | --project] [--plan-only]\n'
+        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--plan-only]\n'
       );
       process.exit(1);
     }
-    if (flags.quick && flags.project) {
-      process.stderr.write("session.mjs: --quick and --project are mutually exclusive\n");
+    const scaleFlags = [flags.quick, flags.feature, flags.project].filter(Boolean).length;
+    if (scaleFlags > 1) {
+      process.stderr.write("session.mjs: --quick, --feature, and --project are mutually exclusive\n");
       process.exit(1);
     }
-    const mode = flags.quick ? "quick" : flags.project ? "project" : "auto";
+    const mode = flags.quick ? "quick" : flags.feature ? "feature" : flags.project ? "project" : "auto";
     const planOnly = flags["plan-only"] === true || !flags.live;  // no --live ⇒ safe plan-only default
 
     // CLI runs ONLY the deterministic plan path (no real boundaries here; real

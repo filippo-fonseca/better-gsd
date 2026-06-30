@@ -50,7 +50,7 @@ console.log("\nbgsd session (U1/U2/U3) tests\n");
 
 await test("U1: constants — SCALES + SESSION_MODES", () => {
   assert.deepEqual(SCALES, ["quick", "feature", "project"]);
-  assert.deepEqual(SESSION_MODES, ["auto", "quick", "project"]);
+  assert.deepEqual(SESSION_MODES, ["auto", "quick", "feature", "project"]);
 });
 
 await test("U1: trivial single-surface fix → quick", async () => {
@@ -105,6 +105,33 @@ await test("U1: --project forces project unconditionally", async () => {
   const r = await classifyScale({ prompt: "Fix the typo", mode: "project" });
   assert.equal(r.scale, "project");
   assert.equal(r.confidence, "forced");
+});
+
+await test("U1: --feature forces feature unconditionally (even on a tiny 1-unit prompt)", async () => {
+  // A tiny prompt would auto-classify as quick — --feature must override it.
+  const r = await classifyScale({ prompt: "Fix the typo", mode: "feature" });
+  assert.equal(r.scale, "feature");
+  assert.equal(r.confidence, "forced");
+  assert.equal(r.action, "route");
+});
+
+await test("U2: startSession --feature forces feature depth plan on a tiny prompt", async () => {
+  const res = await startSession({
+    prompt: "Fix the typo in the footer",   // would be quick in auto mode
+    mode: "feature",
+    bgsdDir: tmpBgsd(),
+    decomposeFn: async () => ([{ id: "f1" }]),
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => "approve",
+    prFn: async () => ({ pr: "mock" }),
+  });
+  assert.equal(res.scale, "feature", "--feature must force feature scale regardless of prompt size");
+  assert.equal(res.plan.discuss, false, "feature must not discuss");
+  assert.equal(res.plan.verified, true, "verification is never skipped");
+  const ids = res.plan.stages.map((s) => s.id);
+  assert.ok(ids.includes("decompose"), "feature plan must include decompose");
+  assert.ok(ids.includes("verify_fix"), "feature plan must include verify_fix");
+  assert.equal(res.outcome, "done");
 });
 
 await test("U1: Haiku seam nudges at most one step and never overrides a flag", async () => {

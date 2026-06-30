@@ -15,7 +15,7 @@ access — see "Under the hood" below).
 ## Usage
 
 ```
-/bgsd-sesh "<whatever I need>"  [--quick | --project]
+/bgsd-sesh "<whatever I need>"  [--quick | --feature | --project]
 ```
 
 ```sh
@@ -24,6 +24,9 @@ node bgsd/scripts/session.mjs --prompt "Change the CTA button to 'Get started'"
 
 # Force quick (no discussion, still verified):
 node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick
+
+# Force feature (decompose into 1-3 units, no discussion, still verified):
+node bgsd/scripts/session.mjs --prompt "Add a search bar to the header" --feature
 
 # Force project (discuss first, full pipeline). Real spawns are human-gated:
 node bgsd/scripts/session.mjs --prompt "Build a billing dashboard with Stripe" --project
@@ -38,12 +41,18 @@ node bgsd/scripts/session.mjs --prompt "..." --plan-only
 
 | Flag | Mode | Meaning |
 |------|------|---------|
-| `--project` | `project` | **Forces** the full pipeline **and discussion first**: intake → brainstorm → oracle, *then* decompose → parallel pipeline → Loop 2 → review → PR. |
-| `--quick` | `quick` | **Forces** small: one (or a few) small things, **no discussion**, **no pre-prepare**, fast — but **still verified** (Loop 1 verify→fix is never skipped). |
+| `--project` | `project` | **Forces** the full pipeline **and discussion first**: intake → brainstorm → oracle, then decompose → parallel pipeline → Loop 2 → review → PR. |
+| `--feature` | `feature` | **Forces** feature depth: decompose into 1-3 units, parallel execution, Loop 1 per worktree, merge, Loop 2, review, PR. No discussion. **Still verified.** |
+| `--quick` | `quick` | **Forces** small: one (or a few) small things, **no discussion**, **no pre-prepare**, fast, **still verified** (Loop 1 verify→fix is never skipped). |
 | *(none)* | `auto` | Kiwi **auto-detects** scale from the prompt and routes to `quick` / `feature` / `project` itself. |
 
-Passing both `--quick` and `--project` is a usage error. A flag never disables
-verification and never lets bgsd write `next` or any default branch.
+**Manual flags are unconditional.** When you pass `--quick`, `--feature`, or
+`--project`, the auto-scale thresholds are bypassed entirely. A `--feature` flag
+on a tiny 1-unit prompt still produces a feature depth plan; a `--quick` flag on
+a large prompt still forces the quick path. The flag is the contract.
+
+Passing any two of `--quick`, `--feature`, `--project` together is a usage error.
+A flag never disables verification and never lets bgsd write `next` or any default branch.
 
 ---
 
