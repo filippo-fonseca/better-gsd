@@ -1,7 +1,7 @@
 ---
 name: bgsd-queue
 description: "Manage the bgsd fix-stream queue: add items, check status, and drain the queue through the classify→route→execute→verify→loop pipeline."
-argument-hint: "add --title \"<title>\" [--body \"<desc>\"] [--source manual|hyperpolymath] | status | start [--dry-run]"
+argument-hint: "add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>] | status | peek | done <id> | start [--dry-run]"
 allowed-tools:
   - Read
   - Write
@@ -30,7 +30,16 @@ no parallelism, no second worktree).
 |---|---|
 | `add` | Enqueue a fix or feature item. Returns the item's stable id. |
 | `status` | Print a compact, read-only view of the queue (per-state counts, current item, last verdict). |
+| `peek` | Print the next queued **backlog** item (read-only), or an empty marker. What the Conductor proposes on a no-prompt sesh and at sesh end. |
+| `done <id>` | Mark a Conductor-pulled backlog item resolved (`done`, or `--failed`/`--blocked`), out-of-band of the drainer. |
 | `start` | Drain the queue through the pipeline. Resumes in-flight items; skips done items. |
+
+> **Two ways to drain.** `start` is the **autonomous** drainer (runs each item
+> through the quick pipeline, no confirmation). `peek` + `done` are the
+> **Conductor-orchestrated** backlog: Kiwi peeks, proposes the item to you via a
+> selector, runs a full properly-scaled `/bgsd-sesh`, then marks it `done`. The
+> backlog is how deferred scope drains across sessions — see "Starting with no
+> prompt" in `/bgsd-sesh`.
 
 ---
 
@@ -100,6 +109,38 @@ bgsd queue status
 **Fields:**
 - `current` — the first non-terminal item (the one being worked on), or `(none)` if the queue is empty or all items are terminal.
 - `last_verdict` — state of the most-recently-updated terminal item.
+
+---
+
+## peek
+
+Prints the next queued **backlog** item — the oldest item still in `queued`
+state — without transitioning anything. This is the cross-session backlog the
+Conductor proposes when you run `/bgsd-sesh` with no prompt, and when a session
+finishes. Read-only; zero model calls.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" peek
+```
+
+**Output (stdout):** the next item's `id`, `title`, `source`, `age`, and `body`,
+or `(empty — no work waiting in the queue)` when nothing is queued.
+
+---
+
+## done
+
+Marks a backlog item resolved after the Conductor has pulled it into a full
+session and that session finished. Deliberately out-of-band of the strict
+drainer state machine (the Conductor runs the work outside the drainer), so the
+trail entry is tagged `manual: true`. Idempotent on already-terminal items.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> [--note "ran sesh <id>"]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --failed   # leave it failed, not done
+```
+
+**Output (stdout):** `<item-id> -> done`
 
 ---
 
@@ -240,6 +281,8 @@ An item is NEVER marked `done` without a verified Tester PASS (NFR-06).
 |---|---|
 | Add item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add --title "..." [--body "..."]` |
 | Check status | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" status` |
+| Peek next backlog item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" peek` |
+| Resolve a pulled item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <id> [--note "..."]` |
 | Drain queue | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start` |
 | Dry-run drain | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start --dry-run` |
 | Run unit tests | `node "${CLAUDE_PLUGIN_ROOT}/scripts/test-queue.mjs"` |
@@ -250,7 +293,7 @@ An item is NEVER marked `done` without a verified Tester PASS (NFR-06).
 
 | Path | Purpose |
 |---|---|
-| `bgsd/scripts/queue.mjs` | Core queue library + CLI (add/status/start) |
+| `bgsd/scripts/queue.mjs` | Core queue library + CLI (add/status/peek/done/start) |
 | `bgsd/scripts/test-queue.mjs` | Unit tests for queue.mjs |
 | `bgsd/commands/bgsd-verify.md` | Tester command (Phase 3 uses its contract) |
 | `bgsd/agents/tester.md` | Tester runbook (Loop 1 output contract) |
