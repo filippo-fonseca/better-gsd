@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: `/bgsd-run` Lifecycle + Live Multi-Process Orchestration** *(HUMAN-GATED live run)* - The full run lifecycle/state-machine, abort, merge-boundary checkpoints, and the real headless multi-process spawn guarded behind `--live` (human-supervised, not yet executed) — lifecycle + abort + checkpoints built & unit-tested; live spawn behind `--live`, not executed
 - [x] **Phase 5: Conflict Pre-Check + Merge-Resolver** - Deterministic git dry-run conflict pre-check + dependency-ordered merges, with the merge-resolver agent injected behind a mocked boundary and a human-escalation path for low-confidence conflicts
 - [x] **Phase 6: Rehearsal Assembly + Doc Aggregation + Cleanup** - Assemble `rehearsal/<run-id>`, aggregate each worktree's `.planning/` into the run ledger + CHANGELOG, and clean up merged branches reversibly
-- [ ] **Phase 7: Live Colorful Status View (Kiwi)** - Always-on `/bgsd-status` view on ui.mjs — per-worktree badges, stage, loop counts, merge state, budget/context telemetry, the 🔒 main-protected indicator
+- [x] **Phase 7: Live Colorful Status View (Kiwi)** - Always-on `/bgsd-status` view on ui.mjs — per-worktree badges, stage, loop counts, merge state, budget/context telemetry, the 🔒 main-protected indicator
 - [ ] **Phase 8: Conductor Context Management** - Pointers-not-blobs handoff, deterministic context-pressure monitoring, compaction/clear/re-launch orchestration, and a shared research/prompt cache so context never overflows
 - [ ] **Phase 9: Diagram-First Docs** - `/bgsd-run` + Conductor and `/bgsd-status` + Kiwi pages, GSD-Mintlify style, including the exact human-gated `--live` steps
 
@@ -169,6 +169,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. `/bgsd-run` Lifecycle + Live Multi-Process Orchestration (HUMAN-GATED) | 1/1 | Built (live run human-gated) | 2026-06-29 |
 | 5. Conflict Pre-Check + Merge-Resolver | 1/1 | Complete | 2026-06-29 |
 | 6. Rehearsal Assembly + Doc Aggregation + Cleanup | 1/1 | Complete | 2026-06-29 |
-| 7. Live Colorful Status View (Kiwi) | 0/1 | Pending | — |
+| 7. Live Colorful Status View (Kiwi) | 1/1 | Complete | 2026-06-29 |
 | 8. Conductor Context Management | 0/1 | Pending | — |
 | 9. Diagram-First Docs | 0/1 | Pending | — |
