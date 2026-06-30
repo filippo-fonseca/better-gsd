@@ -39,9 +39,9 @@ core (the classifier + depth plan) is built first (U1); the orchestration wiring
 wiring; the reframe (U4) is written last, against the shipped behavior, so docs
 do not drift. No phase relaxes the existing `--live` / never-`next` discipline.
 
-- [ ] **Phase U1: Scale Classifier + Depth-Plan Builder (deterministic core)** — `classifyScale({ prompt, mode })` + `buildDepthPlan(scale)` in `session.mjs`, reusing `classifyHeuristic` + cheap decompose signals, with the §3 rules/thresholds and a marked Haiku refinement seam; fully unit-tested offline.
-- [ ] **Phase U2: Depth Router + Session Orchestrator (mocked boundaries)** — `startSession({ prompt, mode, planOnly, ...injected })` drives the scale→engine plan: quick (classify/route→Loop 1), feature (small decompose→scheduler→Loop 1→light merge→Loop 2-if-needed), project (discuss→decompose→full pipeline→Loop 2→review→CHANGELOG/PR), all under DI mocks; quick provably still verifies.
-- [ ] **Phase U3: `/bgsd-sesh` Command + Always-On Conversational/Status Integration** *(some criteria `--live`/human-gated)* — the `/bgsd-sesh` command doc + entrypoint, the always-on conversational loop (oracle auto-answer + `escalate` batching + `status.mjs` live view + `context.mjs` hygiene), and the delegation to the human-gated `*-live.mjs` modules.
+- [x] **Phase U1: Scale Classifier + Depth-Plan Builder (deterministic core)** — `classifyScale({ prompt, mode })` + `buildDepthPlan(scale)` in `session.mjs`, reusing `classifyHeuristic` + cheap decompose signals, with the §3 rules/thresholds and a marked Haiku refinement seam; fully unit-tested offline.
+- [x] **Phase U2: Depth Router + Session Orchestrator (mocked boundaries)** — `startSession({ prompt, mode, planOnly, ...injected })` drives the scale→engine plan: quick (classify/route→Loop 1), feature (small decompose→scheduler→Loop 1→light merge→Loop 2-if-needed), project (discuss→decompose→full pipeline→Loop 2→review→CHANGELOG/PR), all under DI mocks; quick provably still verifies.
+- [x] **Phase U3: `/bgsd-sesh` Command + Always-On Conversational/Status Integration** *(some criteria `--live`/human-gated)* — the `/bgsd-sesh` command doc + entrypoint, the always-on **non-blocking** conversational loop (live `status.renderStatus` view + a user-message inbox ingested without halting + per-unit `needs_input` while others progress + oracle auto-answer + `escalate` batching), and the delegation to the human-gated `*-live.mjs` modules.
 - [ ] **Phase U4: Reframe — README / Docs / PROJECT.md** — re-center the user-facing story on `/bgsd-sesh` (the session is THE interface); reposition the `/bgsd-*` pages as internal stages / advanced access; add the "How the Conductor scales" page; update PROJECT.md.
 
 ## Phase Details
@@ -165,7 +165,7 @@ the command parsing + always-on status/oracle/escalate/context wiring of U3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| U1. Scale Classifier + Depth-Plan Builder | 0/1 | Not started | — |
-| U2. Depth Router + Session Orchestrator (mocked) | 0/1 | Not started | — |
-| U3. `/bgsd-sesh` Command + Always-On Integration (some HUMAN-GATED) | 0/1 | Not started | — |
+| U1. Scale Classifier + Depth-Plan Builder | 1/1 | Complete | 2026-06-29 |
+| U2. Depth Router + Session Orchestrator (mocked) | 1/1 | Complete | 2026-06-29 |
+| U3. `/bgsd-sesh` Command + Always-On Integration (some HUMAN-GATED) | 1/1 | Complete | 2026-06-29 |
 | U4. Reframe — README / Docs / PROJECT.md | 0/1 | Not started | — |

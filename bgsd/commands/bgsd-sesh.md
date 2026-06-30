@@ -1,0 +1,147 @@
+# /bgsd-sesh — the Conductor session (the one front door)
+
+> **Kiwi · bgsd Conductor — start a session**
+> `/bgsd-sesh "<whatever I need>"` is the single entry point to bgsd. Kiwi, the
+> Conductor, is always on. You chat; Kiwi figures out the scale, runs the same
+> verified pipeline scaled to fit, and stays present to converse.
+
+You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
+`/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
+stages** that a session sequences (they remain available as advanced direct
+access — see "Under the hood" below).
+
+---
+
+## Usage
+
+```
+/bgsd-sesh "<whatever I need>"  [--quick | --project]
+```
+
+```sh
+# Auto-detect scale (the default) — dry-run / plan-only for any live-spawning depth:
+node bgsd/scripts/session.mjs --prompt "Change the CTA button to 'Get started'"
+
+# Force quick (no discussion, still verified):
+node bgsd/scripts/session.mjs --prompt "Fix the 404 on /pricing" --quick
+
+# Force project (discuss first, full pipeline). Real spawns are human-gated:
+node bgsd/scripts/session.mjs --prompt "Build a billing dashboard with Stripe" --project
+
+# Just the deterministic plan (what scale, which engines, how deep) — no spawns:
+node bgsd/scripts/session.mjs --prompt "..." --plan-only
+```
+
+---
+
+## Flags (mutually exclusive)
+
+| Flag | Mode | Meaning |
+|------|------|---------|
+| `--project` | `project` | **Forces** the full pipeline **and discussion first**: intake → brainstorm → oracle, *then* decompose → parallel pipeline → Loop 2 → review → PR. |
+| `--quick` | `quick` | **Forces** small: one (or a few) small things, **no discussion**, **no pre-prepare**, fast — but **still verified** (Loop 1 verify→fix is never skipped). |
+| *(none)* | `auto` | Kiwi **auto-detects** scale from the prompt and routes to `quick` / `feature` / `project` itself. |
+
+Passing both `--quick` and `--project` is a usage error. A flag never disables
+verification and never lets bgsd write `next` or any default branch.
+
+---
+
+## How Kiwi picks the scale (auto mode)
+
+Deterministic, zero required model calls. Kiwi reads cheap signals from the prompt:
+
+- **route class** from `classify-item.mjs:classifyHeuristic` (trivial-fix / scoped-fix / feature / needs-clarification),
+- **unit-count estimate** ≈ number of top-level work clauses (split on " and ", commas, semicolons, newlines, bullets),
+- **surface breadth** = number of distinct named system areas (ui / api / db / auth / billing / deploy / …),
+- **prompt length band**.
+
+| Scale | Triggers (auto) |
+|-------|-----------------|
+| `quick` | trivial/scoped-fix **and** ≤ 2 estimated units **and** ≤ 1 surface. |
+| `feature` | feature-ish, **or** 2–3 units / 2 surfaces; the **default** for ambiguous-but-classifiable work. |
+| `project` | ≥ 4 units **or** ≥ 3 surfaces **or** a long feature prompt. |
+
+If the prompt is too vague (`needs-clarification`), Kiwi asks **one** clarifying
+question in chat and re-classifies — it never silently guesses a scale (NFR-06).
+A marked Haiku seam may nudge a borderline case by at most one step; the
+deterministic heuristic is always computed first and is the floor.
+
+---
+
+## The same pipeline, scaled — and **quick still verifies**
+
+Every scale runs the same conceptual pipeline — *route/plan → execute →
+**verify→fix** → (integrate) → (review) → record* — with depth dialed by scale.
+
+| Stage | `quick` | `feature` | `project` |
+|-------|---------|-----------|-----------|
+| Discuss | — | — | **yes** (intake/brainstorm/oracle, with you, first) |
+| Classify / Decompose | single item | small decompose (1–3 units) | full decompose → graph → waves |
+| Execute | 1 agent | few agents, low concurrency | all wave agents, full concurrency |
+| **Verify→Fix (Loop 1)** | **yes — never skipped** | **yes** | **yes** |
+| Conflict + Merge | trivial | light | full dep-ordered |
+| Integration (Loop 2) | — | if > 1 unit merged | **yes** |
+| User Review Gate | one-line confirm | interactive | mandatory |
+| Changelog / PR | optional | per-agent → PR | full → PR |
+
+> **The non-negotiable invariant: quick still verifies.** A `quick` session can
+> reach `done` only on a Tester **PASS**. FAIL → fix → re-verify (bounded);
+> BLOCKED/ERROR → blocked; no-progress → failed. There is no path where a quick
+> change is reported done without a Tester pass. The only things quick drops are
+> the *discussion*, the *parallel fan-out*, the *integration Loop 2*, and the
+> *mandatory* review gate — never verification.
+
+---
+
+## The always-on, non-blocking session
+
+A session is a live, fully async loop. Nothing about it blocks the conversation:
+
+1. **Live tracking.** The session continuously renders the Kiwi live view
+   (`status.mjs:renderStatus`): per-agent status, stage/wave, what's happening,
+   the budget/context telemetry, and the constant 🔒 **main-protected** footer.
+2. **Interject anytime.** A user-message inbox
+   (`.bgsd/runs/<id>/session-inbox/`) is read **between orchestration steps**. A
+   message you drop in is **ingested without halting** any agent — it can add or
+   adjust work, or answer a pending question. Agents keep orchestrating.
+3. **Non-blocking questions.** When Kiwi must ask you (the oracle abstains), it
+   posts the question to the live view + the escalation inbox and marks **only
+   the dependent unit** `needs_input` (via `control.mjs`). **Every other unit
+   keeps progressing.** It is never a global blocking prompt. Your answer (via
+   the inbox) unblocks just that one unit.
+
+Most downstream questions never reach you: the oracle (`oracle.mjs:answerQuestion`)
+auto-answers from the sealed spec + decisions + profile, and the rare leftovers
+are **batched** non-blockingly via `escalate.mjs`.
+
+---
+
+## Safety (inherited, never relaxed)
+
+- **`--plan-only` / no `--live` is the safe default.** It classifies, plans, and
+  (for quick) can drive the deterministic Loop 1 controller under mocks, but any
+  real spawn / merge / integration boot / PR still requires the human-gated
+  `--live` opt-in on the underlying `*-live.mjs` module.
+- **`next` is never written.** Every real boundary keeps its existing
+  `requireLiveFlag()` / `requireNotNextBranch` / `requireNotDefaultBranch` guard.
+  bgsd assembles into `rehearsal/<run-id>`; only you merge that to `next` by hand.
+- **No silent green.** Verification is never skipped; the review gate is never
+  auto-passed; escalations surface a real question rather than a guess.
+
+---
+
+## Under the hood (advanced direct access)
+
+The old commands still work and map to internal session stages:
+
+| Command | Internal role |
+|---------|---------------|
+| `/bgsd-verify` | the verify step inside Loop 1 / Loop 2 |
+| `/bgsd-queue` | quick-scale work intake + drainer |
+| `/bgsd-run` | feature/project lifecycle (`run.mjs`) |
+| `/bgsd-integrate` | Loop 2 integration stage |
+| `/bgsd-user-eval` | the User Review Gate, surfaced in chat |
+| `/bgsd-feedback` | feedback ingestion when you report an issue mid-session |
+| `/bgsd-changelog` | CHANGELOG → PR assembly |
+| `/bgsd-status` | the always-on live view, shown continuously |
