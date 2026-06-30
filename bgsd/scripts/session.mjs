@@ -562,6 +562,7 @@ export async function startSession(opts = {}) {
     prompt,
     mode = "auto",
     planOnly = false,
+    preflightFn,
     bgsdDir = join(REPO_ROOT, ".bgsd"),
     verifyFn,
     fixFn,
@@ -632,6 +633,21 @@ export async function startSession(opts = {}) {
       session: sessionRecord,
       // No boundary invoked, nothing written for plan-only beyond the in-memory record.
     };
+  }
+
+  // --- sesh preflight: ensure init + ff-sync the integration branch from base.
+  // Default is no boundary (pure/testable); the CLI injects the real init-live
+  // preflight so a real run keeps `next` current with `main` before fanning out.
+  if (typeof preflightFn === "function") {
+    const pf = await preflightFn();
+    if (pf) {
+      sessionRecord.preflight = {
+        integration_branch: pf.integrationBranch,
+        base_branch: pf.baseBranch,
+        performed: pf.performed,
+        notes: pf.notes,
+      };
+    }
   }
 
   // From here we actually orchestrate (under injected/mocked boundaries).
@@ -1032,6 +1048,16 @@ if (
     if (planOnly) {
       process.stdout.write(`\n  preview (--plan-only) — classified and planned; nothing spawned. Pass no flag to execute.\n\n`);
     } else {
+      // sesh preflight: ensure init + ff-sync the integration branch from base.
+      try {
+        const { resolveRepoRoot, seshPreflight } = await import("./init-live.mjs");
+        const pf = seshPreflight(resolveRepoRoot());
+        const did = pf.performed.length ? pf.performed.join(", ") : "already current";
+        process.stdout.write(`  preflight: integration '${pf.integrationBranch}' <- base '${pf.baseBranch}'  [${did}]\n`);
+        for (const n of pf.notes) process.stdout.write(`  preflight note: ${n}\n`);
+      } catch (err) {
+        process.stdout.write(`  preflight skipped (${err.message})\n`);
+      }
       process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
     }
     process.exit(0);

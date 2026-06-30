@@ -211,6 +211,16 @@ export function liveDeps(repoRoot, log) {
   };
 }
 
+/**
+ * Sesh preflight: make the repo bgsd-ready and bring the integration branch
+ * current with base. Idempotent — full setup on first run, just ensure + ff
+ * sync thereafter. Returns the executeInit summary. Used at the start of every
+ * /bgsd-sesh so `next` never falls behind `main` before work fans out.
+ */
+export function seshPreflight(repoRoot, { log } = {}) {
+  return executeInit(liveDeps(repoRoot, log));
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------

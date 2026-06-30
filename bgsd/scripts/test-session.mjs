@@ -473,6 +473,52 @@ await test("U2: feature path skips discuss, runs Loop 2 only if >1 unit merged",
 });
 
 // ---------------------------------------------------------------------------
+// Preflight wiring (sesh start: ensure init + sync integration branch)
+// ---------------------------------------------------------------------------
+
+await test("PF: startSession runs preflightFn once on a real run and records it", async () => {
+  let called = 0;
+  const res = await startSession({
+    prompt: "Fix the typo in the footer",
+    mode: "feature",
+    bgsdDir: tmpBgsd(),
+    preflightFn: async () => {
+      called++;
+      return {
+        integrationBranch: "next",
+        baseBranch: "main",
+        performed: ["create_integration_branch:next"],
+        notes: [],
+      };
+    },
+    decomposeFn: async () => [{ id: "f1" }],
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => "approve",
+    prFn: async () => ({ pr: "mock" }),
+  });
+  assert.equal(called, 1, "preflight runs exactly once on a real run");
+  assert.equal(res.session.preflight.integration_branch, "next");
+  assert.equal(res.session.preflight.base_branch, "main");
+  assert.deepEqual(res.session.preflight.performed, ["create_integration_branch:next"]);
+});
+
+await test("PF: startSession does NOT run preflightFn in plan-only", async () => {
+  let called = 0;
+  const res = await startSession({
+    prompt: "Fix the typo in the footer",
+    mode: "feature",
+    planOnly: true,
+    bgsdDir: tmpBgsd(),
+    preflightFn: async () => {
+      called++;
+      return {};
+    },
+  });
+  assert.equal(called, 0, "plan-only invokes zero boundaries, including preflight");
+  assert.equal(res.planOnly, true);
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 const total = passed + failed;
