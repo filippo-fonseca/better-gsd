@@ -23,6 +23,11 @@
  *   T14 — atomic write: store never left in a partial state (tmp file renamed)
  *   T15 — contentKey: same title+body always produces the same key
  *   T16 — contentKey: different bodies produce different keys
+ *   T17 — peekNext: returns the first queued backlog item (FIFO)
+ *   T18 — peekNext: returns null when no item is queued
+ *   T19 — resolveItem: marks a pulled item terminal with a manual trail entry
+ *   T20 — resolveItem: idempotent on an already-terminal item
+ *   T21 — resolveItem: rejects a non-terminal target state
  */
 
 import assert from "node:assert/strict";
@@ -153,6 +158,35 @@ function testGetStatus() {
     lastVerdict = terminals[0].state;
   }
   return { counts, current, last_verdict: lastVerdict, items };
+}
+
+/** Next queued backlog item (mirrors peekNext from queue.mjs). */
+function testPeekNext() {
+  const store = loadTestStore();
+  return (store.items ?? []).find((i) => i.state === "queued") ?? null;
+}
+
+/** Manually resolve a backlog item (mirrors resolveItem from queue.mjs). */
+function testResolveItem(id, { state = "done", note = "" } = {}) {
+  if (!TERMINAL_STATES.includes(state)) {
+    throw new Error(`resolveItem: "${state}" is not a terminal state`);
+  }
+  const store = loadTestStore();
+  const item = (store.items ?? []).find((i) => i.id === id);
+  if (!item) throw new Error(`resolveItem: no item with id "${id}"`);
+  if (TERMINAL_STATES.includes(item.state)) return item;
+  const now = new Date().toISOString();
+  item.trail = item.trail ?? [];
+  item.trail.push({
+    from: item.state,
+    to: state,
+    at: now,
+    meta: { manual: true, ...(note ? { note } : {}) },
+  });
+  item.state = state;
+  item.updated_at = now;
+  saveTestStore(store);
+  return item;
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +579,78 @@ test("T16: contentKey differentiates distinct title+body combinations", () => {
   assert.notEqual(k1, k2, "Different bodies must produce different keys");
   assert.notEqual(k1, k3, "Different titles must produce different keys");
   assert.notEqual(k2, k3, "Both different must produce different keys");
+});
+
+// ---------------------------------------------------------------------------
+// T17: peekNext returns the first queued backlog item, oldest-first
+// ---------------------------------------------------------------------------
+test("T17: peekNext returns the first queued item (FIFO backlog order)", () => {
+  resetStore();
+  const first = testAddItem({ title: "First deferred", body: "a" });
+  testAddItem({ title: "Second deferred", body: "b" });
+
+  const next = testPeekNext();
+  assert.ok(next, "peekNext must return an item when the backlog is non-empty");
+  assert.equal(next.id, first, "peekNext must return the oldest queued item");
+  assert.equal(next.state, "queued", "peeked item must be in queued state");
+});
+
+// ---------------------------------------------------------------------------
+// T18: peekNext returns null when no item is queued
+// ---------------------------------------------------------------------------
+test("T18: peekNext returns null when the backlog has no queued items", () => {
+  resetStore();
+  assert.equal(testPeekNext(), null, "empty store -> null");
+
+  const id = testAddItem({ title: "Will be resolved", body: "x" });
+  testResolveItem(id, { state: "done" });
+  assert.equal(
+    testPeekNext(),
+    null,
+    "a backlog whose only item is terminal must peek as null (read-only — does not skip to in-flight states)"
+  );
+});
+
+// ---------------------------------------------------------------------------
+// T19: resolveItem marks a pulled item terminal with a manual trail entry
+// ---------------------------------------------------------------------------
+test("T19: resolveItem marks a queued item done and tags the trail manual", () => {
+  resetStore();
+  const id = testAddItem({ title: "Pulled into a sesh", body: "y" });
+
+  const item = testResolveItem(id, { state: "done", note: "ran sesh abc" });
+  assert.equal(item.state, "done", "item must be resolved to done");
+  const last = item.trail[item.trail.length - 1];
+  assert.equal(last.to, "done", "trail must record the resolution");
+  assert.equal(last.meta.manual, true, "out-of-band resolution must be tagged manual:true");
+  assert.equal(last.meta.note, "ran sesh abc", "note must be recorded in the trail");
+  assert.equal(testPeekNext(), null, "a resolved item must no longer be peeked");
+});
+
+// ---------------------------------------------------------------------------
+// T20: resolveItem is idempotent on an already-terminal item
+// ---------------------------------------------------------------------------
+test("T20: resolveItem is idempotent on a terminal item (no double-resolution)", () => {
+  resetStore();
+  const id = testAddItem({ title: "Resolve twice", body: "z" });
+  const once = testResolveItem(id, { state: "done" });
+  const trailLen = once.trail.length;
+  const twice = testResolveItem(id, { state: "failed" });
+  assert.equal(twice.state, "done", "second resolve must not change a terminal state");
+  assert.equal(twice.trail.length, trailLen, "second resolve must not append a trail entry");
+});
+
+// ---------------------------------------------------------------------------
+// T21: resolveItem rejects a non-terminal target state
+// ---------------------------------------------------------------------------
+test("T21: resolveItem rejects a non-terminal target state", () => {
+  resetStore();
+  const id = testAddItem({ title: "Bad target", body: "q" });
+  assert.throws(
+    () => testResolveItem(id, { state: "executing" }),
+    /not a terminal state/,
+    "resolving to a non-terminal state must throw"
+  );
 });
 
 // ---------------------------------------------------------------------------

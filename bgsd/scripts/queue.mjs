@@ -383,6 +383,102 @@ export function printStatus() {
 }
 
 // ---------------------------------------------------------------------------
+// backlog — peek + resolve (Conductor-orchestrated, confirmation-gated)
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the next actionable backlog item: the first item still in `queued`
+ * state (enqueued, not yet started). Read-only — transitions nothing.
+ *
+ * This is the backlog the Conductor proposes when /bgsd-sesh is invoked with no
+ * prompt, and when a session finishes and asks "what next?". Distinct from the
+ * autonomous drainer (startDrainer): the Conductor peeks, confirms with the
+ * user via a selector, then runs a full, properly-scaled session.
+ *
+ * @returns {object|null}
+ */
+export function peekNext() {
+  const store = loadStore();
+  return (store.items ?? []).find((i) => i.state === "queued") ?? null;
+}
+
+/**
+ * Print the next queued backlog item (or an empty marker) for the Conductor to
+ * read and propose. Human-readable, matches printStatus discipline (NFR-05).
+ */
+export function printNext() {
+  const item = peekNext();
+  process.stdout.write(`\nnext queued backlog item\n`);
+  if (!item) {
+    process.stdout.write(`  (empty — no work waiting in the queue)\n\n`);
+    return;
+  }
+  const ageMs = Date.now() - new Date(item.created_at).getTime();
+  const ageMins = Math.max(0, Math.floor(ageMs / 60000));
+  const ageStr =
+    ageMins >= 60
+      ? `${Math.floor(ageMins / 60)}h ${ageMins % 60}m`
+      : `${ageMins}m`;
+  process.stdout.write(`  id      ${item.id}\n`);
+  process.stdout.write(`  title   ${item.title}\n`);
+  process.stdout.write(`  source  ${item.source}\n`);
+  process.stdout.write(`  age     ${ageStr}\n`);
+  if (item.body) {
+    process.stdout.write(`  body\n`);
+    for (const line of item.body.split("\n")) {
+      process.stdout.write(`    ${line}\n`);
+    }
+  }
+  process.stdout.write("\n");
+}
+
+/**
+ * Manually resolve a backlog item to a terminal state. Used by the Conductor
+ * when it pulls an item from the backlog into a full session and that session
+ * completes — it marks the item `done` (or `failed`) so the backlog drains
+ * instead of re-proposing the same item forever.
+ *
+ * This deliberately bypasses the strict `transition()` machine: that state
+ * machine governs the autonomous drainer (queued → classified → … → done).
+ * A Conductor-orchestrated session runs OUTSIDE the drainer, so resolving its
+ * backlog marker is an explicit out-of-band operation, tagged `manual:true` in
+ * the trail. Idempotent: resolving an already-terminal item is a no-op.
+ *
+ * @param {string} id
+ * @param {object} [opts]
+ * @param {string} [opts.state="done"]  Terminal state to set (done|failed|blocked).
+ * @param {string} [opts.note]          Optional note recorded in the trail.
+ * @returns {object} the resolved item
+ */
+export function resolveItem(id, { state = "done", note = "" } = {}) {
+  if (!TERMINAL_STATES.includes(state)) {
+    throw new Error(
+      `resolveItem: "${state}" is not a terminal state (${TERMINAL_STATES.join(", ")})`
+    );
+  }
+  const store = loadStore();
+  const item = (store.items ?? []).find((i) => i.id === id);
+  if (!item) {
+    throw new Error(`resolveItem: no item with id "${id}"`);
+  }
+  if (TERMINAL_STATES.includes(item.state)) {
+    return item; // already resolved — idempotent
+  }
+  const now = new Date().toISOString();
+  item.trail = item.trail ?? [];
+  item.trail.push({
+    from: item.state,
+    to: state,
+    at: now,
+    meta: { manual: true, ...(note ? { note } : {}) },
+  });
+  item.state = state;
+  item.updated_at = now;
+  saveStore(store);
+  return item;
+}
+
+// ---------------------------------------------------------------------------
 // start — QUEUE-04, QUEUE-05 (placeholder drainer)
 // ---------------------------------------------------------------------------
 
@@ -591,8 +687,10 @@ if (
     process.stderr.write(
       [
         "Usage:",
-        "  node bgsd/scripts/queue.mjs add --title \"<title>\" [--body \"<desc>\"] [--source manual|hyperpolymath]",
+        "  node bgsd/scripts/queue.mjs add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>]",
         "  node bgsd/scripts/queue.mjs status",
+        "  node bgsd/scripts/queue.mjs peek                      # next queued backlog item, or empty",
+        "  node bgsd/scripts/queue.mjs done <id> [--note \"...\"]   # mark a pulled item resolved",
         "  node bgsd/scripts/queue.mjs start [--dry-run]",
         "",
       ].join("\n")
@@ -640,6 +738,38 @@ if (
   if (subcommand === "status") {
     printStatus();
     process.exit(0);
+  }
+
+  if (subcommand === "peek" || subcommand === "next") {
+    printNext();
+    process.exit(0);
+  }
+
+  if (subcommand === "done" || subcommand === "resolve") {
+    const flags = parseFlags(argv.slice(1));
+    const id =
+      typeof argv[1] === "string" && !argv[1].startsWith("--")
+        ? argv[1]
+        : typeof flags.id === "string"
+          ? flags.id
+          : null;
+    if (!id) {
+      process.stderr.write("done: an item <id> is required\n");
+      process.exit(1);
+    }
+    const state =
+      flags.failed === true ? "failed" : flags.blocked === true ? "blocked" : "done";
+    try {
+      const item = resolveItem(id, {
+        state,
+        note: typeof flags.note === "string" ? flags.note : "",
+      });
+      process.stdout.write(`${item.id} -> ${item.state}\n`);
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(`done: ${err.message}\n`);
+      process.exit(1);
+    }
   }
 
   if (subcommand === "start") {
