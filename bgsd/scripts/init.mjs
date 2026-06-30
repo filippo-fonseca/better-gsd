@@ -217,6 +217,7 @@ const GITIGNORE_BLOCK = [
   "# Ignore all runtime artifacts; commit only the persistent records.",
   ".bgsd/*",
   "!.bgsd/seshs/",
+  "!.bgsd/memory/",
   "!.bgsd/ledger.md",
   "!.bgsd/config.json",
   ".bgsd-tmp/",
