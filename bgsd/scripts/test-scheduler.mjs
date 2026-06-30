@@ -677,6 +677,57 @@ await testAsync("S14 — waves count returned matches wave input length", async 
 });
 
 // ---------------------------------------------------------------------------
+// scheduler.mjs — onPollFn context-management hook (CTX-02)
+// ---------------------------------------------------------------------------
+
+await testAsync("S15 — onPollFn is invoked each poll cycle with the in-flight units", async () => {
+  const units = [makeUnit("u1")];
+  const graph = makeGraph(units);
+  const plans = planWorktrees(REPO_ROOT, RUN_ID, units);
+  const waves = [["u1"]];
+
+  // Keep u1 "running" for two reads, then "done" — so the poll loop spins,
+  // firing onPollFn before the terminal read ends the batch.
+  let reads = 0;
+  const spawnFn = async () => {};
+  const readStatusFn = async () => (reads++ < 2 ? "running" : "done");
+
+  const onPollCalls = [];
+  const onPollFn = async (inFlight) => { onPollCalls.push([...inFlight]); };
+
+  const result = await runScheduler({
+    waves, graph, plans, spawnFn, readStatusFn, pollIntervalMs: 0, onPollFn,
+  });
+
+  assert.deepEqual(result.done, ["u1"]);
+  assert.ok(onPollCalls.length >= 1, "onPollFn should fire at least once while u1 is in flight");
+  // Every invocation while u1 was running should report it as in flight.
+  for (const inFlight of onPollCalls) {
+    assert.deepEqual(inFlight, ["u1"]);
+  }
+});
+
+await testAsync("S16 — an onPollFn that throws does not derail scheduling (surfaced, not silent)", async () => {
+  const units = [makeUnit("u1")];
+  const graph = makeGraph(units);
+  const plans = planWorktrees(REPO_ROOT, RUN_ID, units);
+  const waves = [["u1"]];
+
+  let reads = 0;
+  const spawnFn = async () => {};
+  const readStatusFn = async () => (reads++ < 2 ? "running" : "done");
+  const onPollFn = async () => { throw new Error("context tick boom"); };
+
+  const result = await runScheduler({
+    waves, graph, plans, spawnFn, readStatusFn, pollIntervalMs: 0, onPollFn,
+  });
+
+  // Scheduling still completes despite the hook throwing.
+  assert.deepEqual(result.done, ["u1"]);
+  assert.deepEqual(result.failed, []);
+});
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 

@@ -97,6 +97,11 @@ export const SUCCESS_STATUSES = new Set(["done"]);
  * @param {number}  [opts.maxConcurrency]   Max units in flight simultaneously
  * @param {number}  [opts.pollIntervalMs]   How often to poll for status (ms)
  * @param {number}  [opts.pollTimeoutMs]    Max time to wait per batch (ms)
+ * @param {Function} [opts.onPollFn]        async (inFlightUnitIds[]) => void — INJECTED.
+ *   Called once per poll cycle with the units still in flight. The Conductor
+ *   injects its context-management tick here (context.mjs runContextTick) so
+ *   per-subagent context pressure is evaluated + acted on every cycle. Pure
+ *   scheduling stays unaffected if omitted. Errors are surfaced, never silent.
  * @returns {Promise<{
  *   dispatched: string[],
  *   done:       string[],
@@ -114,6 +119,7 @@ export async function runScheduler({
   maxConcurrency  = DEFAULT_MAX_CONCURRENCY,
   pollIntervalMs  = DEFAULT_POLL_INTERVAL_MS,
   pollTimeoutMs   = DEFAULT_POLL_TIMEOUT_MS,
+  onPollFn,
 }) {
   // Validate required injections — fail loud rather than silently doing nothing
   if (typeof spawnFn !== "function") {
@@ -205,6 +211,20 @@ export async function runScheduler({
           }
         }
         // "running" or other non-terminal status: keep polling
+      }
+
+      // Per-cycle Conductor hook (CTX-02): evaluate + act on context pressure
+      // for every agent still in flight. Dependency-injected and optional; the
+      // scheduler's own logic does not depend on it. Errors are surfaced loudly
+      // (NFR-06: no silent green) but do not derail scheduling.
+      if (typeof onPollFn === "function" && inFlight.size > 0) {
+        try {
+          await onPollFn([...inFlight]);
+        } catch (err) {
+          process.stderr.write(
+            `[scheduler] onPollFn (context tick) error: ${err.message}\n`
+          );
+        }
       }
 
       if (inFlight.size > 0) {

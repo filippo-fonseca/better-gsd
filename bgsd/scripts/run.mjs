@@ -491,6 +491,7 @@ export async function runLifecycle({
   maxConcurrency  = 4,
   pollIntervalMs  = 0,
   pollTimeoutMs   = 300_000,
+  onPollFn,
 }) {
   // Validate required injections (fail loud — NFR-06)
   if (typeof spawnFn !== "function") {
@@ -560,6 +561,7 @@ export async function runLifecycle({
       maxConcurrency,
       pollIntervalMs,
       pollTimeoutMs,
+      onPollFn,
     });
   } catch (err) {
     // Scheduler threw unexpectedly — park as blocked (NFR-06)
