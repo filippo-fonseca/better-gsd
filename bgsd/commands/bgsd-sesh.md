@@ -266,9 +266,17 @@ manually" path does not exist.
   explicit `--live` opt-in on the underlying `*-live.mjs` module.
 - **`main` is never written.** Every real boundary keeps its existing
   `requireLiveFlag()` / `requireNotProductionBranch` / `requireNotDefaultBranch` guard.
-  bgsd assembles into the standing `next` branch; only you merge `next` → `main` by hand.
+  bgsd assembles into the standing `next` branch. On approval Kiwi **opens the
+  `next → main` landing PR for you automatically** (files the unit issues, adds
+  `Closes #…`, hands you the PR link), but it **never merges** it: the
+  `next → main` merge is yours, always. Kiwi does not ask whether to open the PR
+  and does not offer to merge.
 - **No silent green.** Verification is never skipped; the review gate is never
   auto-passed; escalations surface a real question rather than a guess.
+- **Clickable URLs, never bare ports.** Whenever Kiwi mentions a running app or
+  dev server, it prints the full `http://localhost:<port>` (or the real host) so
+  you can click it. A bare `:3137` is never acceptable, in the gate or in
+  free-form narration.
 
 ---
 

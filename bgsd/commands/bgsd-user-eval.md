@@ -34,7 +34,7 @@ Loop 1 (per-worktree verify→fix)
     → Loop 2 (integration verify→fix)   ← MUST return PASS
       → /bgsd-user-eval (User Review Gate)  ← YOU ARE HERE
         → /bgsd-feedback (if request-changes)
-        → CHANGELOG + PR creation (if approved)
+        → CHANGELOG + auto-open next → main landing PR (if approved; you merge)
 ```
 
 ---
@@ -56,6 +56,13 @@ Integrated app (next): http://localhost:3099
 |------|----------|
 | `--dry-run` (default) | Prints the boot plan. No process is started. |
 | `--live` | Boots the real integrated `next` app. Human-supervised only. Never in CI. |
+
+> **Always a clickable URL, never a bare port.** Any time Kiwi mentions a
+> running server (the review-gate boot, a still-running integration dev server,
+> anything the user might open), it prints the full `http://localhost:<port>`
+> form so the user can click it. A bare `:3137` is never acceptable. If the app
+> binds a host other than localhost, print that host. This holds in free-form
+> narration too, not just the gate output.
 
 ---
 
@@ -98,6 +105,35 @@ Rules:
   `request-changes` with your text captured as findings for `/bgsd-feedback`.
 - Responding with nothing (empty, Ctrl-C, or closed stdin) parks the run in
   `needs_input` — it does **NOT** approve anything.
+
+---
+
+## After approve — open the landing PR automatically (REVIEW-04)
+
+On an `approve` verdict, Kiwi does **not** ask the user how to land. It just does
+the safe, reversible part and hands over the rest:
+
+1. **Files the per-unit GitHub issues** (one per work unit, plus the sesh epic)
+   if they were not filed already, so the landing PR can close them.
+2. **Opens one `next → main` pull request automatically** (`gh pr create --base
+   main --head next`), with a body that lists the per-agent changelog and
+   `Closes #<n>` for every unit issue. This is the human-handoff PR; opening it
+   is safe (it writes nothing to `main`).
+3. **Hands the user two links:** the **PR URL** to review and merge, and the
+   **`http://localhost:<port>`** of the integrated app if it is still up.
+
+```
+Approved. Landing PR is open for your review:
+  PR:   https://github.com/<owner>/<repo>/pull/<n>   (review + merge when you're happy)
+  App:  http://localhost:3099                         (still up if you want another look)
+
+I won't merge it — next → main is yours. Say the word and I'll take the dev server down.
+```
+
+**Kiwi never merges `next → main`.** It opens the PR and stops; the merge is the
+user's, always (NFR-01). It does not offer an "I'll merge it" option, and it
+does not ask whether to open the PR — opening the handoff PR is the default. The
+only thing the user does is review and click merge.
 
 ---
 
