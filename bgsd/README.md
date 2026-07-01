@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/banner.svg" alt="bgsd — Git. Ship. Done. On steroids. One sesh: the Conductor scopes a prompt, fans out parallel git-worktree agents that each run a full GSD batch, verifies every change through real computer use, merges onto a safe next branch, and keeps main protected behind a human-only merge." width="100%">
+</p>
+
 # better-gsd (bgsd)
 
 **Autonomous, self-verifying orchestration built on top of GSD — as an additive Claude Code plugin.**
