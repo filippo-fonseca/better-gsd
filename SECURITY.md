@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-bgsd is currently at **0.2.x**. Security fixes are provided for the `0.2.x`
+bgsd is currently at **0.5.x**. Security fixes are provided for the `0.5.x`
 line. Older pre-release versions are not supported.
 
 | Version | Supported |
 |---------|-----------|
-| 0.2.x   | Yes       |
-| < 0.2   | No        |
+| 0.5.x   | Yes       |
+| < 0.5   | No        |
 
 ## Reporting a vulnerability
 
@@ -40,9 +40,11 @@ mind when running it:
   standing `next` branch; the `next` to `main` merge is a manual, human-only
   step. This is enforced in code (a not-production-branch guard on every live
   mutation), not just documented.
-- **Live operations are gated.** Multi-process orchestration and live captures
-  refuse to run without an explicit `--live` flag, throwing a detailed refusal
-  instead of acting silently.
+- **Autonomous by design; the branch is the boundary.** A plain `/bgsd-sesh`
+  runs the whole pipeline end-to-end (spawning parallel agents, real merges, and
+  browser-driven verification) with no separate opt-in flag. The enforced safety
+  boundary is the not-production-branch guard above: every live mutation refuses
+  to run against `main`/`master`. Run bgsd only on repos and prompts you trust.
 - **Environment files are propagated into worktrees.** Because git worktrees do
   not carry gitignored files, bgsd copies your configured `.env*` files from the
   repo root into each worktree so apps boot with their real environment. This
