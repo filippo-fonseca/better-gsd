@@ -37,7 +37,7 @@
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Area detection — cheap regex signal from a unit's touched globs (NFR-05)
@@ -139,4 +139,169 @@ export function writeUnitPhaseConfig(planningDir, phaseConfig, unitId) {
   writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf8");
   renameSync(tmpPath, configPath);
   return configPath;
+}
+
+// ---------------------------------------------------------------------------
+// READ SEAM — read the per-unit seams back out of a worktree config
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the two per-unit seams from a worktree's .planning/config.json.
+ *
+ * Returns whatever is present; a missing file or missing key yields null for
+ * that seam. A quick/fix unit (no decompose ran) has no bgsd_phase_config, so
+ * phaseConfig comes back null — the signal for the light "direct fix" path.
+ *
+ * @param {string} planningDir   path to the worktree's .planning/ directory
+ * @returns {{ phaseConfig: object|null, posture: object|null }}
+ */
+export function readUnitPhaseConfig(planningDir) {
+  const configPath = join(planningDir, "config.json");
+  if (!existsSync(configPath)) return { phaseConfig: null, posture: null };
+  let config;
+  try {
+    config = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (_) {
+    return { phaseConfig: null, posture: null };
+  }
+  return {
+    phaseConfig: config.bgsd_phase_config ?? null,
+    posture: config.bgsd_unit_posture ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PHASE PLAN — resolve toggles + scale into an ordered GSD phase run-list
+// ---------------------------------------------------------------------------
+
+/**
+ * The ordered GSD phase vocabulary a pipeline agent can run for one unit.
+ * ui-phase / ai-integration-phase are design-contract phases that run BEFORE
+ * planning; plan + execute always run for a GSD unit; code-review is a gate
+ * after execute. research / plan_check are honored INSIDE plan-phase via the
+ * GSD workflow toggles (they are not standalone commands), which is why the
+ * returned `workflow` object mirrors the phase config for GSD to read.
+ */
+const GSD_PHASE_COMMANDS = Object.freeze({
+  "ui-phase": "/gsd-ui-phase",
+  "ai-integration-phase": "/gsd-ai-integration-phase",
+  plan: "/gsd-plan-phase",
+  execute: "/gsd-execute-phase",
+  "code-review": "/gsd-code-review",
+});
+
+/**
+ * Resolve a unit's phase config + scale into an executable phase plan for a
+ * pipeline agent (the /bgsd-run-agent reader consumes this).
+ *
+ * Two shapes:
+ *   - DIRECT (light) path — when there is no phaseConfig (a quick/fix unit that
+ *     never went through decompose) OR scale === "quick". The agent just makes
+ *     the change directly; no GSD phases run. Loop 1 verify still runs after,
+ *     separately, so "no GSD" never means "unverified".
+ *   - GSD path — feature/project units. An ordered list of phases gated by the
+ *     toggles, plus a `workflow` object (the same toggles) for the agent to
+ *     write into GSD's config so research/plan_check/code_review are honored.
+ *
+ * Deterministic + pure: zero model calls (NFR-05).
+ *
+ * @param {object|null} phaseConfig   the unit's bgsd_phase_config, or null
+ * @param {object} [opts]
+ * @param {string} [opts.scale]       session scale (quick forces the direct path)
+ * @returns {{ mode: "direct"|"gsd", workflow: object|null,
+ *             phases: Array<{ id: string, command: string, run: boolean, reason: string }> }}
+ */
+export function resolvePhasePlan(phaseConfig, { scale } = {}) {
+  if (!phaseConfig || scale === "quick") {
+    return {
+      mode: "direct",
+      workflow: null,
+      phases: [
+        {
+          id: "execute",
+          command: "direct-fix",
+          run: true,
+          reason: scale === "quick"
+            ? "quick scale — pipeline agent applies the change directly, no GSD"
+            : "no per-unit phase config — quick/fix unit, direct change, no GSD",
+        },
+      ],
+    };
+  }
+
+  // Normalize toggles to strict booleans (GSD workflow contract).
+  const wf = {
+    research:             !!phaseConfig.research,
+    plan_check:           !!phaseConfig.plan_check,
+    code_review:          !!phaseConfig.code_review,
+    ai_integration_phase: !!phaseConfig.ai_integration_phase,
+    ui_phase:             !!phaseConfig.ui_phase,
+  };
+
+  const phases = [];
+  if (wf.ui_phase) {
+    phases.push({ id: "ui-phase", command: GSD_PHASE_COMMANDS["ui-phase"], run: true,
+      reason: "UI area — produce the UI-SPEC design contract before planning" });
+  }
+  if (wf.ai_integration_phase) {
+    phases.push({ id: "ai-integration-phase", command: GSD_PHASE_COMMANDS["ai-integration-phase"], run: true,
+      reason: "AI area or very high difficulty — produce the AI-SPEC before planning" });
+  }
+  phases.push({ id: "plan", command: GSD_PHASE_COMMANDS.plan, run: true,
+    reason: wf.research
+      ? "plan the unit (research + plan-check honored via workflow toggles)"
+      : "plan the unit (research skipped — trivial enough)" });
+  phases.push({ id: "execute", command: GSD_PHASE_COMMANDS.execute, run: true,
+    reason: "execute the plan with atomic commits" });
+  if (wf.code_review) {
+    phases.push({ id: "code-review", command: GSD_PHASE_COMMANDS["code-review"], run: true,
+      reason: "harder unit — run the code-review gate over changed files" });
+  }
+
+  return { mode: "gsd", workflow: wf, phases };
+}
+
+// ---------------------------------------------------------------------------
+// CLI entrypoint — `--plan <planningDir> [--scale <scale>]`
+// Prints the resolved phase plan as JSON so the /bgsd-run-agent markdown reader
+// can fetch its marching orders with one deterministic call (no model needed).
+// ---------------------------------------------------------------------------
+if (
+  import.meta.url ===
+  new URL(
+    process.argv[1],
+    import.meta.url.startsWith("file://") ? import.meta.url : `file://${process.cwd()}/`
+  ).href
+) {
+  function parseFlags(args) {
+    const flags = {};
+    for (let i = 0; i < args.length; i++) {
+      if (args[i].startsWith("--")) {
+        const key = args[i].slice(2);
+        const next = args[i + 1];
+        if (next && !next.startsWith("--")) { flags[key] = next; i++; }
+        else { flags[key] = true; }
+      }
+    }
+    return flags;
+  }
+
+  const flags = parseFlags(process.argv.slice(2));
+
+  if (flags.help || !flags.plan) {
+    process.stderr.write(
+      "Usage: node bgsd/scripts/phaseconfig.mjs --plan <planningDir> [--scale quick|feature|project]\n" +
+      "  Reads <planningDir>/config.json and prints the resolved phase plan as JSON:\n" +
+      "    { mode, workflow, phases }\n" +
+      "  mode=direct  -> quick/fix unit, apply the change directly (no GSD phases)\n" +
+      "  mode=gsd     -> run the listed /gsd-* phases in order; write `workflow` into GSD config\n"
+    );
+    process.exit(flags.help ? 0 : 1);
+  }
+
+  const planningDir = resolve(process.cwd(), String(flags.plan));
+  const { phaseConfig } = readUnitPhaseConfig(planningDir);
+  const scale = typeof flags.scale === "string" ? flags.scale : undefined;
+  const plan = resolvePhasePlan(phaseConfig, { scale });
+  process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
 }
