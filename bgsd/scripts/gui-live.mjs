@@ -32,7 +32,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readAllControlFiles } from "./control.mjs";
-import { buildDashboardModel } from "./gui.mjs";
+import { buildDashboardModel, summarizeSessions } from "./gui.mjs";
 import { resolveRepoRoot } from "./init-live.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +77,65 @@ export function modelForRun(repoRoot, runId) {
     }
   } catch (_) { /* keep minimal run */ }
   return buildDashboardModel({ run, agents });
+}
+
+/**
+ * Scan every run under .bgsd/runs and read its metadata + control files into the
+ * shape summarizeSessions expects. Each entry carries an mtime computed as the
+ * newest of its run.json / control files, falling back to the run dir's mtime,
+ * so the "All sessions" list can sort newest-first. Read-only and defensive:
+ * a malformed run.json or control dir never aborts the scan.
+ *
+ * @param {string} repoRoot
+ * @returns {Array<{ runId: string, run: object|null, controls: object[], mtime: number }>}
+ */
+export function readAllRuns(repoRoot) {
+  const dir = runsDir(repoRoot);
+  if (!existsSync(dir)) return [];
+  let entries = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch (_) {
+    return [];
+  }
+
+  return entries.map((e) => {
+    const runId = e.name;
+    const runDir = join(dir, runId);
+    let mtime = 0;
+    try { mtime = statSync(runDir).mtimeMs; } catch (_) { mtime = 0; }
+
+    // run.json (optional).
+    let run = null;
+    const runJson = join(runDir, "run.json");
+    try {
+      if (existsSync(runJson)) {
+        run = JSON.parse(readFileSync(runJson, "utf8"));
+        try { mtime = Math.max(mtime, statSync(runJson).mtimeMs); } catch (_) { /* keep */ }
+      }
+    } catch (_) { run = null; }
+
+    // control/*.json (optional).
+    let controls = [];
+    const controlDir = join(runDir, "control");
+    try {
+      if (existsSync(controlDir)) {
+        controls = readAllControlFiles(controlDir).files;
+        try {
+          for (const f of readdirSync(controlDir).filter((n) => n.endsWith(".json"))) {
+            mtime = Math.max(mtime, statSync(join(controlDir, f)).mtimeMs);
+          }
+        } catch (_) { /* keep */ }
+      }
+    } catch (_) { controls = []; }
+
+    return { runId, run, controls, mtime };
+  });
+}
+
+/** Session summaries for every run under .bgsd/runs, newest-first. */
+export function sessionsList(repoRoot) {
+  return summarizeSessions(readAllRuns(repoRoot));
 }
 
 /**
@@ -130,8 +189,17 @@ export function startServer(repoRoot, { runId, port = 0 } = {}) {
 
   const server = createServer((req, res) => {
     try {
-      if (req.url && req.url.startsWith("/api/state")) {
-        const model = modelForRun(repoRoot, runId ?? latestRunId(repoRoot));
+      const url = new URL(req.url || "/", "http://localhost");
+      if (url.pathname === "/api/sessions") {
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(sessionsList(repoRoot)));
+        return;
+      }
+      if (url.pathname === "/api/state") {
+        // ?run=<id> views a specific run; default stays the latest.
+        const requested = url.searchParams.get("run");
+        const target = (requested && requested.trim()) || runId || latestRunId(repoRoot);
+        const model = modelForRun(repoRoot, target);
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(model));
         return;
