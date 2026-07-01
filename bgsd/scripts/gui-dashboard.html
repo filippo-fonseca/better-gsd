@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>bgsd · live view</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #131a24; --panel-2: #1a2430; --line: #26303c;
+    --ink: #e6edf3; --muted: #8b98a5; --kiwi: #3fb567; --kiwi-dim: #1f5f38;
+    --run: #58a6ff; --warn: #e3b341; --bad: #f85149; --done: #3fb567;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: linear-gradient(180deg,#0d1117,#0d1117ee);
+    border-bottom: 1px solid var(--line); padding: 14px 20px; backdrop-filter: blur(6px);
+  }
+  .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px; background: var(--kiwi);
+    color: #05130a; font-weight: 700; border-radius: 999px; padding: 3px 12px; letter-spacing: .2px;
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #05130a; opacity: .55; }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .meta { color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 600; }
+  .counts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; color: var(--muted); }
+  .chip b { color: var(--ink); }
+  .chip.run b { color: var(--run); } .chip.done b { color: var(--done); } .chip.bad b { color: var(--bad); }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .live .beat { width: 8px; height: 8px; border-radius: 50%; background: var(--kiwi); box-shadow: 0 0 0 0 var(--kiwi); animation: beat 1.6s infinite; }
+  .live.stale .beat { background: var(--warn); animation: none; }
+  .live.lost .beat { background: var(--bad); animation: none; }
+  @keyframes beat { 0%{box-shadow:0 0 0 0 rgba(63,181,103,.5)} 70%{box-shadow:0 0 0 7px rgba(63,181,103,0)} 100%{box-shadow:0 0 0 0 rgba(63,181,103,0)} }
+  main { padding: 18px 20px; }
+  .lanes { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; align-items: start; }
+  @media (max-width: 980px) { .lanes { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .lanes { grid-template-columns: 1fr; } }
+  .lane { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 90px; }
+  .lane-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 4px 10px; }
+  .lane-title { font-weight: 600; font-size: 12.5px; letter-spacing: .3px; color: var(--ink); }
+  .lane-count { color: var(--muted); font-size: 12px; }
+  .card {
+    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--muted);
+    border-radius: 10px; padding: 10px 11px; margin-bottom: 9px; transition: border-color .2s;
+  }
+  .card.running { border-left-color: var(--run); }
+  .card.done { border-left-color: var(--done); }
+  .card.blocked, .card.failed { border-left-color: var(--bad); }
+  .card.needs_input, .card.stalled { border-left-color: var(--warn); }
+  .card-top { display: flex; align-items: center; gap: 8px; }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .role { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; text-transform: uppercase; letter-spacing: .4px; }
+  .status { margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+  .status.running { color: var(--run); } .status.done { color: var(--done); }
+  .status.blocked, .status.failed { color: var(--bad); } .status.needs_input, .status.stalled { color: var(--warn); }
+  .sub { margin: 8px 0 6px; display: flex; align-items: center; gap: 8px; }
+  .badge { background: var(--kiwi-dim); color: #d6ffe4; border-radius: 6px; padding: 1px 8px; font-size: 11px; }
+  .iter { color: var(--muted); font-size: 11.5px; }
+  .bar { height: 5px; background: #0c141d; border-radius: 999px; overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--kiwi-dim), var(--kiwi)); }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pressure { font-size: 10.5px; margin-top: 6px; }
+  .pressure.elevated { color: var(--warn); } .pressure.critical { color: var(--bad); }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 0; opacity: .7; }
+  footer { color: var(--muted); font-size: 11.5px; padding: 8px 20px 22px; }
+  .lock { color: var(--kiwi); }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <span class="pill"><span class="dot"></span>kiwi · conductor</span>
+    <h1>live view</h1>
+    <span class="meta">run <b id="run-id">—</b> · scale <b id="run-scale">—</b> · <b id="run-state">—</b></span>
+    <div class="counts">
+      <span class="chip run">running <b id="c-running">0</b></span>
+      <span class="chip done">done <b id="c-done">0</b></span>
+      <span class="chip bad">blocked <b id="c-blocked">0</b></span>
+      <span class="chip">total <b id="c-total">0</b></span>
+    </div>
+  </div>
+  <div class="top" style="margin-top:8px">
+    <span class="live" id="live"><span class="beat"></span><span id="live-text">connecting…</span></span>
+    <span class="meta lock" style="margin-left:auto">&#128274; main-protected</span>
+  </div>
+</header>
+<main>
+  <div class="lanes" id="lanes"></div>
+</main>
+<footer>bgsd live view · polls every 1.5s · <span id="stamp">—</span></footer>
+
+<script>
+  var POLL_MS = 1500;
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function pct(p) { if (!p || !p.total) return 0; return Math.round((p.index / (p.total - 1)) * 100); }
+
+  function renderAgent(a) {
+    var card = el("div", "card " + a.status);
+    var top = el("div", "card-top");
+    top.appendChild(el("span", "name", a.unit || a.id));
+    top.appendChild(el("span", "role", a.role));
+    top.appendChild(el("span", "status " + a.status, a.status));
+    card.appendChild(top);
+
+    var sub = el("div", "sub");
+    sub.appendChild(el("span", "badge", a.substage));
+    if (a.max_iterations) sub.appendChild(el("span", "iter", "iter " + a.iteration + "/" + a.max_iterations));
+    card.appendChild(sub);
+
+    var bar = el("div", "bar"); var fill = el("i"); fill.style.width = pct(a.progress) + "%"; bar.appendChild(fill);
+    card.appendChild(bar);
+
+    if (a.note) card.appendChild(el("div", "note", a.note));
+    if (a.context_pressure && a.context_pressure !== "normal") {
+      card.appendChild(el("div", "pressure " + a.context_pressure, "context: " + a.context_pressure));
+    }
+    return card;
+  }
+
+  function render(model) {
+    document.getElementById("run-id").textContent = model.run.run_id || "—";
+    document.getElementById("run-scale").textContent = model.run.scale || "—";
+    document.getElementById("run-state").textContent = model.run.state || "—";
+    document.getElementById("c-running").textContent = model.counts.running;
+    document.getElementById("c-done").textContent = model.counts.done;
+    document.getElementById("c-blocked").textContent = model.counts.blocked;
+    document.getElementById("c-total").textContent = model.counts.total;
+
+    var lanes = document.getElementById("lanes");
+    lanes.innerHTML = "";
+    model.lanes.forEach(function (lane) {
+      var col = el("div", "lane");
+      var head = el("div", "lane-head");
+      head.appendChild(el("span", "lane-title", lane.title));
+      head.appendChild(el("span", "lane-count", String(lane.agents.length)));
+      col.appendChild(head);
+      if (!lane.agents.length) col.appendChild(el("div", "empty", "idle"));
+      else lane.agents.forEach(function (a) { col.appendChild(renderAgent(a)); });
+      lanes.appendChild(col);
+    });
+    document.getElementById("stamp").textContent = "updated " + new Date(model.run.generated_at).toLocaleTimeString();
+  }
+
+  function setLive(state, text) {
+    var l = document.getElementById("live");
+    l.className = "live" + (state ? " " + state : "");
+    document.getElementById("live-text").textContent = text;
+  }
+
+  function tick() {
+    fetch("/api/state", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (model) { setLive("", "live"); render(model); })
+      .catch(function () { setLive("lost", "connection lost — retrying"); });
+  }
+  tick();
+  setInterval(tick, POLL_MS);
+</script>
+</body>
+</html>
