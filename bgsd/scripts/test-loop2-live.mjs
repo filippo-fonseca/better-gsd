@@ -2,47 +2,46 @@
 /**
  * test-loop2-live.mjs — Unit tests for loop2-live.mjs (LOOP2-05, Phase 2)
  *
- * Tests the human-gated guard layer only. NO real app boot, NO real Tester
- * spawn, NO real git merge, NO real process execution occurs here.
+ * The live seam is now WIRED and runs WITHOUT --live. These tests exercise the
+ * real logic under INJECTED spawnImpl/gitImpl mocks — no real claude/bash/git
+ * ever runs, and nothing touches the network.
  *
- * Tests:
- *   (a) isLiveFlagSet() returns false when --live is absent (the normal test env)
- *   (b) requireLiveFlag() throws with human-readable guidance when --live is absent
- *   (c) requireLiveFlag() throws a message containing the key refusal text
- *   (d) requireNotNextBranch() blocks branches named "next"
- *   (e) requireNotNextBranch() blocks branches named "main"
- *   (f) requireNotNextBranch() blocks branches named "master"
- *   (g) liveVerify() refuses without --live
- *   (h) liveFix()    refuses without --live
- *   (i) liveReMerge() refuses without --live
- *   (j) runLiveLoop2() refuses without --live
- *   (k) Every live function throws an Error (not a string) with a message property
- *   (l) Guard message is human-readable (contains "HUMAN-GATED")
- *   (m) Guard message mentions the correct invocation hint (loop2-live.mjs --live)
- *   (n) requireNotNextBranch() does NOT block a normal feature branch
- *   (o) All live function refusals contain the checklist keyword "safety checklist"
- *       (or equivalent guidance text)
+ * Coverage:
+ *   Guards
+ *     (a) requireNotProductionBranch() blocks "main"/"master" via injected git
+ *     (b) requireNotProductionBranch() ALLOWS "next" + feature branches
+ *   Boot + Integration Tester (liveVerify)
+ *     (c) boots via `bash runtime-isolate.sh up <dir>`, parses PORT, tears down
+ *     (d) spawns `claude -p /bgsd-verify <url> --criteria <file>`, returns PASS
+ *     (e) returns FAIL + defects from the report on a failing verdict
+ *     (f) missing report after Tester success => ERROR (no silent green) + teardown
+ *     (g) teardown (`down`) runs even when the Tester spawn fails
+ *     (h) parseIsolatePort() extracts the port from a PORT: line
+ *   Fix dispatch (liveFix)
+ *     (i) creates a worktree + spawns /gsd-quick per defect group with expected argv
+ *     (j) throws when a fix spawn exits non-zero
+ *   Re-merge (liveReMerge)
+ *     (k) dry-run merge-tree then real merge --no-ff for a clean branch
+ *     (l) reports conflicts (does NOT force) when merge-tree exits non-zero
+ *   No --live required anywhere
+ *     (m) liveVerify runs to completion with --live ABSENT from process.argv
  *
  * Uses node:assert — no external deps (NFR-05).
  * Exits non-zero on any failure (no silent green — NFR-06).
- *
- * NOTE on process.argv injection for requireLiveFlag():
- *   requireLiveFlag() checks process.argv. In tests, --live is NOT in process.argv
- *   (the test runner is invoked without --live), so all live functions refuse.
- *   Tests assert the refusal throws. We never add --live to process.argv in these
- *   tests because doing so would bypass the guard and try to run the live path.
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   isLiveFlagSet,
-  requireLiveFlag,
   requireNotProductionBranch,
+  parseIsolatePort,
+  groupDefectsForFix,
   liveVerify,
   liveFix,
   liveReMerge,
-  runLiveLoop2,
 } from "./loop2-live.mjs";
 
 // ---------------------------------------------------------------------------
@@ -67,10 +66,6 @@ async function test(label, fn) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: assert a function throws (sync or async)
-// ---------------------------------------------------------------------------
-
 async function assertThrows(fn, check) {
   let threw = false;
   let err;
@@ -86,267 +81,426 @@ async function assertThrows(fn, check) {
 }
 
 // ---------------------------------------------------------------------------
-// (a) isLiveFlagSet() returns false in the test environment
+// Mock factories
 // ---------------------------------------------------------------------------
 
-await test("(a) isLiveFlagSet() is false when --live is absent (test env baseline)", async () => {
-  // In the normal test invocation (node test-loop2-live.mjs) there is no --live flag.
-  // This confirms the precondition for all subsequent refusal tests.
-  assert.strictEqual(isLiveFlagSet(), false,
-    "isLiveFlagSet() should return false when --live is not in process.argv"
-  );
-});
-
-// ---------------------------------------------------------------------------
-// (b) requireLiveFlag() throws when --live is absent
-// ---------------------------------------------------------------------------
-
-await test("(b) requireLiveFlag() throws without --live", async () => {
-  await assertThrows(() => requireLiveFlag());
-});
-
-// ---------------------------------------------------------------------------
-// (c) Guard message contains the key refusal text
-// ---------------------------------------------------------------------------
-
-await test("(c) requireLiveFlag() message contains 'HUMAN-GATED'", async () => {
-  const err = await assertThrows(() => requireLiveFlag());
-  assert.ok(
-    err.message.includes("HUMAN-GATED"),
-    `Expected message to contain "HUMAN-GATED", got: ${err.message.slice(0, 200)}`
-  );
-});
-
-// ---------------------------------------------------------------------------
-// (d) requireNotNextBranch() blocks "next"
-// ---------------------------------------------------------------------------
-
-await test("(d) requireNotProductionBranch() ALLOWS branch 'next' (integration target)", async () => {
-  // We patch requireNotNextBranch by importing the module-internal spawnSync call
-  // indirectly. Since requireNotNextBranch reads the real current branch from git,
-  // we test it by verifying it throws when we simulate a "next" branch.
-  //
-  // Strategy: import the module's requireNotNextBranch and assert it throws on
-  // known-bad branch names by temporarily patching process.argv is not needed
-  // here — we verify the function's behavior by checking that it would block
-  // "next" through a synthetic test harness (a wrapped version).
-  //
-  // We create a thin local test harness that reimplements the same logic as
-  // requireNotNextBranch to validate the branch-name logic independent of the
-  // live git process (since we are testing the logic, not the git call):
-
-  function simulateRequireNotNextBranch(branch) {
-    if (branch === "main" || branch === "master") {
-      throw new Error(
-        `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
-      );
+/**
+ * A git mock that records every invocation and returns per-branch stub results.
+ * The current branch is fixed at "feat/bgsd-v0" (so the production guard passes)
+ * unless `branch` is overridden.
+ */
+function makeGitMock({ branch = "feat/bgsd-v0", results = [], defaultResult } = {}) {
+  const calls = [];
+  let i = 0;
+  const impl = (cmd, args = [], _opts = {}) => {
+    calls.push({ cmd, args });
+    if (args[0] === "branch" && args[1] === "--show-current") {
+      return { status: 0, stdout: `${branch}\n`, stderr: "" };
     }
-  }
+    if (i < results.length) return results[i++];
+    return defaultResult ?? { status: 0, stdout: "", stderr: "" };
+  };
+  impl.calls = calls;
+  return impl;
+}
 
-  let threwForNext = false;
-  try { simulateRequireNotNextBranch("next"); } catch (_) { threwForNext = true; }
-  assert.ok(!threwForNext, "next is the integration target and must be ALLOWED");
+/** A generic spawn mock that records calls and returns queued results. */
+function makeSpawnMock(results = [], defaultResult = { status: 0, stdout: "", stderr: "" }) {
+  const calls = [];
+  let i = 0;
+  const impl = (cmd, args = [], _opts = {}) => {
+    calls.push({ cmd, args });
+    if (i < results.length) return results[i++];
+    return defaultResult;
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+// A tmp workspace for report files so liveVerify can read a real report on disk.
+const WS = mkdtempSync(join(tmpdir(), "loop2-live-test-"));
+function writeReport(runId, report) {
+  const dir = join(WS, ".bgsd", "runs", runId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "integration-report.json"), JSON.stringify(report), "utf8");
+  return join(dir, "integration-report.json");
+}
+
+// ---------------------------------------------------------------------------
+// (a) requireNotProductionBranch blocks main/master (injected git)
+// ---------------------------------------------------------------------------
+
+await test("(a) requireNotProductionBranch() blocks 'main' and 'master' via injected git", async () => {
+  for (const bad of ["main", "master"]) {
+    await assertThrows(
+      () => requireNotProductionBranch({ gitImpl: makeGitMock({ branch: bad }), repoRoot: WS }),
+      (err) => {
+        assert.ok(err.message.includes("NFR-01"), "should cite NFR-01");
+        assert.ok(err.message.includes(`"${bad}"`), `should name "${bad}"`);
+      }
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
-// (e) requireNotNextBranch() blocks "main"
+// (b) requireNotProductionBranch allows next + feature branches
 // ---------------------------------------------------------------------------
 
-await test("(e) requireNotNextBranch() blocks branch named 'main'", async () => {
-  function simulateRequireNotNextBranch(branch) {
-    if (branch === "main" || branch === "master") {
-      throw new Error(
-        `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
-      );
-    }
+await test("(b) requireNotProductionBranch() ALLOWS next + feature branches", async () => {
+  for (const ok of ["next", "feat/bgsd-v0", "fix/issue-42"]) {
+    // Should NOT throw
+    requireNotProductionBranch({ gitImpl: makeGitMock({ branch: ok }), repoRoot: WS });
   }
-  await assertThrows(() => simulateRequireNotNextBranch("main"), (err) => {
-    assert.ok(err.message.includes("NFR-01"));
-    assert.ok(err.message.includes('"main"'));
+});
+
+// ---------------------------------------------------------------------------
+// (h) parseIsolatePort
+// ---------------------------------------------------------------------------
+
+await test("(h) parseIsolatePort() extracts the port from a PORT: line", async () => {
+  assert.strictEqual(parseIsolatePort("PORT: 3123\nREADY\n"), 3123);
+  assert.strictEqual(parseIsolatePort("Booting...\nPORT: 3999\nDATABASE_URL: file:x\n"), 3999);
+  assert.strictEqual(parseIsolatePort("no port here"), null);
+});
+
+// ---------------------------------------------------------------------------
+// (c) liveVerify boots, parses PORT, tears down
+// ---------------------------------------------------------------------------
+
+await test("(c) liveVerify boots via runtime-isolate.sh up, parses PORT, tears down", async () => {
+  const runId = "bgsd-0001-boot";
+  writeReport(runId, { verdict: "PASS", defects: [], criteria_results: [] });
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3123\nREADY\n", stderr: "" }, // up
+    { status: 0, stdout: "PASS " + WS + "\n", stderr: "" },   // claude -p /bgsd-verify
+    { status: 0, stdout: "", stderr: "" },                    // down
+  ]);
+  const git = makeGitMock();
+
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    rehearsalAppDir: "/app/rehearsal",
+    integrationCriteria: "/crit/integration.md",
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: git,
   });
+
+  // boot argv
+  const up = spawn.calls[0];
+  assert.strictEqual(up.cmd, "bash");
+  assert.strictEqual(up.args[1], "up");
+  assert.strictEqual(up.args[2], "/app/rehearsal");
+  assert.ok(up.args[0].endsWith("runtime-isolate.sh"), "boots runtime-isolate.sh");
+
+  // teardown argv (last call)
+  const down = spawn.calls[spawn.calls.length - 1];
+  assert.strictEqual(down.cmd, "bash");
+  assert.strictEqual(down.args[1], "down");
+  assert.strictEqual(down.args[2], "/app/rehearsal");
+
+  assert.strictEqual(res.verdict, "PASS");
 });
 
 // ---------------------------------------------------------------------------
-// (f) requireNotNextBranch() blocks "master"
+// (d) liveVerify runs the Integration Tester with the url + criteria argv
 // ---------------------------------------------------------------------------
 
-await test("(f) requireNotNextBranch() blocks branch named 'master'", async () => {
-  function simulateRequireNotNextBranch(branch) {
-    if (branch === "main" || branch === "master") {
-      throw new Error(
-        `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n`
-      );
-    }
-  }
-  await assertThrows(() => simulateRequireNotNextBranch("master"), (err) => {
-    assert.ok(err.message.includes("NFR-01"));
-    assert.ok(err.message.includes('"master"'));
+await test("(d) liveVerify spawns `claude -p /bgsd-verify <url> --criteria <file>` and returns PASS", async () => {
+  const runId = "bgsd-0002-tester";
+  writeReport(runId, { verdict: "PASS", defects: [] });
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3200\nREADY\n", stderr: "" },
+    { status: 0, stdout: "PASS\n", stderr: "" },
+    { status: 0, stdout: "", stderr: "" },
+  ]);
+
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    rehearsalAppDir: "/app",
+    integrationCriteria: "/crit/i.md",
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: makeGitMock(),
   });
+
+  const tester = spawn.calls[1];
+  assert.strictEqual(tester.cmd, "claude");
+  assert.deepStrictEqual(tester.args, [
+    "-p", "/bgsd-verify", "http://localhost:3200", "--criteria", "/crit/i.md",
+  ]);
+  assert.strictEqual(res.verdict, "PASS");
 });
 
 // ---------------------------------------------------------------------------
-// (g) liveVerify() refuses without --live
+// (e) liveVerify returns FAIL + defects from the report
 // ---------------------------------------------------------------------------
 
-await test("(g) liveVerify() refuses without --live", async () => {
-  const err = await assertThrows(() =>
-    liveVerify({ rehearsalBranch: "rehearsal/bgsd-0001-test", runId: "bgsd-0001-test" })
-  );
-  assert.ok(err instanceof Error, "Should throw an Error instance");
-  assert.ok(err.message.includes("HUMAN-GATED"),
-    "liveVerify() refusal should contain 'HUMAN-GATED'");
+await test("(e) liveVerify returns FAIL + defects from the report", async () => {
+  const runId = "bgsd-0003-fail";
+  const defects = [{ id: "d1", severity: "high", feature: "auth" }];
+  writeReport(runId, {
+    verdict: "FAIL",
+    defects,
+    criteria_results: [{ id: "c1", status: "fail" }],
+    integration: { scrutiny: { cross_boundary_uat: true } },
+  });
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3300\nREADY\n", stderr: "" },
+    { status: 0, stdout: "FAIL\n", stderr: "" },
+    { status: 0, stdout: "", stderr: "" },
+  ]);
+
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: makeGitMock(),
+  });
+
+  assert.strictEqual(res.verdict, "FAIL");
+  assert.deepStrictEqual(res.defects, defects);
+  assert.strictEqual(res.scrutiny.cross_boundary_uat, true);
 });
 
 // ---------------------------------------------------------------------------
-// (h) liveFix() refuses without --live
+// (f) missing report after Tester success => ERROR (no silent green) + teardown
 // ---------------------------------------------------------------------------
 
-await test("(h) liveFix() refuses without --live", async () => {
-  const err = await assertThrows(() =>
-    liveFix([{ id: "d1", description: "test defect" }], { iteration: 0 })
-  );
-  assert.ok(err instanceof Error, "Should throw an Error instance");
-  assert.ok(err.message.includes("HUMAN-GATED"),
-    "liveFix() refusal should contain 'HUMAN-GATED'");
+await test("(f) missing report after Tester success => ERROR + still tears down", async () => {
+  const runId = "bgsd-0004-noreport"; // deliberately no report written
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3400\nREADY\n", stderr: "" },
+    { status: 0, stdout: "PASS\n", stderr: "" }, // Tester claims success...
+    { status: 0, stdout: "", stderr: "" },       // down
+  ]);
+
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: makeGitMock(),
+  });
+
+  assert.strictEqual(res.verdict, "ERROR", "missing report is never a silent green");
+  const down = spawn.calls[spawn.calls.length - 1];
+  assert.strictEqual(down.args[1], "down", "teardown still runs");
 });
 
 // ---------------------------------------------------------------------------
-// (i) liveReMerge() refuses without --live
+// (g) teardown runs even when the Tester spawn fails
 // ---------------------------------------------------------------------------
 
-await test("(i) liveReMerge() refuses without --live", async () => {
-  const err = await assertThrows(() =>
-    liveReMerge({ iteration: 0, runId: "bgsd-0001-test" })
-  );
-  assert.ok(err instanceof Error, "Should throw an Error instance");
-  assert.ok(err.message.includes("HUMAN-GATED"),
-    "liveReMerge() refusal should contain 'HUMAN-GATED'");
+await test("(g) teardown runs even when the Tester spawn fails", async () => {
+  const runId = "bgsd-0005-testerfail";
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3500\nREADY\n", stderr: "" }, // up OK
+    { status: 1, stdout: "", stderr: "tester crashed" },      // Tester non-zero
+    { status: 0, stdout: "", stderr: "" },                    // down MUST still run
+  ]);
+
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: makeGitMock(),
+  });
+
+  assert.strictEqual(res.verdict, "ERROR");
+  assert.strictEqual(spawn.calls.length, 3, "up + tester + down");
+  assert.strictEqual(spawn.calls[2].args[1], "down", "teardown ran after failure");
 });
 
 // ---------------------------------------------------------------------------
-// (j) runLiveLoop2() refuses without --live
+// groupDefectsForFix sanity
 // ---------------------------------------------------------------------------
 
-await test("(j) runLiveLoop2() refuses without --live", async () => {
-  const err = await assertThrows(() =>
-    runLiveLoop2({
-      runId:           "bgsd-0001-test",
-      rehearsalBranch: "rehearsal/bgsd-0001-test",
-    })
-  );
-  assert.ok(err instanceof Error, "Should throw an Error instance");
-  assert.ok(err.message.includes("HUMAN-GATED"),
-    "runLiveLoop2() refusal should contain 'HUMAN-GATED'");
+await test("groupDefectsForFix groups by feature/file and separates independent items", async () => {
+  const groups = groupDefectsForFix([
+    { id: "d1", feature: "auth" },
+    { id: "d2", feature: "auth" },
+    { id: "d3", file: "src/db.ts" },
+  ]);
+  assert.strictEqual(groups.length, 2, "auth (2 defects) + db file (1)");
 });
 
 // ---------------------------------------------------------------------------
-// (k) Every live function throws an Error instance (not a string)
+// (i) liveFix creates a worktree + spawns /gsd-quick per group with expected argv
 // ---------------------------------------------------------------------------
 
-await test("(k) All live functions throw Error instances (not strings)", async () => {
-  const fns = [
-    () => liveVerify({ rehearsalBranch: "rehearsal/bgsd-0001-test", runId: "bgsd-0001-test" }),
-    () => liveFix([]),
-    () => liveReMerge({}),
-    () => runLiveLoop2({ runId: "bgsd-0001-test" }),
-  ];
-  for (const fn of fns) {
-    let threw = false;
-    let thrownValue;
-    try { await fn(); } catch (e) { threw = true; thrownValue = e; }
-    assert.ok(threw, "Expected function to throw");
-    assert.ok(
-      thrownValue instanceof Error,
-      `Expected an Error instance, got ${typeof thrownValue}: ${String(thrownValue).slice(0, 100)}`
-    );
-  }
-});
+await test("(i) liveFix creates a worktree + spawns /gsd-quick per defect group", async () => {
+  const git = makeGitMock({ defaultResult: { status: 0, stdout: "", stderr: "" } });
+  const spawn = makeSpawnMock([], { status: 0, stdout: "", stderr: "" });
 
-// ---------------------------------------------------------------------------
-// (l) Guard message is human-readable — contains "HUMAN-GATED"
-// ---------------------------------------------------------------------------
-
-await test("(l) Guard message is human-readable (contains 'HUMAN-GATED')", async () => {
-  const err = await assertThrows(() => requireLiveFlag());
-  assert.ok(
-    err.message.includes("HUMAN-GATED"),
-    "requireLiveFlag() message must contain 'HUMAN-GATED'"
-  );
-  // Must also contain structural delimiters (===... separating block)
-  assert.ok(
-    err.message.includes("====="),
-    "requireLiveFlag() message should contain '=====' block delimiter"
-  );
-});
-
-// ---------------------------------------------------------------------------
-// (m) Guard message mentions the correct invocation hint
-// ---------------------------------------------------------------------------
-
-await test("(m) Guard message mentions 'loop2-live.mjs --live'", async () => {
-  const err = await assertThrows(() => requireLiveFlag());
-  assert.ok(
-    err.message.includes("loop2-live.mjs") && err.message.includes("--live"),
-    "requireLiveFlag() message should name 'loop2-live.mjs' and '--live' as the correct invocation"
-  );
-});
-
-// ---------------------------------------------------------------------------
-// (n) requireNotNextBranch() does NOT block a normal feature branch
-// ---------------------------------------------------------------------------
-
-await test("(n) requireNotNextBranch() does not block a normal feature branch", async () => {
-  // Use the same branch-name logic to verify feature branches are allowed
-  function simulateRequireNotNextBranch(branch) {
-    if (branch === "main" || branch === "master") {
-      throw new Error(`NFR-01 VIOLATION: "${branch}" is a protected branch`);
+  const created = await liveFix(
+    [{ id: "d1", feature: "auth" }, { id: "d2", file: "src/db.ts" }],
+    {
+      iteration: 0,
+      runId: "bgsd-0006-fix",
+      rehearsalBranch: "next",
+      rehearsalHead: "next",
+      repoRoot: WS,
+      worktreeRoot: join(WS, "wt"),
+      spawnImpl: spawn,
+      gitImpl: git,
     }
-    // No throw for allowed branches
+  );
+
+  assert.strictEqual(created.length, 2, "one fix branch per group");
+
+  // git worktree add calls (skip the branch --show-current guard call)
+  const wtAdds = git.calls.filter((c) => c.args[0] === "worktree" && c.args[1] === "add");
+  assert.strictEqual(wtAdds.length, 2, "two worktrees created");
+  for (const c of wtAdds) {
+    assert.strictEqual(c.args[3], "-b", "creates a new branch");
+    assert.strictEqual(c.args[5], "next", "based off the rehearsal head");
   }
 
-  // These should NOT throw
-  const allowedBranches = ["feat/bgsd-v0", "fix/issue-42-auth", "feature/new-thing", "dev"];
-  for (const branch of allowedBranches) {
-    let threw = false;
-    try { simulateRequireNotNextBranch(branch); } catch (_) { threw = true; }
-    assert.ok(
-      !threw,
-      `requireNotNextBranch() should NOT throw for branch "${branch}"`
-    );
-  }
-});
-
-// ---------------------------------------------------------------------------
-// (o) All live function refusals contain guidance text
-// ---------------------------------------------------------------------------
-
-await test("(o) All live function refusals contain 'safety checklist' or 'DO NOT'", async () => {
-  const cases = [
-    { label: "liveVerify",
-      fn: () => liveVerify({ rehearsalBranch: "rehearsal/x", runId: "x" }) },
-    { label: "liveFix",
-      fn: () => liveFix([]) },
-    { label: "liveReMerge",
-      fn: () => liveReMerge({}) },
-    { label: "runLiveLoop2",
-      fn: () => runLiveLoop2({ runId: "x" }) },
-  ];
-
-  for (const { label, fn } of cases) {
-    const err = await assertThrows(fn);
-    const msg = err.message;
-    const hasGuidance = msg.includes("Safety checklist") || msg.includes("DO NOT");
-    assert.ok(
-      hasGuidance,
-      `${label}() refusal should contain "Safety checklist" or "DO NOT"\n` +
-      `  got: ${msg.slice(0, 300)}`
-    );
+  // /gsd-quick spawns
+  assert.strictEqual(spawn.calls.length, 2, "one /gsd-quick per group");
+  for (const c of spawn.calls) {
+    assert.strictEqual(c.cmd, "claude");
+    assert.strictEqual(c.args[0], "-p");
+    assert.strictEqual(c.args[1], "/gsd-quick");
+    assert.strictEqual(c.args[2], "--worktree");
+    assert.ok(typeof c.args[3] === "string" && c.args[3].length > 0, "passes a worktree path");
   }
 });
 
 // ---------------------------------------------------------------------------
-// Final report
+// (j) liveFix throws when a fix spawn exits non-zero
 // ---------------------------------------------------------------------------
+
+await test("(j) liveFix throws when the /gsd-quick spawn exits non-zero", async () => {
+  const git = makeGitMock({ defaultResult: { status: 0, stdout: "", stderr: "" } });
+  const spawn = makeSpawnMock([{ status: 2, stdout: "", stderr: "boom" }]);
+
+  await assertThrows(
+    () =>
+      liveFix([{ id: "d1", feature: "auth" }], {
+        runId: "bgsd-0007-fixfail",
+        rehearsalBranch: "next",
+        repoRoot: WS,
+        worktreeRoot: join(WS, "wt2"),
+        spawnImpl: spawn,
+        gitImpl: git,
+      }),
+    (err) => assert.ok(err.message.includes("/gsd-quick"), "names the failing command")
+  );
+});
+
+// ---------------------------------------------------------------------------
+// (k) liveReMerge dry-run then real merge for a clean branch
+// ---------------------------------------------------------------------------
+
+await test("(k) liveReMerge does merge-tree dry-run then merge --no-ff for a clean branch", async () => {
+  // Sequence AFTER the branch-guard call: [merge-tree (clean), merge (ok)]
+  const git = makeGitMock({
+    results: [
+      { status: 0, stdout: "", stderr: "" }, // merge-tree clean
+      { status: 0, stdout: "", stderr: "" }, // merge --no-ff ok
+    ],
+  });
+
+  const res = await liveReMerge({
+    iteration: 0,
+    runId: "bgsd-0008-merge",
+    rehearsalBranch: "next",
+    fixBranches: [{ branch: "fix/bgsd-0008-i0-auth" }],
+    repoRoot: WS,
+    gitImpl: git,
+  });
+
+  const mergeTree = git.calls.find((c) => c.args[0] === "merge-tree");
+  assert.ok(mergeTree, "ran a dry-run merge-tree pre-check");
+  assert.strictEqual(mergeTree.args[1], "--write-tree");
+  assert.strictEqual(mergeTree.args[3], "next", "base is the rehearsal branch");
+  assert.strictEqual(mergeTree.args[4], "fix/bgsd-0008-i0-auth", "then the fix branch");
+
+  const merge = git.calls.find((c) => c.args[0] === "merge" && c.args[1] === "--no-ff");
+  assert.ok(merge, "ran a real merge --no-ff after a clean pre-check");
+
+  assert.strictEqual(res.merged.length, 1);
+  assert.strictEqual(res.conflicts.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// (l) liveReMerge reports conflicts (does NOT force) when merge-tree fails
+// ---------------------------------------------------------------------------
+
+await test("(l) liveReMerge reports conflicts and does NOT force a merge", async () => {
+  const git = makeGitMock({
+    results: [
+      { status: 1, stdout: "src/app.ts\nsrc/db.ts\n", stderr: "" }, // merge-tree conflict
+    ],
+  });
+
+  const res = await liveReMerge({
+    runId: "bgsd-0009-conflict",
+    rehearsalBranch: "next",
+    fixBranches: [{ branch: "fix/bgsd-0009-i0-auth" }],
+    repoRoot: WS,
+    gitImpl: git,
+  });
+
+  assert.strictEqual(res.merged.length, 0, "nothing merged on conflict");
+  assert.strictEqual(res.conflicts.length, 1);
+  assert.strictEqual(res.conflicts[0].reason, "conflict");
+  assert.deepStrictEqual(res.conflicts[0].conflicts, ["src/app.ts", "src/db.ts"]);
+
+  // Crucially: NO real `git merge --no-ff` was attempted.
+  const forced = git.calls.find((c) => c.args[0] === "merge" && c.args[1] === "--no-ff");
+  assert.ok(!forced, "conflict must NOT trigger a forced merge");
+});
+
+// ---------------------------------------------------------------------------
+// (m) Nothing requires --live: the whole live path runs with --live absent
+// ---------------------------------------------------------------------------
+
+await test("(m) live seam runs with --live ABSENT (no gate)", async () => {
+  assert.strictEqual(isLiveFlagSet(), false, "test env has no --live flag");
+
+  const runId = "bgsd-0010-nolive";
+  writeReport(runId, { verdict: "PASS", defects: [] });
+
+  const spawn = makeSpawnMock([
+    { status: 0, stdout: "PORT: 3600\nREADY\n", stderr: "" },
+    { status: 0, stdout: "PASS\n", stderr: "" },
+    { status: 0, stdout: "", stderr: "" },
+  ]);
+
+  // No throw despite --live being absent from process.argv.
+  const res = await liveVerify({
+    rehearsalBranch: "next",
+    runId,
+    bgsdDir: join(WS, ".bgsd"),
+    repoRoot: WS,
+    spawnImpl: spawn,
+    gitImpl: makeGitMock(),
+  });
+  assert.strictEqual(res.verdict, "PASS", "live seam completed with no --live gate");
+});
+
+// ---------------------------------------------------------------------------
+// Cleanup + final report
+// ---------------------------------------------------------------------------
+
+try { rmSync(WS, { recursive: true, force: true }); } catch (_) {}
 
 process.stdout.write(`\n${"=".repeat(60)}\n`);
 process.stdout.write(`test-loop2-live: ${passed} passed, ${failed} failed\n`);

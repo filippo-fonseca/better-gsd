@@ -92,6 +92,19 @@ import { fileURLToPath }            from "node:url";
 
 const __dir    = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
+const PLUGIN_ROOT = resolve(__dir, "..");
+
+/**
+ * Parse the `PORT:` line runtime-isolate.sh prints on `up`. The script emits a
+ * line like `PORT: 3123`; we take the first match and return the integer.
+ *
+ * @param {string} stdout  combined stdout from runtime-isolate.sh up
+ * @returns {number|null}  the parsed port, or null when no PORT: line appears
+ */
+export function parseIsolatePort(stdout) {
+  const m = /^\s*PORT:\s*(\d+)\s*$/m.exec(String(stdout ?? ""));
+  return m ? Number(m[1]) : null;
+}
 
 // ---------------------------------------------------------------------------
 // HUMAN-GATED GUARD (NFR-10, LOOP2-05) — mirrors loop1-live.mjs / run-live.mjs
@@ -155,19 +168,28 @@ export function requireLiveFlag() {
 // ---------------------------------------------------------------------------
 
 /**
- * Refuse to run if the current branch is `next`, `main`, or `master`.
- * This guard fires regardless of --live — it is always enforced.
+ * Refuse to run if the current branch is a production branch (`main`/`master`).
+ * This guard is ALWAYS enforced (NFR-01) — it does not depend on --live.
  *
- * Mirrors run-live.mjs requireNotNextBranch() exactly (NFR-01).
+ * The git boundary + repo root are injectable so the guard is unit-testable
+ * (a test can force the "current branch" to a production branch without a real
+ * checkout). Defaults read the real current branch of the repo.
  *
+ * Mirrors run-live.mjs requireNotProductionBranch() exactly (NFR-01).
+ *
+ * @param {object}   [opts]
+ * @param {Function} [opts.gitImpl]   Injected git runner (default spawnSync)
+ * @param {string}   [opts.repoRoot]  Repo root to read the branch from (default REPO_ROOT)
  * @throws {Error} if the current branch is a protected branch
  */
-export function requireNotProductionBranch() {
-  const result = spawnSync("git", ["branch", "--show-current"], {
-    cwd:      REPO_ROOT,
+export function requireNotProductionBranch(opts = {}) {
+  const gitImpl  = opts.gitImpl  ?? spawnSync;
+  const repoRoot = opts.repoRoot ?? REPO_ROOT;
+  const result = gitImpl("git", ["branch", "--show-current"], {
+    cwd:      repoRoot,
     encoding: "utf8",
   });
-  const branch = (result.stdout ?? "").trim();
+  const branch = (result?.stdout ?? "").trim();
   if (isProductionBranch(branch)) {
     throw new Error(
       `\nNFR-01 VIOLATION: loop2-live.mjs refuses to run on branch "${branch}".\n` +
@@ -195,14 +217,21 @@ export function requireNotProductionBranch() {
  * Reuses the v0 Tester contract (computeVerdict(), verification-report.json
  * shape) unchanged (LOOP2-02). Never rewrites the Tester.
  *
- * HUMAN-GATED: refuses without --live (NFR-10).
+ * NFR-01 branch guard is always enforced (via requireNotProductionBranch); no
+ * --live flag is required to run the live seam.
  *
  * @param {object} opts
  * @param {string}   opts.rehearsalBranch  e.g. "rehearsal/bgsd-0001-my-feature"
  * @param {string}   opts.runId            Run identifier
+ * @param {string}   [opts.rehearsalAppDir] Absolute path to the assembled app dir to boot
+ *                                          (default: the repo root — the integrated tree).
+ * @param {string}   [opts.integrationCriteria] Path to the integration criteria file passed
+ *                                               to /bgsd-verify --criteria.
  * @param {string}   [opts.bgsdDir]        Override .bgsd dir path
  * @param {string}   [opts.isoScript]      Override path to runtime-isolate.sh
- * @param {string}   [opts.verifyScript]   Override path to build-report.mjs
+ * @param {string}   [opts.repoRoot]       Override the repo root (default REPO_ROOT)
+ * @param {Function} [opts.spawnImpl]      Injected child-process runner (default spawnSync)
+ * @param {Function} [opts.gitImpl]        Injected git runner (default spawnSync)
  * @returns {Promise<{
  *   verdict:          "PASS"|"FAIL"|"ERROR"|"BLOCKED",
  *   defects:          Array,
@@ -214,77 +243,102 @@ export function requireNotProductionBranch() {
 export async function liveVerify({
   rehearsalBranch,
   runId,
+  rehearsalAppDir,
+  integrationCriteria,
   bgsdDir,
   isoScript,
-  verifyScript,
+  repoRoot,
+  spawnImpl,
+  gitImpl,
   usageTesting = process.env.BGSD_USAGE_TESTING !== "0",
 }) {
-  requireLiveFlag();
+  const spawn  = spawnImpl ?? spawnSync;
+  const git    = gitImpl   ?? spawnSync;
+  const root   = repoRoot  ?? REPO_ROOT;
 
-  const bgsd       = bgsdDir   ?? join(REPO_ROOT, ".bgsd");
-  const isoPath    = isoScript ?? join(REPO_ROOT, "bgsd", "scripts", "runtime-isolate.sh");
+  // NFR-01 branch guard is always enforced (uses the injected git boundary so a
+  // test can force a production-branch refusal).
+  requireNotProductionBranch({ gitImpl: git, repoRoot: root });
+
+  const bgsd       = bgsdDir   ?? join(root, ".bgsd");
+  const isoPath    = isoScript ?? join(PLUGIN_ROOT, "scripts", "runtime-isolate.sh");
+  const appDir     = rehearsalAppDir ?? root;
+  const criteria   = integrationCriteria ?? join(bgsd, "runs", runId, "integration-criteria.md");
   const reportPath = join(bgsd, "runs", runId, "integration-report.json");
 
   process.stderr.write(
-    `[loop2-live] liveVerify: booting rehearsal app for ${rehearsalBranch}\n` +
+    `[loop2-live] liveVerify: booting integrated rehearsal app for ${rehearsalBranch}\n` +
     `  runtime-isolate.sh: ${isoPath}\n` +
+    `  app dir:            ${appDir}\n` +
     `  report path:        ${reportPath}\n` +
     `  usage testing:      ${usageTesting ? "ON (Playwright)" : "OFF (code-only / gsd-verifier)"}\n`
   );
 
-  // LIVE SEAM POINT — Step 1: boot the integrated rehearsal app (LOOP2-01)
-  //
-  // In a fully-wired live run this would:
-  //   const isoResult = spawnSync("bash", [isoPath, rehearsalBranch, runId], {
-  //     cwd: REPO_ROOT, stdio: "inherit",
-  //   });
-  //   if (isoResult.status !== 0) {
-  //     return { verdict: "ERROR", defects: [], criteria_results: [], scrutiny: {},
-  //              reportPath: null };
-  //   }
-  //
-  // The spawn is intentionally NOT executed here; the human watches the terminal
-  // and triggers via the runLiveLoop2() export (NFR-10 / NFR-08).
-  //
-  // To wire the real boot, replace this comment block with the spawnSync above.
+  let booted = false;
+  try {
+    // Step 1: boot the integrated rehearsal app via runtime-isolate.sh (LOOP2-01).
+    // runtime-isolate.sh prints `PORT:`/`DATABASE_URL:`/`READY` on stdout.
+    const isoResult = spawn(
+      "bash",
+      [isoPath, "up", appDir],
+      { cwd: root, encoding: "utf8" }
+    );
+    if (isoResult?.error) {
+      throw new Error(`runtime-isolate.sh up failed: ${isoResult.error.message}`);
+    }
+    if (isoResult?.status !== 0) {
+      throw new Error(
+        `runtime-isolate.sh up exited non-zero (${isoResult?.status}): ${isoResult?.stderr ?? ""}`
+      );
+    }
+    booted = true;
 
-  process.stderr.write(
-    `[loop2-live] (live seam not yet connected — would boot ${rehearsalBranch} via runtime-isolate.sh)\n`
-  );
+    const port = parseIsolatePort(isoResult.stdout);
+    if (!port) {
+      // Booted but no PORT: line — cannot address the app. ERROR (NFR-06).
+      throw new Error(
+        `runtime-isolate.sh up did not print a PORT: line; cannot address the rehearsal app`
+      );
+    }
+    const url = `http://localhost:${port}`;
+    process.stderr.write(`[loop2-live] rehearsal app is up at ${url}\n`);
 
-  // LIVE SEAM POINT — Step 2: run the Integration Tester (LOOP2-02)
-  //
-  // In a fully-wired live run this would invoke build-report.mjs against the
-  // running integrated system and then read integration-report.json:
-  //
-  //   const verify = verifyScript ?? join(REPO_ROOT, "bgsd", "scripts", "build-report.mjs");
-  //   const verifyResult = spawnSync("node", [verify, "--run-id", runId,
-  //                                            "--integration", "--scope", "integration"], {
-  //     cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8",
-  //     env: { ...process.env, BGSD_USAGE_TESTING: usageTesting ? "1" : "0" },
-  //   });
-  //   if (verifyResult.error) {
-  //     return { verdict: "ERROR", defects: [], criteria_results: [], scrutiny: {},
-  //              reportPath: null };
-  //   }
-  //
-  // The real invocation is intentionally NOT executed here.
+    // Step 2: run the Integration Tester end-to-end (LOOP2-02).
+    // `claude -p /bgsd-verify <url> --criteria <file>` runs the whole-app UAT +
+    // code review, writes integration-report.json, and prints a verdict line.
+    const verifyResult = spawn(
+      "claude",
+      ["-p", "/bgsd-verify", url, "--criteria", criteria],
+      {
+        cwd:      root,
+        stdio:    "inherit",
+        encoding: "utf8",
+        env:      { ...process.env, BGSD_USAGE_TESTING: usageTesting ? "1" : "0" },
+      }
+    );
+    if (verifyResult?.error) {
+      throw new Error(`claude -p /bgsd-verify failed to spawn: ${verifyResult.error.message}`);
+    }
+    if (verifyResult?.status !== 0) {
+      throw new Error(
+        `claude -p /bgsd-verify exited non-zero (${verifyResult?.status}): ${verifyResult?.stderr ?? ""}`
+      );
+    }
 
-  // If a real integration-report.json was already written (e.g. in a partial live run),
-  // read it; otherwise surface as ERROR (NFR-06: no silent green).
-  if (existsSync(reportPath)) {
+    // The Tester claimed success; the report MUST exist (NFR-06: no silent green).
+    if (!existsSync(reportPath)) {
+      throw new Error(
+        `integration report missing at ${reportPath} after /bgsd-verify claimed success`
+      );
+    }
+
     let report;
     try {
       report = JSON.parse(readFileSync(reportPath, "utf8"));
-    } catch (_) {
-      return {
-        verdict:          "ERROR",
-        defects:          [],
-        criteria_results: [],
-        scrutiny:         {},
-        reportPath,
-      };
+    } catch (err) {
+      throw new Error(`integration report at ${reportPath} is not valid JSON: ${err.message}`);
     }
+
     return {
       verdict:          report.verdict          ?? "ERROR",
       defects:          report.defects          ?? [],
@@ -292,21 +346,63 @@ export async function liveVerify({
       scrutiny:         report.integration?.scrutiny ?? {},
       reportPath,
     };
+  } catch (err) {
+    // Any failure in boot or Tester surfaces as ERROR (NFR-06). We never claim a
+    // silent green: the report read above only returns when it is present + valid.
+    process.stderr.write(`[loop2-live] liveVerify ERROR: ${err.message}\n`);
+    return {
+      verdict:          "ERROR",
+      defects:          [],
+      criteria_results: [],
+      scrutiny:         {},
+      reportPath:       existsSync(reportPath) ? reportPath : null,
+    };
+  } finally {
+    // Teardown is guaranteed even on failure: if the app booted, tear it down.
+    if (booted) {
+      const down = spawn(
+        "bash",
+        [isoPath, "down", appDir],
+        { cwd: root, encoding: "utf8" }
+      );
+      if (down?.error) {
+        process.stderr.write(`[loop2-live] runtime-isolate.sh down error: ${down.error.message}\n`);
+      } else if (down?.status !== 0) {
+        process.stderr.write(
+          `[loop2-live] runtime-isolate.sh down exited non-zero (${down?.status})\n`
+        );
+      }
+    }
   }
-
-  // No report found and we have not booted: ERROR (NFR-06)
-  return {
-    verdict:          "ERROR",
-    defects:          [],
-    criteria_results: [],
-    scrutiny:         {},
-    reportPath:       null,
-  };
 }
 
 // ---------------------------------------------------------------------------
 // liveFix — dispatch parallel fix agents on integration defects (LOOP2-05)
 // ---------------------------------------------------------------------------
+
+/**
+ * Group a flat defect list into independent fix groups. Defects that share a
+ * `feature` (or, absent that, a `file`) belong to the same fix agent so two
+ * agents never touch the same surface concurrently. Anything ungrouped becomes
+ * its own group keyed by defect id.
+ *
+ * @param {Array<object>} defects
+ * @returns {Array<{ key: string, defects: Array<object> }>}
+ */
+export function groupDefectsForFix(defects) {
+  const groups = new Map();
+  for (const d of Array.isArray(defects) ? defects : []) {
+    const key = String(d.feature ?? d.file ?? d.id ?? d.description ?? "ungrouped");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+  return [...groups.entries()].map(([key, ds]) => ({ key, defects: ds }));
+}
+
+/** Turn a defect-group key into a filesystem/branch-safe slug. */
+function slugForKey(key) {
+  return String(key).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "fix";
+}
 
 /**
  * Live implementation of fix() for runLoop2().
@@ -318,39 +414,102 @@ export async function liveVerify({
  * Never called on BLOCKED or ERROR verdicts — that is enforced by loop2.mjs
  * before fix() is injected into the loop (LOOP2-04).
  *
- * HUMAN-GATED: refuses without --live (NFR-10).
+ * These fix agents are "Loop-2 gated": each independent defect group gets its
+ * own worktree + branch off the rehearsal head and its own /gsd-quick agent.
+ * Every child-process step checks status/error and throws on failure (NFR-06).
+ * The child-process + git boundaries are INJECTABLE so the whole path is
+ * unit-testable under mocks (no real worktree, no real claude).
  *
  * @param {Array<object>} defects     Defect list from the last verify report
  * @param {object}        [opts]
- * @param {number}          [opts.iteration]  Current loop iteration (for logging)
- * @returns {Promise<void>}
+ * @param {number}          [opts.iteration]     Current loop iteration (for logging + branch name)
+ * @param {string}          [opts.runId]         Run identifier (for branch naming)
+ * @param {string}          [opts.rehearsalBranch] Rehearsal branch fixes are based off
+ * @param {string}          [opts.rehearsalHead] Explicit rehearsal head ref (default: the branch)
+ * @param {string}          [opts.repoRoot]      Override the repo root (default REPO_ROOT)
+ * @param {string}          [opts.worktreeRoot]  Where fix worktrees are created (default <bgsd>/runs/<runId>/fix-worktrees)
+ * @param {string}          [opts.bgsdDir]       Override .bgsd dir path
+ * @param {Function}        [opts.spawnImpl]     Injected child-process runner (default spawnSync)
+ * @param {Function}        [opts.gitImpl]       Injected git runner (default spawnSync)
+ * @returns {Promise<Array<{ key: string, branch: string, worktree: string }>>}
+ *          the fix branches created this iteration (consumed by liveReMerge).
  */
 export async function liveFix(defects, opts = {}) {
-  requireLiveFlag();
+  const {
+    iteration = 0,
+    runId = "",
+    rehearsalBranch,
+    rehearsalHead,
+    repoRoot,
+    worktreeRoot,
+    bgsdDir,
+    spawnImpl,
+    gitImpl,
+  } = opts;
 
-  const { iteration = 0 } = opts;
+  const spawn = spawnImpl ?? spawnSync;
+  const git   = gitImpl   ?? spawnSync;
+  const root  = repoRoot  ?? REPO_ROOT;
+  const bgsd  = bgsdDir   ?? join(root, ".bgsd");
+
+  // NFR-01 branch guard is always enforced (injected git boundary for testability).
+  requireNotProductionBranch({ gitImpl: git, repoRoot: root });
+
+  const branch = rehearsalBranch ?? integrationBranchForRun(runId);
+  const head   = rehearsalHead ?? branch;
+  const wtRoot = worktreeRoot ?? join(bgsd, "runs", runId, "fix-worktrees");
+
+  const groups = groupDefectsForFix(defects);
 
   process.stderr.write(
-    `[loop2-live] liveFix: would dispatch ${defects.length} parallel fix agents\n` +
-    `  iteration:  ${iteration}\n` +
-    `  defects:    ${defects.map((d) => d.id ?? d.description ?? "(unknown)").join(", ")}\n` +
-    `  model:      sonnet (medium effort per Part 11)\n` +
-    `  (live --live path; not spawning automatically without confirmation)\n`
+    `[loop2-live] liveFix: dispatching ${groups.length} parallel fix agents\n` +
+    `  iteration:      ${iteration}\n` +
+    `  rehearsal head: ${head}\n` +
+    `  defect groups:  ${groups.map((g) => g.key).join(", ") || "(none)"}\n` +
+    `  model:          sonnet (medium effort per Part 11)\n`
   );
 
-  // LIVE SEAM POINT: in a fully-wired live run this would:
-  //   1. For each independent defect item, create a worktree off rehearsal/<run-id>:
-  //        spawnSync("git", ["worktree", "add", wtPath, "-b", fixBranch, rehearsalHead], ...)
-  //   2. Spawn a fix agent in the worktree:
-  //        spawnSync("claude", ["-p", "/gsd-quick", "--worktree", wtPath,
-  //                             "--effort", "medium", "--model-profile", "sonnet"], ...)
-  //   3. Wait for all agents to complete (poll control files or join processes).
-  //
-  // The real spawns are intentionally NOT executed here; the human must watch
-  // the terminal and confirm (NFR-10 "human-supervised, never CI").
-  //
-  // To wire the real dispatch, implement the three steps above using spawnSync
-  // (or spawn with a polling loop) for each defect item in parallel.
+  const created = [];
+
+  for (const group of groups) {
+    const slug       = slugForKey(group.key);
+    const fixBranch  = `fix/${runId || "run"}-i${iteration}-${slug}`;
+    const wtPath     = join(wtRoot, `i${iteration}-${slug}`);
+
+    // 1. Create a worktree + branch off the rehearsal head (NFR-06: throw on failure).
+    const wtResult = git(
+      "git",
+      ["worktree", "add", wtPath, "-b", fixBranch, head],
+      { cwd: root, stdio: "inherit", encoding: "utf8" }
+    );
+    if (wtResult?.error) {
+      throw new Error(`liveFix: git worktree add failed for "${group.key}": ${wtResult.error.message}`);
+    }
+    if (wtResult?.status !== 0) {
+      throw new Error(
+        `liveFix: git worktree add exited non-zero for "${group.key}" (${wtResult?.status}): ${wtResult?.stderr ?? ""}`
+      );
+    }
+
+    // 2. Spawn the fix agent in the worktree (NFR-06: throw on failure).
+    const fixResult = spawn(
+      "claude",
+      ["-p", "/gsd-quick", "--worktree", wtPath],
+      { cwd: wtPath, stdio: "inherit", encoding: "utf8" }
+    );
+    if (fixResult?.error) {
+      throw new Error(`liveFix: claude -p /gsd-quick failed to spawn for "${group.key}": ${fixResult.error.message}`);
+    }
+    if (fixResult?.status !== 0) {
+      throw new Error(
+        `liveFix: claude -p /gsd-quick exited non-zero for "${group.key}" (${fixResult?.status}): ${fixResult?.stderr ?? ""}`
+      );
+    }
+
+    created.push({ key: group.key, branch: fixBranch, worktree: wtPath });
+  }
+
+  return created;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,49 +520,102 @@ export async function liveFix(defects, opts = {}) {
  * Live implementation of reMerge() for runLoop2().
  *
  * Re-integrates the fixed worktree branches into `rehearsal/<run-id>` after
- * fix agents complete, using the v2 conflict pre-check + dependency-ordered
- * merge from conflict.mjs (LOOP2-03).
+ * fix agents complete. Each fix branch is merged with a git dry-run conflict
+ * pre-check FIRST (`git merge-tree --write-tree`, read-only, no working-tree
+ * mutation), then, only when clean, a real `git merge --no-ff` (LOOP2-03).
  *
- * HUMAN-GATED: refuses without --live (NFR-10).
+ * Mirrors run-live.mjs liveMergeFn exactly: on conflict it REPORTS the
+ * conflicting paths and does NOT force anything (NFR-06). It never claims a
+ * clean merge that did not happen.
+ *
+ * The git boundary is INJECTABLE (gitImpl) so the path is unit-testable without
+ * a real repo.
  *
  * @param {object} [opts]
  * @param {number}   [opts.iteration]   Current loop iteration (for logging)
  * @param {string}   [opts.runId]       Run identifier (for branch naming)
- * @returns {Promise<void>}
+ * @param {string}   [opts.rehearsalBranch] Target branch (default integrationBranchForRun(runId))
+ * @param {Array<{ branch: string }>} [opts.fixBranches] Fix branches to merge back (from liveFix)
+ * @param {string}   [opts.repoRoot]    Override the repo root (default REPO_ROOT)
+ * @param {Function} [opts.gitImpl]     Injected git runner (default spawnSync)
+ * @returns {Promise<{
+ *   merged:    Array<{ branch: string }>,
+ *   conflicts: Array<{ branch: string, reason: string, conflicts: string[] }>,
+ * }>}
  */
 export async function liveReMerge(opts = {}) {
-  requireLiveFlag();
+  const {
+    iteration = 0,
+    runId = "",
+    rehearsalBranch,
+    fixBranches = [],
+    repoRoot,
+    gitImpl,
+  } = opts;
 
-  const { iteration = 0, runId = "" } = opts;
+  const git  = gitImpl  ?? spawnSync;
+  const root = repoRoot ?? REPO_ROOT;
+
+  // NFR-01 branch guard is always enforced (injected git boundary for testability).
+  requireNotProductionBranch({ gitImpl: git, repoRoot: root });
+
+  const target = rehearsalBranch ?? integrationBranchForRun(runId);
 
   process.stderr.write(
-    `[loop2-live] liveReMerge: would re-integrate fixed branches into rehearsal/${runId}\n` +
+    `[loop2-live] liveReMerge: re-integrating ${fixBranches.length} fixed branches into ${target}\n` +
     `  iteration:  ${iteration}\n` +
-    `  method:     conflict.mjs dependency-ordered merge (pre-check + merge)\n` +
-    `  (live --live path; not merging automatically without confirmation)\n`
+    `  method:     git merge-tree dry-run pre-check + git merge --no-ff\n`
   );
 
-  // LIVE SEAM POINT: in a fully-wired live run this would:
-  //   1. Collect the fix-agent worktree branches for this iteration.
-  //   2. Run conflict.mjs computeMergeOrder() to get dependency-ordered merge list.
-  //   3. Run conflict.mjs executeMerges() with liveGitMergeFn as mergeFn,
-  //      a resolver agent as resolverFn, and addEscalation as escalateFn.
-  //
-  // Example wiring (not executed here):
-  //
-  //   const { computeMergeOrder, executeMerges, liveGitMergeFn } =
-  //     await import(`file://${join(__dir, "conflict.mjs")}`);
-  //
-  //   const mergeOrder = computeMergeOrder({ waves, unitStatuses, edges });
-  //   await executeMerges({
-  //     mergeOrder,
-  //     runId,
-  //     mergeFn:    (unitId, rid) => liveGitMergeFn(unitId, rid, { cwd: REPO_ROOT }),
-  //     resolverFn: async (unitId, conflicts) => ({ confidence: 0.0, resolution: null }),
-  //     escalateFn: async (unitId, info) => { /* addEscalation via control.mjs */ },
-  //   });
-  //
-  // The real merge is intentionally NOT executed here.
+  const merged    = [];
+  const conflicts = [];
+
+  for (const fb of fixBranches) {
+    const branch = fb?.branch;
+    if (!branch) continue;
+
+    // 1. Dry-run conflict pre-check (read-only; does not touch HEAD or the index).
+    const dryRun = git(
+      "git",
+      ["merge-tree", "--write-tree", "--name-only", target, branch],
+      { cwd: root, encoding: "utf8" }
+    );
+    if (dryRun?.error) {
+      throw new Error(`liveReMerge: git merge-tree failed for "${branch}": ${dryRun.error.message}`);
+    }
+    if (dryRun?.status !== 0) {
+      // Non-zero from merge-tree = the merge would conflict. Report, do not force.
+      const conflictPaths = String(dryRun?.stdout ?? "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      conflicts.push({ branch, reason: "conflict", conflicts: conflictPaths });
+      process.stderr.write(
+        `[loop2-live] liveReMerge: "${branch}" would conflict — reported, not forced (${conflictPaths.length} paths)\n`
+      );
+      continue;
+    }
+
+    // 2. Clean pre-check -> do the real merge into the rehearsal branch.
+    const merge = git(
+      "git",
+      ["merge", "--no-ff", "-m", `bgsd(loop2): ${branch} → ${target}`, branch],
+      { cwd: root, stdio: "inherit", encoding: "utf8" }
+    );
+    if (merge?.error) {
+      throw new Error(`liveReMerge: git merge failed for "${branch}": ${merge.error.message}`);
+    }
+    if (merge?.status !== 0) {
+      // Real merge unexpectedly conflicted after a clean pre-check — abort + report.
+      git("git", ["merge", "--abort"], { cwd: root, encoding: "utf8" });
+      conflicts.push({ branch, reason: "merge_failed", conflicts: [] });
+      continue;
+    }
+
+    merged.push({ branch });
+  }
+
+  return { merged, conflicts };
 }
 
 // ---------------------------------------------------------------------------
@@ -417,30 +629,37 @@ export async function liveReMerge(opts = {}) {
  * Also advances run.json to the `integrating` lifecycle state via
  * advanceStateFn (reusing run.mjs advanceState — LOOP2-01).
  *
- * This is the human-supervised, end-to-end live integration run. It drives
- * `rehearsal/<run-id>` through the full verify→fix→re-merge→re-verify cycle
- * using the real Integration Tester and real fix agents.
+ * This is the human-supervised, end-to-end live integration run. It drives the
+ * rehearsal branch through the full verify→fix→re-merge→re-verify cycle using
+ * the real Integration Tester and real fix agents.
  *
- * HUMAN-GATED: refuses without --live (NFR-10).
- * NEVER run in CI or against `next` (NFR-01).
+ * The --live gate is REMOVED: a plain /bgsd-sesh fires this path with zero
+ * friction. The next/production-branch guard (NFR-01) is still ALWAYS enforced.
  *
  * @param {object} opts
  * @param {string}   opts.runId               Run identifier (e.g. "bgsd-0001-foo")
- * @param {string}   [opts.rehearsalBranch]   e.g. "rehearsal/bgsd-0001-foo"
+ * @param {string}   [opts.rehearsalBranch]   Rehearsal/integration branch
+ * @param {string}   [opts.rehearsalAppDir]   Assembled app dir to boot (default: repo root)
+ * @param {string}   [opts.integrationCriteria] Criteria file passed to /bgsd-verify
  * @param {string}   [opts.bgsdDir]           Override .bgsd directory path
  * @param {string}   [opts.runJsonPath]       Path to run.json (for advanceStateFn)
+ * @param {Function} [opts.spawnImpl]         Injected child-process runner (default spawnSync)
+ * @param {Function} [opts.gitImpl]           Injected git runner (default spawnSync)
  * @param {object}   [opts.loopOpts]          Options forwarded to runLoop2 (maxIterations, etc.)
  * @returns {Promise<object>}  runLoop2 result
  */
 export async function runLiveLoop2({
   runId,
   rehearsalBranch,
+  rehearsalAppDir,
+  integrationCriteria,
   bgsdDir,
   runJsonPath,
+  spawnImpl,
+  gitImpl,
   loopOpts = {},
 }) {
-  requireLiveFlag();
-  requireNotProductionBranch();
+  requireNotProductionBranch({ gitImpl, repoRoot: REPO_ROOT });
 
   const branch  = rehearsalBranch ?? integrationBranchForRun(runId);
   const bgsd    = bgsdDir ?? join(REPO_ROOT, ".bgsd");
@@ -448,21 +667,16 @@ export async function runLiveLoop2({
   process.stderr.write(
     "\n" +
     "======================================================================\n" +
-    "Kiwi: HUMAN-SUPERVISED Live Integration Run\n" +
+    "Kiwi: Live Integration Run (Loop 2)\n" +
     "======================================================================\n\n" +
     `  Run ID:           ${runId}\n` +
-    `  Rehearsal Branch: ${branch}\n` +
-    `  --live flag:      DETECTED\n\n` +
-    "Safety checklist — confirm before proceeding:\n" +
-    "  [1] On a feature branch, NOT next:  git branch --show-current\n" +
-    "  [2] Phase 1 controller ran clean under mocked Tester/fix\n" +
-    "  [3] Per-run budget cap is set (--budget-cap or BGSD_BUDGET_CAP)\n" +
-    "  [4] caffeinate is running (caffeinate -dimsu &)\n" +
-    "  [5] Watching the terminal — this is NOT fire-and-forget\n" +
-    "  [6] runtime-isolate.sh isolation is in place (own port/DB/env)\n" +
-    "  [7] rehearsal/<run-id> is the target; next is NEVER touched\n" +
-    "\n" +
-    "  Proceeding with runLiveLoop2 (live seam stubs active)...\n" +
+    `  Rehearsal Branch: ${branch}\n\n` +
+    "Safety context:\n" +
+    "  - Production branch guard (NFR-01) is enforced; next is the target.\n" +
+    "  - runtime-isolate.sh gives the app its own port/DB/env.\n" +
+    "  - The Tester boots the integrated app and reports PASS|FAIL|ERROR.\n" +
+    "  - Fix agents run in worktrees off the rehearsal head; re-merge is\n" +
+    "    conflict-pre-checked and never forced.\n" +
     "======================================================================\n\n"
   );
 
@@ -487,9 +701,41 @@ export async function runLiveLoop2({
     }
   }
 
-  const verify   = () => liveVerify({ rehearsalBranch: branch, runId, bgsdDir: bgsd });
-  const fix      = (defects, opts2) => liveFix(defects, { ...opts2 });
-  const reMerge  = (opts2) => liveReMerge({ ...opts2, runId });
+  // Fix branches created by the most recent liveFix() are threaded into the
+  // subsequent liveReMerge() so re-merge knows exactly what to re-integrate.
+  let lastFixBranches = [];
+
+  const verify = () =>
+    liveVerify({
+      rehearsalBranch: branch,
+      runId,
+      rehearsalAppDir,
+      integrationCriteria,
+      bgsdDir: bgsd,
+      spawnImpl,
+      gitImpl,
+    });
+
+  const fix = async (defects, opts2) => {
+    lastFixBranches = await liveFix(defects, {
+      ...opts2,
+      runId,
+      rehearsalBranch: branch,
+      bgsdDir: bgsd,
+      spawnImpl,
+      gitImpl,
+    });
+    return lastFixBranches;
+  };
+
+  const reMerge = (opts2) =>
+    liveReMerge({
+      ...opts2,
+      runId,
+      rehearsalBranch: branch,
+      fixBranches: lastFixBranches,
+      gitImpl,
+    });
 
   return runLoop2({
     runId,
@@ -515,15 +761,8 @@ if (
       : `file://${process.cwd()}/`
   ).href
 ) {
-  // Guard fires at invocation time: if --live is absent, print the refusal.
-  try {
-    requireLiveFlag();
-  } catch (err) {
-    process.stderr.write(err.message);
-    process.exit(1);
-  }
-
-  // Also check branch safety at CLI invocation time.
+  // The --live gate is gone: a plain /bgsd-sesh fires the live Loop 2 path with
+  // zero friction. The production-branch guard (NFR-01) is still enforced.
   try {
     requireNotProductionBranch();
   } catch (err) {
@@ -532,11 +771,11 @@ if (
   }
 
   process.stderr.write(
-    "\n[loop2-live] --live flag detected. This is a HUMAN-SUPERVISED run.\n" +
+    "\n[loop2-live] live Loop 2 integration seam.\n" +
     "  Pass runId, rehearsalBranch, and loopOpts programmatically via\n" +
     "  the runLiveLoop2() export. This CLI entrypoint is a usage reminder.\n\n" +
     "  Before a live integration run, ensure:\n" +
-    "    1. git branch --show-current (must NOT be 'next')\n" +
+    "    1. git branch --show-current (must NOT be a production branch)\n" +
     "    2. Phase 1 controller (loop2.mjs) ran clean under mocked Tester/fix\n" +
     "    3. BGSD_BUDGET_CAP is set\n" +
     "    4. caffeinate is running\n" +
