@@ -193,8 +193,13 @@ Every scale runs the same conceptual pipeline — *route/plan → execute →
 Pass `--gui` to open a local web dashboard that tracks the whole pipeline live:
 the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2
 Integrator, and the Review Gate, each card showing the agent's GSD substage,
-status, and progress. It refreshes on its own (polls every 1.5s) and reads only
-the run's control files (read-only; it never touches git or `main`).
+status, and progress. Above the lanes, a **pipeline timeline** (Discuss →
+Decompose → Loop 1 → Merge → Loop 2 → Review) shows where the run is **even
+before any agent spawns**, so intake, discussion, and decomposition are visible.
+As you move through the pipeline, advance the stage so the dashboard keeps up:
+`gui-live.mjs stage <name> --note "<what you're doing>"`. The dashboard refreshes
+on its own (polls every 1.5s) and reads only run state (read-only; it never
+touches git or `main`).
 
 ```
 /bgsd-sesh "…" --gui      # run the session and open the dashboard

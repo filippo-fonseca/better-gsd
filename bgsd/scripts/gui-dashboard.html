@@ -37,6 +37,16 @@
   .live.stale .beat { background: var(--warn); animation: none; }
   .live.lost .beat { background: var(--bad); animation: none; }
   @keyframes beat { 0%{box-shadow:0 0 0 0 rgba(63,181,103,.5)} 70%{box-shadow:0 0 0 7px rgba(63,181,103,0)} 100%{box-shadow:0 0 0 0 rgba(63,181,103,0)} }
+  .pipeline { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 12px 0 2px; }
+  .step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .step .num { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; background: #0c141d; color: var(--muted); }
+  .step.done { color: var(--done); border-color: var(--kiwi-dim); }
+  .step.done .num { background: var(--kiwi-dim); color: #d6ffe4; }
+  .step.active { color: #05130a; background: var(--kiwi); border-color: var(--kiwi); font-weight: 700; }
+  .step.active .num { background: #05130a; color: var(--kiwi); }
+  .note-bar { color: var(--ink); font-size: 12.5px; min-height: 18px; }
+  .note-bar b { color: var(--kiwi); }
+  .note-bar .muted { color: var(--muted); }
   main { padding: 18px 20px; }
   .lanes { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; align-items: start; }
   @media (max-width: 980px) { .lanes { grid-template-columns: repeat(2, 1fr); } }
@@ -91,6 +101,8 @@
   </div>
 </header>
 <main>
+  <div class="pipeline" id="pipeline"></div>
+  <div class="note-bar" id="note-bar"></div>
   <div class="lanes" id="lanes"></div>
 </main>
 <footer>bgsd live view · polls every 1.5s · <span id="stamp">—</span></footer>
@@ -131,6 +143,27 @@
     document.getElementById("c-done").textContent = model.counts.done;
     document.getElementById("c-blocked").textContent = model.counts.blocked;
     document.getElementById("c-total").textContent = model.counts.total;
+
+    // Pipeline timeline — visible even before any agent spawns (discuss/decompose).
+    var pipe = document.getElementById("pipeline");
+    pipe.innerHTML = "";
+    (model.pipeline || []).forEach(function (s, i) {
+      var step = el("div", "step " + s.status);
+      step.appendChild(el("span", "num", s.status === "done" ? "✓" : String(i + 1)));
+      step.appendChild(el("span", null, s.label));
+      pipe.appendChild(step);
+    });
+
+    // What the Conductor is doing right now (its current stage + note).
+    var nb = document.getElementById("note-bar");
+    nb.innerHTML = "";
+    if (model.run.stage || model.run.note) {
+      nb.appendChild(document.createTextNode("Conductor: "));
+      nb.appendChild(el("b", null, model.run.stage || "working"));
+      if (model.run.note) nb.appendChild(document.createTextNode("  ·  " + model.run.note));
+    } else if (model.counts.total === 0) {
+      nb.appendChild(el("span", "muted", "Conductor is getting set up; agents will appear here as they spawn."));
+    }
 
     var lanes = document.getElementById("lanes");
     lanes.innerHTML = "";

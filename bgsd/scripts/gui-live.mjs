@@ -67,10 +67,42 @@ export function modelForRun(repoRoot, runId) {
   try {
     if (existsSync(runJson)) {
       const r = JSON.parse(readFileSync(runJson, "utf8"));
-      run = { run_id: runId, scale: r.scale ?? null, state: r.state ?? null };
+      run = {
+        run_id: runId,
+        scale: r.scale ?? null,
+        state: r.state ?? null,
+        stage: r.stage ?? null,
+        note: r.note ?? null,
+      };
     }
   } catch (_) { /* keep minimal run */ }
   return buildDashboardModel({ run, agents });
+}
+
+/**
+ * Update a run's pipeline stage / activity note so the dashboard reflects the
+ * pre-fan-out phases (discuss, decompose) and what the Conductor is doing. The
+ * Conductor calls this as it advances through the pipeline. Merges onto any
+ * existing run.json.
+ *
+ * @param {string} repoRoot
+ * @param {object} fields  { runId?, stage?, note?, scale?, state? }
+ * @returns {object} the written run-state
+ */
+export function setStage(repoRoot, { runId, stage, note, scale, state } = {}) {
+  const resolved = runId ?? latestRunId(repoRoot);
+  if (!resolved) throw new Error("setStage: no run found under .bgsd/runs");
+  const path = join(runsDir(repoRoot), resolved, "run.json");
+  let cur = {};
+  if (existsSync(path)) { try { cur = JSON.parse(readFileSync(path, "utf8")); } catch (_) { cur = {}; } }
+  const next = { ...cur, run_id: resolved, updated_at: new Date().toISOString() };
+  if (stage !== undefined) next.stage = stage;
+  if (note !== undefined) next.note = note;
+  if (scale !== undefined) next.scale = scale;
+  if (state !== undefined) next.state = state;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(next, null, 2), "utf8");
+  return next;
 }
 
 function writePointer(repoRoot, data) {
@@ -177,6 +209,18 @@ export async function main() {
     const ptr = readPointer(repoRoot);
     if (!ptr) { out(`\nbgsd-gui: not running.\n\n`); return; }
     out(`\nbgsd-gui: running at ${ptr.url}  (pid ${ptr.pid}, run ${ptr.run_id ?? "—"}, since ${ptr.started_at}).\n\n`);
+    return;
+  }
+
+  if (sub === "stage") {
+    const stage = argv[1] && !argv[1].startsWith("--") ? argv[1] : flags.stage;
+    const r = setStage(repoRoot, {
+      runId: typeof flags["run-id"] === "string" ? flags["run-id"] : undefined,
+      stage: typeof stage === "string" ? stage : undefined,
+      note: typeof flags.note === "string" ? flags.note : undefined,
+      state: typeof flags.state === "string" ? flags.state : undefined,
+    });
+    out(`\nbgsd-gui: run ${r.run_id} → stage ${r.stage ?? "—"}${r.note ? ` (${r.note})` : ""}\n\n`);
     return;
   }
 

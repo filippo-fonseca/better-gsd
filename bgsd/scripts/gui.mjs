@@ -21,6 +21,38 @@ export const LANES = Object.freeze([
 /** The linear GSD substage flow, used for the per-agent progress indicator. */
 export const GSD_FLOW = Object.freeze(["discuss", "ui", "plan", "execute", "verify", "done"]);
 
+/**
+ * The macro pipeline a run moves through, shown as a timeline/stepper above the
+ * lanes. This is what makes the pre-fan-out phases visible: discuss and
+ * decompose happen before any agent (and thus any control file) exists, so the
+ * dashboard reads the run's `stage` from run.json and lights the current step.
+ */
+export const PIPELINE_STAGES = Object.freeze([
+  { id: "discuss",   label: "Discuss" },
+  { id: "decompose", label: "Decompose" },
+  { id: "loop1",     label: "Loop 1" },
+  { id: "merge",     label: "Merge" },
+  { id: "loop2",     label: "Loop 2" },
+  { id: "review",    label: "Review" },
+  { id: "done",      label: "Done" },
+]);
+
+/**
+ * Build the pipeline timeline from the run's current macro-stage. Each stage is
+ * marked done (before current), active (current), or pending (after). An unknown
+ * or null stage leaves every step pending.
+ *
+ * @param {string|null} currentStage
+ * @returns {{ id: string, label: string, status: "done"|"active"|"pending" }[]}
+ */
+export function buildPipeline(currentStage) {
+  const idx = PIPELINE_STAGES.findIndex((s) => s.id === currentStage);
+  return PIPELINE_STAGES.map((s, i) => ({
+    ...s,
+    status: idx < 0 ? "pending" : i < idx ? "done" : i === idx ? "active" : "pending",
+  }));
+}
+
 const SUBSTAGE_LABELS = Object.freeze({
   discuss: "Discuss",
   ui: "UI design",
@@ -128,6 +160,8 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
       run_id: run.run_id ?? null,
       scale: run.scale ?? null,
       state: run.state ?? null,
+      stage: run.stage ?? null,
+      note: run.note ?? null,
       generated_at: new Date(now).toISOString(),
     },
     counts: {
@@ -137,6 +171,7 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
       blocked: countBy((a) => a.status === "blocked" || a.status === "failed"),
       needs_input: countBy((a) => a.status === "needs_input"),
     },
+    pipeline: buildPipeline(run.stage ?? null),
     lanes,
     agents: norm,
   };

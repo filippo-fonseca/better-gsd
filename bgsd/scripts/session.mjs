@@ -1128,6 +1128,34 @@ if (
       } else {
         process.stdout.write(`  deps: Playwright skipped — code-only verification (gsd-verifier). No browser/UI usage testing this session.\n`);
       }
+      // Write an initial run-state so the dashboard shows the pipeline stage even
+      // before any agent (and thus any control file) exists: discuss and
+      // decompose happen before fan-out. The Conductor advances the stage as it
+      // progresses via `gui-live.mjs stage <name>`.
+      try {
+        const { mkdirSync, writeFileSync } = await import("node:fs");
+        const { resolveRepoRoot } = await import("./init-live.mjs");
+        const seshRunId = `sesh-${Date.now()}`;
+        const initialStage =
+          classification.scale === "project" ? "discuss"
+          : classification.scale === "feature" ? "decompose"
+          : "loop1";
+        const runDir = `${resolveRepoRoot()}/.bgsd/runs/${seshRunId}`;
+        mkdirSync(runDir, { recursive: true });
+        writeFileSync(
+          `${runDir}/run.json`,
+          JSON.stringify({
+            run_id: seshRunId,
+            scale: classification.scale,
+            state: "executing",
+            stage: initialStage,
+            note: plan.discuss ? "discussing decisions before fan-out" : "planning the work",
+            started_at: new Date().toISOString(),
+          }, null, 2) + "\n",
+          "utf8"
+        );
+        process.stdout.write(`  run: ${seshRunId}  (stage: ${initialStage})\n`);
+      } catch (_) { /* run-state is best-effort */ }
       // --gui: open the live dashboard (a detached, read-only observability
       // server) and hand the user the clickable URL. Close it any time with
       // `gui-live.mjs stop`. The dashboard outlives this harness on purpose.

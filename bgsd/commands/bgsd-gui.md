@@ -41,6 +41,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" stop
 # Where is it?
 node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" status
 
+# Advance the pipeline stage (so the dashboard reflects discuss/decompose/etc.):
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" stage <discuss|decompose|loop1|merge|loop2|review|done> --note "what you're doing"
+
 # Preview only (prints the plan, starts nothing):
 node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" start --plan-only
 ```
@@ -65,6 +68,15 @@ the GSD flow, the iteration `x/max`, a live note, and a context-pressure warning
 if an agent's window is filling up. The header shows the run id, scale, state,
 and running / done / blocked counts, with a heartbeat that goes amber then red
 if the feed drops.
+
+**The pipeline timeline shows the pre-fan-out phases.** Above the lanes is a
+stepper for the whole pipeline: **Discuss → Decompose → Loop 1 → Merge → Loop 2
+→ Review → Done**, with the current stage lit and a one-line note of what the
+Conductor is doing. This is visible **before any agent exists**, so during
+intake, discussion, and decomposition (when there are no control files yet) you
+still see exactly where the run is and what Kiwi is working on. As the Conductor
+moves through the pipeline it advances the stage with `gui-live.mjs stage <name>
+--note "..."`, and the session harness seeds the opening stage automatically.
 
 ---
 

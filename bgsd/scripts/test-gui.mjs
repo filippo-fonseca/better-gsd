@@ -18,11 +18,13 @@ import assert from "node:assert/strict";
 import {
   LANES,
   GSD_FLOW,
+  PIPELINE_STAGES,
   classifyAgentRole,
   laneForAgent,
   gsdSubstage,
   phaseProgress,
   normalizeAgent,
+  buildPipeline,
   buildDashboardModel,
 } from "./gui.mjs";
 
@@ -131,6 +133,32 @@ test("G07 — buildDashboardModel: empty run -> empty lanes + zero counts", () =
   assert.equal(model.agents.length, 0);
   assert.equal(model.lanes.length, LANES.length);
   for (const l of model.lanes) assert.equal(l.agents.length, 0);
+});
+
+test("G08 — buildPipeline marks done/active/pending around the current stage", () => {
+  const p = buildPipeline("decompose");
+  const byId = Object.fromEntries(p.map((s) => [s.id, s.status]));
+  assert.equal(byId.discuss, "done", "stages before current are done");
+  assert.equal(byId.decompose, "active", "current stage is active");
+  assert.equal(byId.loop1, "pending", "stages after current are pending");
+  assert.equal(p.length, PIPELINE_STAGES.length);
+});
+
+test("G09 — buildPipeline: unknown/null stage leaves all pending", () => {
+  for (const s of buildPipeline(null)) assert.equal(s.status, "pending");
+  for (const s of buildPipeline("nope")) assert.equal(s.status, "pending");
+});
+
+test("G10 — buildDashboardModel surfaces pipeline + stage + note (pre-fan-out)", () => {
+  const model = buildDashboardModel({
+    run: { run_id: "r", scale: "project", stage: "discuss", note: "mapping the codebase" },
+    agents: [],
+  });
+  assert.equal(model.run.stage, "discuss");
+  assert.equal(model.run.note, "mapping the codebase");
+  assert.ok(Array.isArray(model.pipeline), "model carries a pipeline timeline");
+  assert.equal(model.pipeline.find((s) => s.id === "discuss").status, "active");
+  assert.equal(model.counts.total, 0, "no agents yet, but stage is still visible");
 });
 
 process.stdout.write(`\ngui.mjs: ${passed} passed, ${failed} failed\n`);
