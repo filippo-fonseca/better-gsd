@@ -66,15 +66,17 @@ export function defaultBgsdConfig() {
       require_remote: true,
     },
     // Configurable model posture — defaults mirror decompose.mjs today.
+    // Four difficulty bands map to executor model + effort.
     model_posture: {
-      thresholds: { high: 0.7, medium: 0.4 },
+      thresholds: { xhigh: 0.7, high: 0.4, mid: 0.2 },
       tiers: {
-        high: { model: "opus", effort: "xhigh" },
-        medium: { model: "sonnet", effort: "high" },
-        low: { model: "haiku", effort: "medium" },
+        xhigh: { model: "opus", effort: "xhigh" },
+        high: { model: "opus", effort: "high" },
+        mid: { model: "sonnet", effort: "high" },
+        low: { model: "haiku", effort: "high" },
       },
       // executor uses the unit's own tier; researcher is one tier below
-      // (capped at medium); verifier is fixed.
+      // (floored at haiku/high); verifier is fixed.
       researcher: "one-tier-below",
       verifier: { model: "haiku", effort: "low" },
     },
@@ -182,9 +184,11 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **model_posture** — the per-unit model + effort routing. Executor uses the
-  unit's difficulty tier; researcher drops one tier (capped at \`medium\`);
-  verifier is fixed. Override any tier, threshold, or role here.
+- **model_posture** — the per-unit model + effort routing, in four difficulty
+  bands: \`xhigh\` (opus/xhigh), \`high\` (opus/high), \`mid\` (sonnet/high),
+  \`low\` (haiku/high). Executor uses the unit's band; researcher drops one band
+  (floored at haiku/high); verifier is fixed at haiku/low. Override any tier,
+  threshold, or role here.
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI
   usage-testing but STILL runs the goal-backward code verification

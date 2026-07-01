@@ -203,10 +203,11 @@ report schema and criteria formats.
 
 ## Model and effort selection
 
-Each unit is scored with a cheap, deterministic **difficulty heuristic** (in
-`scripts/route-item.mjs`; it never makes a model call). The score, together with
-the routing table, selects a route class and a **model posture** written into
-GSD's `config.json`:
+Each unit is scored with a cheap, deterministic **difficulty heuristic** (no
+model call). Two selectors use that score.
+
+**Quick-scale route class** (`scripts/route-item.mjs`): a single item maps to a
+GSD surface and a coarse posture.
 
 | Route class | GSD surface | Model posture | Effort |
 |-------------|-------------|---------------|--------|
@@ -214,9 +215,22 @@ GSD's `config.json`:
 | scoped-fix | `/gsd-quick` | balanced | medium |
 | feature | `/gsd-plan-phase` then `/gsd-execute-phase` | quality | high |
 
-Harder units ride a stronger model and a fuller GSD workflow; trivial units skip
-research and planning. When a verify-fix loop fails, model effort escalates on
-the next pass, up to the bounded maximum.
+**Per-unit posture for feature/project units** (`scripts/decompose.mjs`
+`deriveModelPosture`): the `[0,1]` difficulty score falls into one of four bands,
+each fixing the executor's model and effort, written to the worktree's
+`config.json` as `bgsd_unit_posture`.
+
+| Difficulty | Executor model / effort |
+|------------|-------------------------|
+| ≥ 0.70 | `opus` / `xhigh` |
+| 0.40 – 0.70 | `opus` / `high` |
+| 0.20 – 0.40 | `sonnet` / `high` |
+| < 0.20 | `haiku` / `high` |
+
+Within a unit, the **researcher** drops one band (floored at `haiku`/`high`) and
+the **verifier** is fixed at `haiku`/`low`. Harder units ride a stronger model;
+trivial units skip research and planning. Every band is overridable in `BGSD.md`
+under `model_posture`.
 
 ---
 
