@@ -66,10 +66,14 @@
 
 import { spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
-import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
+import { writeUnitWorktreeConfig } from "./decompose.mjs";
+import { createControlFile } from "./control.mjs";
+import { propagateEnvLive } from "./envprop.mjs";
+import { readRunUnit, readRunScale } from "./run-units.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -133,16 +137,25 @@ export function requireLiveFlag() {
 
 /**
  * Refuse to run if the current branch is `next` or any production branch.
- * This guard fires regardless of --live — it is always enforced.
+ * This guard fires regardless of --live — it is always enforced (NFR-01).
  *
- * @throws {Error} if the current branch is `next`
+ * The git boundary + repo root are injectable so the guard is unit-testable
+ * (a test can force the "current branch" to a production branch without a real
+ * checkout). Defaults read the real current branch of the repo.
+ *
+ * @param {object}   [opts]
+ * @param {Function} [opts.gitImpl]   Injected git runner (default spawnSync)
+ * @param {string}   [opts.repoRoot]  Repo root to read the branch from (default REPO_ROOT)
+ * @throws {Error} if the current branch is a production branch
  */
-export function requireNotProductionBranch() {
-  const result = spawnSync("git", ["branch", "--show-current"], {
-    cwd: REPO_ROOT,
+export function requireNotProductionBranch(opts = {}) {
+  const gitImpl  = opts.gitImpl  ?? spawnSync;
+  const repoRoot = opts.repoRoot ?? REPO_ROOT;
+  const result = gitImpl("git", ["branch", "--show-current"], {
+    cwd: repoRoot,
     encoding: "utf8",
   });
-  const branch = (result.stdout ?? "").trim();
+  const branch = (result?.stdout ?? "").trim();
   if (isProductionBranch(branch)) {
     throw new Error(
       `\nNFR-01 VIOLATION: run-live.mjs refuses to run on production branch "${branch}".\n` +
@@ -160,61 +173,133 @@ export function requireNotProductionBranch() {
  * Live implementation of spawnFn (the dependency-injected spawn boundary).
  *
  * For each unit:
- *   1. Creates a git worktree at plan.path on branch plan.branch.
- *   2. Writes the unit's .planning/config.json via the config seam (NFR-04).
- *   3. Launches a headless `claude -p` Pipeline Agent.
+ *   1. Refuses on a production branch (NFR-01).
+ *   2. Creates a git worktree at plan.path on branch plan.branch (off HEAD).
+ *   3. Propagates .env* files into the worktree (worktrees skip gitignored
+ *      files, so apps won't boot without this).
+ *   4. Writes the unit's .planning/config.json via the config seams (NFR-04).
+ *   5. Writes the unit brief to .planning/bgsd-unit.json.
+ *   6. Creates the agent control file under .bgsd/runs/<runId>/control/.
+ *   7. Launches a headless `claude -p /bgsd-run-agent` Pipeline Agent.
  *
- * HUMAN-GATED: refuses without --live (NFR-07).
+ * Every child-process step checks status/error and throws on failure — no
+ * silent green (NFR-06). The child-process + git boundaries are INJECTABLE so
+ * the whole path is unit-testable under mocks (no real worktree, no real claude).
  *
  * @param {string}   unitId   Unit identifier
- * @param {object}   plan     WorktreePlan from planWorktrees()
+ * @param {object}   plan     WorktreePlan from planWorktrees() ({ path, branch, port })
+ * @param {object}   [opts]
+ * @param {string}   [opts.runId]      Run id (for control-file + brief paths)
+ * @param {string}   [opts.scale]      "quick"|"feature"|"project" (passed to the agent)
+ * @param {object}   [opts.unit]       The full decomposed unit (falls back to a disk read)
+ * @param {string}   [opts.bgsdDir]    Override the .bgsd dir (default <repo>/.bgsd)
+ * @param {string}   [opts.repoRoot]   Override the repo root (default REPO_ROOT)
+ * @param {Function} [opts.spawnImpl]  Injected child-process runner (default spawnSync)
+ * @param {Function} [opts.gitImpl]    Injected git runner (default spawnSync)
  * @returns {Promise<void>}
  */
-export async function liveSpawnFn(unitId, plan) {
-  requireLiveFlag();
-  requireNotProductionBranch();
+export async function liveSpawnFn(unitId, plan, opts = {}) {
+  const spawnImpl = opts.spawnImpl ?? spawnSync;
+  const gitImpl   = opts.gitImpl   ?? spawnSync;
+  const repoRoot  = opts.repoRoot  ?? REPO_ROOT;
+  const bgsdDir   = opts.bgsdDir   ?? join(repoRoot, ".bgsd");
+  const runId     = opts.runId ?? "";
+
+  // NFR-01 branch guard (always enforced, no --live needed). Uses the injected
+  // git boundary so a test can force a production-branch refusal.
+  requireNotProductionBranch({ gitImpl, repoRoot });
 
   const { path: wtPath, branch, port } = plan ?? {};
   if (!wtPath || !branch) {
     throw new Error(`liveSpawnFn: plan for unit "${unitId}" is missing path or branch`);
   }
 
-  // 1. Create the git worktree
-  // In a real run: git worktree add <wtPath> -b <branch> <baseRef>
-  // The base ref is the current rehearsal/<run-id> head (or HEAD for wave 1).
-  process.stderr.write(
-    `[run-live] liveSpawnFn: creating worktree for unit "${unitId}"\n` +
-    `  Path:   ${wtPath}\n` +
-    `  Branch: ${branch}\n` +
-    `  Port:   ${port}\n`
-  );
+  // Resolve the full unit + scale. Prefer explicit opts; otherwise read them
+  // back from the run's persisted units (persistRunUnits, run-units.mjs). This
+  // keeps the injected spawnFn(unitId, plan) signature clean.
+  const unit =
+    opts.unit ??
+    (runId ? readRunUnit(runId, unitId, { bgsdDir }) : null) ??
+    { id: unitId };
+  const scale = opts.scale ?? (runId ? readRunScale(runId, { bgsdDir }) : null) ?? "feature";
 
-  // LIVE SEAM POINT: in a fully-wired live run, this would:
-  //   spawnSync("git", ["worktree", "add", wtPath, "-b", branch, baseRef], ...)
-  //   writeUnitWorktreeConfig(join(wtPath, ".planning"), unit)  // posture + phase config
-  //   spawnSync("claude", ["-p", "/gsd-execute-phase", "--worktree", wtPath], ...)
-  //
-  // The actual spawn is intentionally NOT executed here; the human runs this
-  // supervised and watches the terminal (NFR-07 / NFR-08).
-  //
-  // To wire real spawn, replace this stub with:
-  //
-  //   const worktreeResult = spawnSync("git", [
-  //     "worktree", "add", wtPath, "-b", branch, "HEAD",
-  //   ], { cwd: REPO_ROOT, stdio: "inherit" });
-  //   if (worktreeResult.status !== 0) {
-  //     throw new Error(`git worktree add failed for unit "${unitId}"`);
-  //   }
-  //   const agentResult = spawnSync("claude", [
-  //     "-p", "/bgsd-run-agent",
-  //     "--worktree", wtPath,
-  //     "--unit-id", unitId,
-  //     "--port", String(port),
-  //   ], { stdio: "inherit", cwd: wtPath });
+  const log = (msg) => process.stderr.write(`[run-live] ${msg}\n`);
+  log(`liveSpawnFn: creating worktree for unit "${unitId}" (${branch} @ ${wtPath}, port ${port})`);
 
-  process.stderr.write(
-    `[run-live] (live seam not yet connected — would spawn claude -p on ${wtPath})\n`
+  // 1. Create the git worktree off HEAD (NFR-06: throw on non-zero/error).
+  const worktreeResult = gitImpl(
+    "git",
+    ["worktree", "add", wtPath, "-b", branch, "HEAD"],
+    { cwd: repoRoot, stdio: "inherit", encoding: "utf8" }
   );
+  if (worktreeResult?.error) {
+    throw new Error(`git worktree add failed for unit "${unitId}": ${worktreeResult.error.message}`);
+  }
+  if (worktreeResult?.status !== 0) {
+    throw new Error(
+      `git worktree add failed for unit "${unitId}" (exit ${worktreeResult?.status}): ${worktreeResult?.stderr ?? ""}`
+    );
+  }
+
+  // 2. Propagate env files into the worktree (worktrees skip gitignored files).
+  propagateEnvLive({
+    repoRoot,
+    destDir: wtPath,
+    patterns: [".env", ".env.*"],
+    log,
+  });
+
+  // 3. Write the per-unit config seams (posture + phase config) into .planning/.
+  const planningDir = join(wtPath, ".planning");
+  writeUnitWorktreeConfig(planningDir, unit);
+
+  // 4. Write the unit brief the Pipeline Agent reads (.planning/bgsd-unit.json).
+  const brief = {
+    unit_id:  unitId,
+    run_id:   runId,
+    scale,
+    title:    unit.title ?? unit.id ?? unitId,
+    scope:    unit.scope ?? "",
+    criteria: Array.isArray(unit.criteria) ? unit.criteria : [],
+    touched:  Array.isArray(unit.touched)  ? unit.touched  : [],
+  };
+  mkdirSync(planningDir, { recursive: true });
+  writeFileSync(join(planningDir, "bgsd-unit.json"), JSON.stringify(brief, null, 2), "utf8");
+
+  // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
+  const controlPath = join(bgsdDir, "runs", runId, "control", `${unitId}.json`);
+  createControlFile(controlPath, {
+    agent_id: unitId,
+    run_id:   runId,
+    worktree: wtPath,
+    branch,
+    unit_id:  unitId,
+    phase:    "plan",
+    status:   "running",
+  });
+
+  // 6. Spawn the headless Pipeline Agent (NFR-06: throw on non-zero/error).
+  const agentResult = spawnImpl(
+    "claude",
+    [
+      "-p", "/bgsd-run-agent",
+      "--worktree", wtPath,
+      "--unit-id", unitId,
+      "--run-id", runId,
+      "--control-file", controlPath,
+      "--scale", scale,
+      "--port", String(port),
+    ],
+    { cwd: wtPath, stdio: "inherit", encoding: "utf8" }
+  );
+  if (agentResult?.error) {
+    throw new Error(`claude -p /bgsd-run-agent failed to spawn for unit "${unitId}": ${agentResult.error.message}`);
+  }
+  if (agentResult?.status !== 0) {
+    throw new Error(
+      `claude -p /bgsd-run-agent exited non-zero for unit "${unitId}" (exit ${agentResult?.status}): ${agentResult?.stderr ?? ""}`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +320,6 @@ export async function liveSpawnFn(unitId, plan) {
  * @returns {Promise<"running"|"done"|"failed"|"dead">}
  */
 export async function liveReadStatusFn(unitId, runId, bgsdDir) {
-  requireLiveFlag();
 
   const controlDir = join(bgsdDir ?? join(REPO_ROOT, ".bgsd"), "runs", runId, "control");
   const controlPath = join(controlDir, `${unitId}.json`);
@@ -272,55 +356,80 @@ export async function liveReadStatusFn(unitId, runId, bgsdDir) {
 /**
  * Live implementation of mergeFn.
  *
- * Runs a dry-run conflict pre-check first (no model), then merges the
- * worktree branch into rehearsal/<run-id> if clean.
+ * Runs a dry-run conflict pre-check first (git merge-tree — no working-tree
+ * mutation, no model), then, only if clean, does the real merge of the unit
+ * branch into rehearsal/<run-id>.
  *
- * HUMAN-GATED: refuses without --live (NFR-07).
+ * Human-reviewable: on conflict this reports { merged: false, reason } and does
+ * NOT force anything — the Conductor resolves conflicts. It never claims a clean
+ * merge that did not happen (NFR-06).
+ *
+ * The git boundary is INJECTABLE (gitImpl) so the path is unit-testable without
+ * a real repo.
  *
  * @param {string} unitId   Unit identifier
  * @param {string} runId    Run identifier
- * @param {object} plan     WorktreePlan
+ * @param {object} plan     WorktreePlan ({ branch })
+ * @param {object} [opts]
+ * @param {string} [opts.repoRoot]  Override the repo root (default REPO_ROOT)
+ * @param {Function} [opts.gitImpl] Injected git runner (default spawnSync)
  * @returns {Promise<{ merged: boolean, reason?: string, conflicts?: string[] }>}
  */
-export async function liveMergeFn(unitId, runId, plan) {
-  requireLiveFlag();
+export async function liveMergeFn(unitId, runId, plan, opts = {}) {
+  const gitImpl  = opts.gitImpl  ?? spawnSync;
+  const repoRoot = opts.repoRoot ?? REPO_ROOT;
+
+  // NFR-01 branch guard (always enforced). Uses the injected git boundary so a
+  // test can force a production-branch refusal.
+  requireNotProductionBranch({ gitImpl, repoRoot });
 
   const { branch } = plan ?? {};
+  if (!branch) {
+    throw new Error(`liveMergeFn: plan for unit "${unitId}" is missing branch`);
+  }
+
   const targetBranch = `rehearsal/${runId}`;
 
   process.stderr.write(
-    `[run-live] liveMergeFn: dry-run merge check for unit "${unitId}"\n` +
-    `  Branch: ${branch} → ${targetBranch}\n`
+    `[run-live] liveMergeFn: dry-run merge check for unit "${unitId}" (${branch} → ${targetBranch})\n`
   );
 
-  // LIVE SEAM POINT: in a fully-wired live run, this would:
-  //
-  //   // Dry-run pre-check (CONFLICT-01 — no model)
-  //   const dryRun = spawnSync("git", [
-  //     "merge", "--no-commit", "--no-ff", branch,
-  //   ], { cwd: REPO_ROOT, encoding: "utf8" });
-  //
-  //   if (dryRun.status !== 0) {
-  //     const conflicts = (dryRun.stderr ?? "").split("\n")
-  //       .filter((l) => l.startsWith("CONFLICT"));
-  //     // Roll back the dry-run attempt
-  //     spawnSync("git", ["merge", "--abort"], { cwd: REPO_ROOT });
-  //     return { merged: false, reason: "conflict", conflicts };
-  //   }
-  //
-  //   // Roll back dry-run then do the real merge (CONFLICT-02)
-  //   spawnSync("git", ["merge", "--abort"], { cwd: REPO_ROOT });
-  //   spawnSync("git", ["merge", "--no-ff", "-m", `merge: ${branch}`, branch], {
-  //     cwd: REPO_ROOT, stdio: "inherit",
-  //   });
-  //   return { merged: true };
-
-  process.stderr.write(
-    `[run-live] (live seam not yet connected — would merge ${branch} → ${targetBranch})\n`
+  // 1. Dry-run conflict pre-check (CONFLICT-01, no model, no working-tree mutation).
+  //    `git merge-tree --write-tree` exits non-zero and lists conflicting paths
+  //    when the merge would conflict; it does not touch HEAD or the index.
+  const dryRun = gitImpl(
+    "git",
+    ["merge-tree", "--write-tree", "--name-only", targetBranch, branch],
+    { cwd: repoRoot, encoding: "utf8" }
   );
+  if (dryRun?.error) {
+    throw new Error(`liveMergeFn: git merge-tree failed for unit "${unitId}": ${dryRun.error.message}`);
+  }
+  if (dryRun?.status !== 0) {
+    // Non-zero from merge-tree = the merge would conflict. Report, do not force.
+    const conflicts = String(dryRun?.stdout ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return { merged: false, reason: "conflict", conflicts };
+  }
 
-  // Default: treat as merged for the structural seam
-  return { merged: true, reason: "live_seam_stub" };
+  // 2. Clean pre-check → do the real merge into rehearsal/<run-id> (CONFLICT-02).
+  const merge = gitImpl(
+    "git",
+    ["merge", "--no-ff", "-m", `bgsd(merge): ${branch} → ${targetBranch}`, branch],
+    { cwd: repoRoot, stdio: "inherit", encoding: "utf8" }
+  );
+  if (merge?.error) {
+    throw new Error(`liveMergeFn: git merge failed for unit "${unitId}": ${merge.error.message}`);
+  }
+  if (merge?.status !== 0) {
+    // Real merge unexpectedly conflicted after a clean pre-check — abort + report.
+    gitImpl("git", ["merge", "--abort"], { cwd: repoRoot, encoding: "utf8" });
+    return { merged: false, reason: "merge_failed", conflicts: [] };
+  }
+
+  return { merged: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +451,6 @@ export async function liveMergeFn(unitId, runId, plan) {
  * @returns {Promise<{ go: boolean }>}
  */
 export async function liveCheckpointFn(checkpoint) {
-  requireLiveFlag();
 
   const {
     checkpoint_id,
@@ -426,7 +534,6 @@ export async function runLiveRun({
   bgsdDir,
   maxConcurrency = 4,
 }) {
-  requireLiveFlag();
   requireNotProductionBranch();
 
   // Lazy import the pure lifecycle controller
@@ -439,7 +546,11 @@ export async function runLiveRun({
     runIdForStatus = readRun(runPath).run_id;
   } catch (_) {}
 
-  const spawnFn = (unitId, plan) => liveSpawnFn(unitId, plan);
+  // Thread the run id + bgsdDir so liveSpawnFn can fallback-read the full unit
+  // and scale from the persisted run units (persistRunUnits). The injected
+  // spawnFn(unitId, plan) signature stays clean; opts carry the run context.
+  const spawnFn = (unitId, plan) =>
+    liveSpawnFn(unitId, plan, { runId: runIdForStatus, bgsdDir });
 
   const readStatusFn = (unitId) =>
     liveReadStatusFn(unitId, runIdForStatus, bgsdDir);
@@ -500,7 +611,6 @@ export async function runLiveRun({
  * @returns {Promise<Function>}
  */
 export async function buildLiveContextOnPollFn({ runId, bgsdDir, plans }) {
-  requireLiveFlag();
 
   const ctx = await import(`file://${resolve(__dir, "context.mjs")}`);
   const control = await import(`file://${resolve(__dir, "control.mjs")}`);
@@ -573,16 +683,10 @@ if (
       : `file://${process.cwd()}/`
   ).href
 ) {
-  // Guard fires at invocation time: if --live is absent, print the refusal.
-  try {
-    requireLiveFlag();
-  } catch (err) {
-    process.stderr.write(err.message);
-    process.exit(1);
-  }
-
+  // The --live gate is gone: a plain /bgsd-sesh fires the live path with zero
+  // friction. The next-branch guard (NFR-01) still protects main/master.
   process.stderr.write(
-    "\n[run-live] --live flag detected. This is a HUMAN-SUPERVISED run.\n" +
+    "\n[run-live] live run starting.\n" +
     "  Pass runPath, units, waves, graph, and plans programmatically\n" +
     "  via the runLiveRun() export. This CLI entrypoint is a usage reminder.\n\n" +
     "  Before a live run, ensure:\n" +

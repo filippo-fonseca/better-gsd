@@ -63,6 +63,7 @@ import {
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { integrationBranchForRun } from "./integration.mjs";
+import { persistRunUnits } from "./run-units.mjs";
 import { fileURLToPath } from "node:url";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -492,6 +493,8 @@ export async function runLifecycle({
   pollIntervalMs  = 0,
   pollTimeoutMs   = 300_000,
   onPollFn,
+  scale,
+  bgsdDir,
 }) {
   // Validate required injections (fail loud — NFR-06)
   if (typeof spawnFn !== "function") {
@@ -530,6 +533,21 @@ export async function runLifecycle({
       units:      units.map((u) => u.id),
       waves:      waves.map((w, i) => ({ wave: i, units: w })),
     });
+  }
+
+  // Persist the FULL decomposed units + scale so the live spawn boundary
+  // (liveSpawnFn) can read each unit's title/scope/criteria/posture back by id.
+  // run.json only holds unit ids; the injected spawnFn(unitId, plan) carries no
+  // blob, so the full units live under .bgsd/runs/<runId>/units/ (run-units.mjs).
+  try {
+    // runPath is <bgsdDir>/runs/<runId>/run.json → three dirnames up = <bgsdDir>.
+    const resolvedBgsdDir = bgsdDir ?? dirname(dirname(dirname(runPath)));
+    persistRunUnits(runId, units, { bgsdDir: resolvedBgsdDir, scale });
+  } catch (err) {
+    // Non-fatal: the mocked/test path may pass id-only units. Live spawn falls
+    // back to sensible defaults if a unit cannot be read back (NFR-06 honesty:
+    // surface the reason, don't crash the whole lifecycle over persistence).
+    process.stderr.write(`[run] persistRunUnits skipped: ${err.message}\n`);
   }
 
   // -------------------------------------------------------------------------

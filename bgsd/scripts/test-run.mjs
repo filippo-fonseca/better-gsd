@@ -50,10 +50,10 @@
  * --- run-live.mjs: guarded seam (SPAWN-04) ---
  *   R24 — requireLiveFlag: throws without --live
  *   R25 — isLiveFlagSet: returns false in test (--live not in argv)
- *   R26 — liveSpawnFn: throws without --live
- *   R27 — liveReadStatusFn: throws without --live
- *   R28 — liveMergeFn: throws without --live
- *   R29 — liveCheckpointFn: throws without --live
+ *   R26 — liveSpawnFn: runs without --live (gate removed); guards a bad plan
+ *   R27 — liveReadStatusFn: runs without --live (gate removed); missing control -> running
+ *   R28 — liveMergeFn: runs without --live (gate removed); guards a bad plan
+ *   R29 — liveCheckpointFn: runs without --live (gate removed); resolves on go/no-go
  *
  * --- rehearsal + ledger helpers ---
  *   R30 — rehearsalBranch: returns rehearsal/<run-id>
@@ -660,32 +660,43 @@ test("R25 — isLiveFlagSet: returns false in test (--live not in argv)", () => 
   assert.equal(isLiveFlagSet(), false);
 });
 
-await testAsync("R26 — liveSpawnFn: throws without --live", async () => {
+await testAsync("R26 — liveSpawnFn: runs without --live (gate removed); still guards a bad plan", async () => {
+  // The --live gate was removed from liveSpawnFn so the pipeline genuinely runs.
+  // Without a valid plan it fails on the plan guard, NOT on a HUMAN-GATED refusal.
   await assert.rejects(
-    () => liveSpawnFn("u1", { path: "/fake", branch: "run/u1", port: 3100 }),
-    /HUMAN-GATED/i
+    () => liveSpawnFn("u1", { branch: "", port: 3100 }),
+    /missing path or branch/i
   );
 });
 
-await testAsync("R27 — liveReadStatusFn: throws without --live", async () => {
+await testAsync("R27 — liveReadStatusFn: runs without --live (gate removed); missing control -> running", async () => {
+  // The --live gate was removed. With no control file yet, the scheduler-facing
+  // status is "running" (the agent may still be starting up), not a refusal.
+  const res = await liveReadStatusFn("u1", "bgsd-0001-test", "/fake/.bgsd");
+  assert.equal(res, "running");
+});
+
+await testAsync("R28 — liveMergeFn: runs without --live (gate removed); still guards a bad plan", async () => {
+  // The --live gate was removed from liveMergeFn. It reaches its own plan guard.
   await assert.rejects(
-    () => liveReadStatusFn("u1", "bgsd-0001-test", "/fake/.bgsd"),
-    /HUMAN-GATED/i
+    () => liveMergeFn("u1", "bgsd-0001-test", { branch: "" }),
+    /missing branch/i
   );
 });
 
-await testAsync("R28 — liveMergeFn: throws without --live", async () => {
-  await assert.rejects(
-    () => liveMergeFn("u1", "bgsd-0001-test", { branch: "run/u1" }),
-    /HUMAN-GATED/i
-  );
-});
-
-await testAsync("R29 — liveCheckpointFn: throws without --live", async () => {
-  await assert.rejects(
-    () => liveCheckpointFn({ checkpoint_id: "ckpt-1", wave_index: 0, merged: [], held: [], blockers: [] }),
-    /HUMAN-GATED/i
-  );
+await testAsync("R29 — liveCheckpointFn: runs without --live (gate removed); resolves on go/no-go", async () => {
+  // The --live gate was removed. The checkpoint now proceeds to read the human's
+  // go/no-go from stdin. Feed a mock stream ("abort") so the test never hangs.
+  const { Readable } = await import("node:stream");
+  const fake = Readable.from(["abort\n"]);
+  const origStdin = Object.getOwnPropertyDescriptor(process, "stdin");
+  Object.defineProperty(process, "stdin", { value: fake, configurable: true });
+  try {
+    const res = await liveCheckpointFn({ checkpoint_id: "ckpt-1", wave_index: 0, merged: [], held: [], blockers: [] });
+    assert.equal(res.go, false); // "abort" -> go:false
+  } finally {
+    if (origStdin) Object.defineProperty(process, "stdin", origStdin);
+  }
 });
 
 // ---------------------------------------------------------------------------
