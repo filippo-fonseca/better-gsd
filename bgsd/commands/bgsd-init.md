@@ -11,6 +11,17 @@ You do not normally need to run this by hand. Every `/bgsd-sesh` runs the same
 setup as a preflight, so a fresh repo self-heals on first use. Run `/bgsd-init`
 explicitly when you want to review the plan first, or set up the repo ahead of time.
 
+**Show the init banner.** The VERY FIRST thing you do when `/bgsd-init` starts
+(before any other output) is print the init splash:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" init
+```
+
+This shells out to `oh-my-logo` with the `ocean` palette and falls back to the
+kiwi-green block art automatically. It never blocks or errors. Run it unconditionally,
+even in `--plan-only` mode.
+
 ---
 
 ## Usage

@@ -2,16 +2,27 @@
  * bgsd/scripts/ui.mjs
  *
  * Dependency-free terminal-UI helper for the bgsd Conductor (Kiwi).
- * Node built-ins only. Respects NO_COLOR and non-TTY environments.
+ * Node built-ins only (plus an optional npx oh-my-logo shell-out).
+ * Respects NO_COLOR and non-TTY environments.
  *
- * Usage:
- *   import { banner, stage, badge, dim, bold } from './ui.mjs';
+ * Exports (ESM):
+ *   renderLogo, splash, banner, stage, finishBanner, kiwiPill,
+ *   badge, statusLine, verdictLine, hr, pluginVersion,
+ *   bold, dim, italic, under, green, cyan, …
+ *
+ * CLI (node ui.mjs <verb> [args] [--palette <name>]):
+ *   splash    — big branded splash (oh-my-logo logo + tagline)
+ *   init      — init-flavoured splash
+ *   banner    — compact boxed banner
+ *   stage     — stage header:  node ui.mjs stage "Loop 1" "3 agents running"
+ *   finish    — celebratory done banner
  *
  * Self-test / demo:
  *   node bgsd/scripts/ui.mjs --demo
  */
 
 import process from 'node:process';
+import { spawnSync as _spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -78,8 +89,8 @@ export const brightWhite  = (t) => ansi(t, 97, 39);
 const KIWI_GREEN_256 = 35;
 
 // Rounded end-cap glyphs (Powerline). Left = U+E0B6, right = U+E0B4.
-const PILL_LEFT_CAP = "";
-const PILL_RIGHT_CAP = "";
+const PILL_LEFT_CAP = "";
+const PILL_RIGHT_CAP = "";
 
 /**
  * Render Kiwi's conversational pill: a rounded, kiwi-green label with bold
@@ -117,22 +128,16 @@ export function kiwiPill(label = "kiwi · conductor", { env = process.env, isTTY
 }
 
 // ---------------------------------------------------------------------------
-// Kiwi banner
+// oh-my-logo integration
 // ---------------------------------------------------------------------------
 
-/**
- * Print the Kiwi (bgsd Conductor) banner to stdout.
- *
- * @param {object} [opts]
- * @param {string} [opts.subtitle] - Optional subtitle line below the banner.
- */
 /** Wrap text in the kiwi-green 256-color foreground (plain when color is off). */
 function kiwiGreen(t) {
   if (!COLOR_OK) return t;
   return `\x1b[38;5;${KIWI_GREEN_256}m${t}\x1b[39m`;
 }
 
-// Block-letter "bgsd" logo (shown in the splash).
+// Block-letter "bgsd" logo (shown in the splash when oh-my-logo is unavailable).
 const BGSD_ART = [
   '██████╗   ██████╗  ███████╗ ██████╗ ',
   '██╔══██╗ ██╔════╝  ██╔════╝ ██╔══██╗',
@@ -141,6 +146,60 @@ const BGSD_ART = [
   '██████╔╝ ╚██████╔╝ ███████║ ██████╔╝',
   '╚═════╝   ╚═════╝  ╚══════╝ ╚═════╝ ',
 ];
+
+/**
+ * Render the bgsd logo via `npx --yes oh-my-logo`, falling back gracefully to
+ * BGSD_ART on any failure (timeout, non-zero exit, non-TTY, error).
+ *
+ * Never throws — a banner must never break a run.
+ *
+ * @param {string}   [text="BGSD"]
+ * @param {object}   [opts]
+ * @param {string}   [opts.palette="sunset"]       oh-my-logo palette name
+ * @param {boolean}  [opts.filled=true]            pass --filled to oh-my-logo
+ * @param {Function} [opts.spawnImpl=spawnSync]    injectable for tests
+ * @returns {string}  rendered logo (may contain ANSI) or BGSD_ART fallback
+ */
+export function renderLogo(text = 'BGSD', { palette = 'sunset', filled = true, spawnImpl = _spawnSync } = {}) {
+  try {
+    const args = ['--yes', 'oh-my-logo', text, palette];
+    if (filled) args.push('--filled');
+
+    const result = spawnImpl('npx', args, {
+      encoding: 'utf8',
+      timeout: 8000,        // 8 s: generous but bounded
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+
+    // Any error or non-zero exit: fall back.
+    if (result.error || result.status !== 0 || !result.stdout) {
+      return _fallbackLogo();
+    }
+
+    // Strip trailing cursor-hide / line-clear / reset escape codes that
+    // oh-my-logo emits after its last line so they do not pollute the terminal.
+    // Sequences to strip: \x1b[?25h (cursor-show), \x1b[K (erase-to-EOL),
+    // standalone \x1b[0m resets at the very end, and stray trailing whitespace.
+    const cleaned = result.stdout
+      .replace(/\x1b\[\?25[hl]/g, '')  // cursor show/hide
+      .replace(/\x1b\[K/g, '')         // erase-to-EOL
+      .replace(/(\x1b\[0m\s*)+$/, '')  // trailing resets + blank space
+      .trimEnd();
+
+    return cleaned || _fallbackLogo();
+  } catch (_) {
+    return _fallbackLogo();
+  }
+}
+
+/** Build the kiwi-green BGSD_ART string (shared by fallback paths). */
+function _fallbackLogo() {
+  return BGSD_ART.map((line) => '  ' + kiwiGreen(line)).join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Plugin version
+// ---------------------------------------------------------------------------
 
 /** Read the installed plugin version from ../.claude-plugin/plugin.json. */
 export function pluginVersion() {
@@ -153,22 +212,32 @@ export function pluginVersion() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Lifecycle banners
+// ---------------------------------------------------------------------------
+
 /**
- * Print the branded bgsd splash: a block-letter logo, the tagline, the version,
- * and a "ready" line. Shown at the start of every /bgsd-sesh and on /bgsd-init.
+ * Print the branded bgsd splash: a block-letter logo (oh-my-logo when
+ * available, kiwi-green BGSD_ART otherwise), the tagline, the version,
+ * and a "ready" line. Shown at the start of every /bgsd-sesh.
  * Degrades to plain text under NO_COLOR / non-TTY.
  *
  * @param {object} [opts]
- * @param {string} [opts.subtitle]  Tagline line under the logo.
- * @param {string} [opts.ready]     Ready line (e.g. "Kiwi online").
- * @param {string} [opts.version]   Version string; defaults to pluginVersion().
+ * @param {string} [opts.subtitle]   Tagline line under the logo.
+ * @param {string} [opts.ready]      Ready line (e.g. "Kiwi online").
+ * @param {string} [opts.version]    Version string; defaults to pluginVersion().
+ * @param {string} [opts.palette]    oh-my-logo palette; defaults to "sunset".
+ * @param {Function} [opts.spawnImpl] Injectable spawnSync for tests.
  */
-export function splash({ subtitle, ready = 'Kiwi online, at your service.', version } = {}) {
+export function splash({ subtitle, ready = 'Kiwi online, at your service.', version, palette = 'sunset', spawnImpl } = {}) {
   const ver = version ?? pluginVersion();
   const tag = subtitle
     ?? 'Autonomous, self-verifying orchestration on top of GSD. Talk to the Conductor; it handles everything.';
+
+  const logoStr = renderLogo('BGSD', { palette, spawnImpl });
+
   process.stdout.write('\n');
-  for (const line of BGSD_ART) process.stdout.write('  ' + kiwiGreen(line) + '\n');
+  process.stdout.write(logoStr + '\n');
   process.stdout.write('\n');
   process.stdout.write('  ' + bold('better-gsd') + (ver ? '  ' + dim(ver) : '') + '\n');
   process.stdout.write('  ' + dim(tag) + '\n');
@@ -176,20 +245,81 @@ export function splash({ subtitle, ready = 'Kiwi online, at your service.', vers
   process.stdout.write('\n');
 }
 
-export function banner({ subtitle } = {}) {
-  const top    = bold(cyan('╔════════════════════════════════════════╗'));
-  const mid    = bold(cyan('║')) + bold(brightCyan('  bgsd · Kiwi  '))
-               + dim(cyan('(Conductor v1)'))
-               + '               '
-               + bold(cyan('║'));
-  const bot    = bold(cyan('╚════════════════════════════════════════╝'));
+/**
+ * Print the compact boxed banner (used between-stage or in tighter contexts).
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.subtitle]
+ * @param {string} [opts.palette]    oh-my-logo palette; defaults to "sunset".
+ * @param {Function} [opts.spawnImpl]
+ */
+export function banner({ subtitle, palette = 'sunset', spawnImpl } = {}) {
+  const logoStr = renderLogo('BGSD', { palette, spawnImpl });
 
-  process.stdout.write('\n' + top + '\n');
+  // If the logo rendered something meaningful (not just fallback lines), print
+  // it. Either way we also print the compact box for structure.
+  process.stdout.write('\n');
+  process.stdout.write(logoStr + '\n\n');
+
+  const top = bold(cyan('╔════════════════════════════════════════╗'));
+  const mid = bold(cyan('║')) + bold(brightCyan('  bgsd · Kiwi  '))
+            + dim(cyan('(Conductor v1)'))
+            + '               '
+            + bold(cyan('║'));
+  const bot = bold(cyan('╚════════════════════════════════════════╝'));
+
+  process.stdout.write(top + '\n');
   process.stdout.write(mid + '\n');
   process.stdout.write(bot + '\n');
 
   if (subtitle) {
     process.stdout.write(dim('  ' + subtitle) + '\n');
+  }
+  process.stdout.write('\n');
+}
+
+/**
+ * Print the init-flavoured splash — same as splash() but with init-specific
+ * ready text. Shown at the start of /bgsd-init.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.palette]
+ * @param {Function} [opts.spawnImpl]
+ */
+export function initBanner({ palette = 'ocean', spawnImpl } = {}) {
+  splash({
+    subtitle: 'Setting up this repository for bgsd. One moment, sir.',
+    ready: 'Init sequence starting.',
+    palette,
+    spawnImpl,
+  });
+}
+
+/**
+ * Print a celebratory "session done" banner. Shown at session FINISH.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.summary]    One-line summary of what shipped.
+ * @param {string} [opts.palette]    oh-my-logo palette; defaults to "fire".
+ * @param {Function} [opts.spawnImpl]
+ */
+export function finishBanner({ summary, palette = 'fire', spawnImpl } = {}) {
+  const logoStr = renderLogo('BGSD', { palette, spawnImpl });
+
+  process.stdout.write('\n');
+  process.stdout.write(logoStr + '\n\n');
+
+  const top = bold(brightGreen('╔════════════════════════════════════════╗'));
+  const mid = bold(brightGreen('║')) + bold(brightWhite('  ✓  Session complete — shipped, sir.  '))
+            + bold(brightGreen('║'));
+  const bot = bold(brightGreen('╚════════════════════════════════════════╝'));
+
+  process.stdout.write(top + '\n');
+  process.stdout.write(mid + '\n');
+  process.stdout.write(bot + '\n');
+
+  if (summary) {
+    process.stdout.write('\n  ' + brightGreen('✓') + '  ' + bold(summary) + '\n');
   }
   process.stdout.write('\n');
 }
@@ -201,7 +331,7 @@ export function banner({ subtitle } = {}) {
 /**
  * Print a stage/step header — signals which phase of the pipeline is active.
  *
- * @param {string} name    - Stage name, e.g. "Loading context"
+ * @param {string} name    - Stage name, e.g. "Loop 1"
  * @param {string} [note]  - Optional short parenthetical note
  */
 export function stage(name, note) {
@@ -282,41 +412,112 @@ export function hr(width = 44) {
 }
 
 // ---------------------------------------------------------------------------
-// Self-test / demo (node ui.mjs --demo)
+// CLI entrypoint — node ui.mjs <verb> [args] [--palette <name>]
+//
+// verb ∈ splash | init | banner | stage | finish
+//
+// Follows the same CLI-guard pattern as phaseconfig.mjs: only activates when
+// this file is the main entry-point (import.meta.url === resolved argv[1]).
 // ---------------------------------------------------------------------------
 
-if (process.argv.includes('--demo')) {
-  banner({ subtitle: 'At your service, sir. Ready to run the verification suite.' });
+function _isMain() {
+  try {
+    const base = import.meta.url.startsWith('file://')
+      ? import.meta.url
+      : `file://${process.cwd()}/`;
+    return import.meta.url === new URL(process.argv[1], base).href;
+  } catch (_) {
+    return false;
+  }
+}
 
-  process.stdout.write(kiwiPill() + ' Very good, sir. Let us cook.\n\n');
+if (_isMain()) {
+  // Parse positional args + --palette / --demo flags.
+  const rawArgs = process.argv.slice(2);
 
-  stage('Loading context', 'phase 3 / milestone-alpha');
-  stage('Running probes');
-  stage('Assembling verification report');
+  // Handle legacy --demo flag.
+  if (rawArgs.includes('--demo')) {
+    banner({ subtitle: 'At your service, sir. Ready to run the verification suite.' });
+    process.stdout.write(kiwiPill() + ' Very good, sir. Let us cook.\n\n');
+    stage('Loading context', 'phase 3 / milestone-alpha');
+    stage('Running probes');
+    stage('Assembling verification report');
+    process.stdout.write('\n');
+    hr();
+    process.stdout.write(bold('Active subagents') + '\n');
+    hr();
+    statusLine('running',     'bgsd-tester',    'probe-auth.sh');
+    statusLine('running',     'bgsd-verifier',  'truth #2 wiring check');
+    statusLine('blocked',     'bgsd-reporter',  'waiting on tester');
+    statusLine('needs-input', 'bgsd-conductor', 'override decision required');
+    statusLine('done',        'bgsd-scanner',   '7 files scanned');
+    statusLine('failed',      'bgsd-prober',    'exit 1 — probe-db.sh');
+    process.stdout.write('\n');
+    hr();
+    process.stdout.write(bold('Structured verdict output (always plain)') + '\n');
+    hr();
+    verdictLine('PASS',  'src/components/MessageList.tsx');
+    verdictLine('FAIL',  'src/api/messages/route.ts');
+    verdictLine('ERROR', 'src/lib/db.ts');
+    process.stdout.write('\n');
+    process.stdout.write(dim("I'm afraid two paths did not pass, sir. Full report follows.") + '\n\n');
+    process.exit(0);
+  }
 
-  process.stdout.write('\n');
-  hr();
-  process.stdout.write(bold('Active subagents') + '\n');
-  hr();
+  // Parse --palette <name> out of rawArgs; remaining args are positional.
+  const positional = [];
+  let palette = 'sunset';
+  for (let i = 0; i < rawArgs.length; i++) {
+    if (rawArgs[i] === '--palette' && rawArgs[i + 1]) {
+      palette = rawArgs[++i];
+    } else if (!rawArgs[i].startsWith('--')) {
+      positional.push(rawArgs[i]);
+    }
+  }
 
-  statusLine('running',     'bgsd-tester',    'probe-auth.sh');
-  statusLine('running',     'bgsd-verifier',  'truth #2 wiring check');
-  statusLine('blocked',     'bgsd-reporter',  'waiting on tester');
-  statusLine('needs-input', 'bgsd-conductor', 'override decision required');
-  statusLine('done',        'bgsd-scanner',   '7 files scanned');
-  statusLine('failed',      'bgsd-prober',    'exit 1 — probe-db.sh');
+  const verb = positional[0];
 
-  process.stdout.write('\n');
-  hr();
-  process.stdout.write(bold('Structured verdict output (always plain)') + '\n');
-  hr();
-
-  verdictLine('PASS',  'src/components/MessageList.tsx');
-  verdictLine('FAIL',  'src/api/messages/route.ts');
-  verdictLine('ERROR', 'src/lib/db.ts');
-
-  process.stdout.write('\n');
-  process.stdout.write(
-    dim("I'm afraid two paths did not pass, sir. Full report follows.") + '\n\n'
-  );
+  switch (verb) {
+    case 'splash': {
+      splash({ palette });
+      break;
+    }
+    case 'init': {
+      initBanner({ palette: palette === 'sunset' ? 'ocean' : palette });
+      break;
+    }
+    case 'banner': {
+      banner({ subtitle: positional[1], palette });
+      break;
+    }
+    case 'stage': {
+      // node ui.mjs stage "Loop 1" "3 agents running"
+      const name = positional[1] ?? 'Stage';
+      const note = positional[2];
+      stage(name, note);
+      break;
+    }
+    case 'finish': {
+      finishBanner({ summary: positional[1], palette: palette === 'sunset' ? 'fire' : palette });
+      break;
+    }
+    default: {
+      process.stderr.write(
+        'bgsd ui — print branded banners\n\n' +
+        'Usage: node ui.mjs <verb> [args] [--palette <name>]\n\n' +
+        'Verbs:\n' +
+        '  splash                          big branded splash (session start)\n' +
+        '  init                            init-flavoured splash (/bgsd-init)\n' +
+        '  banner [subtitle]               compact boxed banner\n' +
+        '  stage  <name> [note]            stage/step header\n' +
+        '  finish [summary]                celebratory done banner\n\n' +
+        'Options:\n' +
+        '  --palette <name>                oh-my-logo palette (sunset|ocean|fire|mono…)\n\n' +
+        'Example:\n' +
+        '  node ui.mjs stage "Loop 1" "3 agents running"\n' +
+        '  node ui.mjs finish "auth + search shipped"\n'
+      );
+      process.exit(1);
+    }
+  }
 }

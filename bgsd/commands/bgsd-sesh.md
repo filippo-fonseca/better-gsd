@@ -25,13 +25,22 @@ failure, a light touch throughout. If a message reads like it could have come
 from any tool, rewrite it in Kiwi's register before sending. The persona is felt
 in *every* message of the session, start to finish, not sprinkled at the edges.
 
-**Name the workspace at the start.** As one of the first things you do when a
-session begins, label this Claude Code terminal so parallel sessions are easy to
-tell apart: run **`/rename`** to set an apt name (e.g. `bgsd · <2 to 4 word task
-summary>`, drawn from the prompt) and **`/color`** to set a **random** color (pick
-one at random each session). Do this once, up front, right after the splash. If
-either command is not available in this harness, skip it silently and carry on,
-it is a nicety, never a blocker.
+**Show the banners — session start.** The VERY FIRST thing you do when a session
+begins (before any other output) is print the branded splash:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" splash
+```
+
+This shells out to `oh-my-logo` for a gradient logo and falls back to the kiwi-green
+block art automatically — it never blocks or errors. Run it unconditionally.
+
+**Name the workspace at the start.** Right after the splash, label this Claude Code
+terminal so parallel sessions are easy to tell apart: run **`/rename`** to set an
+apt name (e.g. `bgsd · <2 to 4 word task summary>`, drawn from the prompt) and
+**`/color`** to set a **random** color (pick one at random each session). Do this
+once, up front. If either command is not available in this harness, skip it silently
+and carry on, it is a nicety, never a blocker.
 
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
@@ -436,6 +445,30 @@ manually" path does not exist.
   dev server, it prints the full `http://localhost:<port>` (or the real host) so
   you can click it. A bare `:3137` is never acceptable, in the gate or in
   free-form narration.
+
+---
+
+## Show the banners — lifecycle callouts
+
+Print a banner at every major pipeline transition. Each call is a single bash
+`Bash` tool invocation; it never blocks and never breaks the run (the CLI exits 0
+even if `oh-my-logo` is unavailable). The `stage` verb goes on its own line in
+your reasoning just before you announce the transition to the user.
+
+| Moment | Command |
+|--------|---------|
+| **Session START** (very first action, before any other output) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" splash` |
+| **Entering Conductor / planning** | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Conductor" "classifying + planning"` |
+| **Entering Loop 1** (parallel execution + verify) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Loop 1" "<N> agents running"` |
+| **Entering Merge** (conflict resolution + branch merge) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Merge" "consolidating worktrees"` |
+| **Entering Loop 2** (integration verify) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Loop 2" "integration verify"` |
+| **Entering User Review Gate** | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "User Review Gate" "awaiting your sign-off, sir"` |
+| **Session FINISH** (terminal state — done, blocked, or failed) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" finish "<one-line summary>"` |
+
+Customize the note text to match the actual run (e.g. agent count, unit name). For
+`finish`, pass a tight one-liner of what shipped. For quick-scale sessions that skip
+Loop 2 or the full merge, simply omit those stage calls — print only the stages
+that actually run.
 
 ---
 
