@@ -960,3 +960,128 @@ export function appendAutoAnswerLog({ oracleDir, entry, writeFn }) {
     appendFileSync(logPath, line, "utf8");
   }
 }
+
+// ---------------------------------------------------------------------------
+// CLI entrypoint — `--answer --run-id <id> --phase <phase> --question "<text>"
+//                  [--bgsd-dir <path>] [--threshold <n>]`
+//
+// Called by bgsd-run-agent (Step 3B-oracle) to answer a GSD discuss-phase
+// question as the user's proxy.  Prints a single JSON object to stdout
+// (the caller parses it); all other output goes to stderr.
+//
+// Exit codes:
+//   0  always (callers treat both auto_answer and escalate as normal outcomes)
+// ---------------------------------------------------------------------------
+
+if (
+  import.meta.url ===
+  new URL(
+    process.argv[1],
+    import.meta.url.startsWith("file://") ? import.meta.url : `file://${process.cwd()}/`
+  ).href
+) {
+  function parseFlags(args) {
+    const flags = {};
+    for (let i = 0; i < args.length; i++) {
+      if (args[i].startsWith("--")) {
+        const key = args[i].slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        const next = args[i + 1];
+        if (next !== undefined && !next.startsWith("--")) {
+          flags[key] = next;
+          i++;
+        } else {
+          flags[key] = true;
+        }
+      }
+    }
+    return flags;
+  }
+
+  const flags = parseFlags(process.argv.slice(2));
+
+  if (flags.help) {
+    process.stderr.write(
+      "Usage: node bgsd/scripts/oracle.mjs --answer \\\n" +
+      "         --run-id <id> --phase <phase> --question \"<text>\" \\\n" +
+      "         [--bgsd-dir <path>] [--threshold <n>]\n" +
+      "\n" +
+      "  Answers a GSD discuss-phase question from the sealed intake oracle store.\n" +
+      "  Prints a single JSON object to stdout:\n" +
+      "    { action: 'auto_answer', answer, source, confidence, breakdown }   — if confident\n" +
+      "    { action: 'escalate',    reason, confidence }                       — otherwise\n" +
+      "\n" +
+      "  When no oracle store exists for the run (e.g. a feature-scale run that\n" +
+      "  skipped the intake phase) the command still exits 0 and returns:\n" +
+      "    { action: 'escalate', reason: 'no oracle store for run', confidence: 0 }\n" +
+      "\n" +
+      "  Flags:\n" +
+      "    --answer            Required. Selects this sub-command.\n" +
+      "    --run-id <id>       Required. The bgsd run/intake id.\n" +
+      "    --phase <phase>     Required. Current GSD phase (e.g. '1' or 'setup').\n" +
+      "    --question \"<text>\" Required. The discuss-phase question to answer.\n" +
+      "    --bgsd-dir <path>   Optional. Override for the .bgsd base directory.\n" +
+      "    --threshold <n>     Optional. Confidence threshold (0–1). Falls back to\n" +
+      "                        config.json conductor.oracle_threshold, then 0.60.\n"
+    );
+    process.exit(0);
+  }
+
+  if (!flags.answer) {
+    process.stderr.write(
+      "oracle.mjs: use --answer to invoke the answer sub-command, or --help for usage.\n"
+    );
+    process.exit(1);
+  }
+
+  const missingFlags = [];
+  if (!flags.runId)    missingFlags.push("--run-id");
+  if (!flags.phase)    missingFlags.push("--phase");
+  if (!flags.question || typeof flags.question !== "string" || !flags.question.trim()) {
+    missingFlags.push("--question");
+  }
+  if (missingFlags.length > 0) {
+    process.stderr.write(
+      `oracle.mjs --answer: missing required flags: ${missingFlags.join(", ")}\n` +
+      "Run with --help for usage.\n"
+    );
+    process.exit(1);
+  }
+
+  // --bgsd-dir override (default: .bgsd relative to repo root, handled inside loadOracle)
+  const bgsdDir = typeof flags.bgsdDir === "string"
+    ? resolve(process.cwd(), flags.bgsdDir)
+    : undefined;
+
+  // Load the oracle store — may not exist for feature-scale runs
+  let oracle;
+  try {
+    oracle = loadOracle({ intakeId: flags.runId, bgsdDir });
+  } catch (_err) {
+    // No oracle store — not an error, just escalate so the caller can fall back
+    process.stdout.write(
+      JSON.stringify({ action: "escalate", reason: "no oracle store for run", confidence: 0 }) + "\n"
+    );
+    process.exit(0);
+  }
+
+  // Resolve threshold: flag > config file > default
+  let threshold;
+  if (typeof flags.threshold === "string" && flags.threshold.trim() !== "") {
+    const parsed = parseFloat(flags.threshold);
+    threshold = Number.isFinite(parsed) ? parsed : DEFAULT_THRESHOLD;
+  } else {
+    // Try to read from config.json adjacent to the bgsd dir (one level up = repo root)
+    const repoRoot = bgsdDir ? resolve(bgsdDir, "..") : REPO_ROOT;
+    const configPath = join(repoRoot, ".planning", "config.json");
+    threshold = loadOracleConfig(configPath).threshold;
+  }
+
+  // Run the oracle
+  const result = answerQuestion(oracle.manifest, flags.question.trim(), {
+    threshold,
+    phase: flags.phase,
+  });
+
+  process.stdout.write(JSON.stringify(result) + "\n");
+  process.exit(0);
+}

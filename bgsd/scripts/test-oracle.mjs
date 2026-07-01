@@ -57,8 +57,10 @@
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Import module under test
@@ -957,6 +959,116 @@ await test("O33 — auto_answer_cap value is readable from config", () => {
   assert.ok(Number.isInteger(cfg.autoAnswerCap) && cfg.autoAnswerCap > 0,
     "autoAnswerCap must be a positive integer");
 });
+
+// ---------------------------------------------------------------------------
+// CLI: --answer sub-command
+// ---------------------------------------------------------------------------
+
+process.stdout.write("\n--- CLI: oracle.mjs --answer ---\n");
+
+const oracleScript = resolve(fileURLToPath(import.meta.url), "../oracle.mjs");
+
+// Helper: run the CLI and return { status, stdout, stderr, json? }
+function runCli(args) {
+  const result = spawnSync(process.execPath, [oracleScript, ...args], { encoding: "utf8" });
+  let json = null;
+  try {
+    if (result.stdout && result.stdout.trim()) json = JSON.parse(result.stdout.trim());
+  } catch (_) { /* leave json null */ }
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, json };
+}
+
+// Build a CLI oracle dir in a fresh temp tree so it's independent of the main tmpRoot
+let cliTmpRoot = mkdtempSync(join(tmpdir(), "bgsd-oracle-cli-test-"));
+const cliIntakeId = "intake-cli-test-0001";
+const cliIntakeDir = join(cliTmpRoot, "intake", cliIntakeId);
+const cliBgsdDir   = join(cliTmpRoot, "bgsd");
+makeSourceFiles(cliIntakeDir);  // reuse the shared fixture helper
+const cliOracle = buildOracle({ intakeId: cliIntakeId, intakeDir: cliIntakeDir, bgsdDir: cliBgsdDir });
+
+await test("C01 — no oracle store for run → escalate + exit 0", () => {
+  const r = runCli([
+    "--answer",
+    "--run-id", "nonexistent-run-xyz",
+    "--phase", "1",
+    "--question", "What is the deployment target?",
+    "--bgsd-dir", cliBgsdDir,
+  ]);
+  assert.equal(r.status, 0, "exit code must be 0 even when no oracle store exists");
+  assert.ok(r.json, `stdout must be valid JSON; got: ${JSON.stringify(r.stdout)}`);
+  assert.equal(r.json.action, "escalate", "action must be escalate when no store exists");
+  assert.ok(
+    r.json.reason && /no oracle/i.test(r.json.reason),
+    `reason must mention 'no oracle'; got: ${r.json.reason}`
+  );
+  assert.equal(r.json.confidence, 0, "confidence must be 0 for missing store");
+});
+
+await test("C02 — known run with high-confidence question → auto_answer", () => {
+  const r = runCli([
+    "--answer",
+    "--run-id", cliIntakeId,
+    "--phase", "scope",
+    "--question", "How tightly should the scope be bounded for the first deliverable?",
+    "--bgsd-dir", cliBgsdDir,
+    "--threshold", "0.3",   // low enough to guarantee auto_answer on this decision hit
+  ]);
+  assert.equal(r.status, 0, `exit code must be 0; stderr: ${r.stderr}`);
+  assert.ok(r.json, `stdout must be valid JSON; got: ${JSON.stringify(r.stdout)}`);
+  assert.equal(r.json.action, "auto_answer",
+    `expected auto_answer; got ${r.json.action} (confidence: ${r.json.confidence})`);
+  assert.ok(r.json.confidence > 0, "confidence must be > 0");
+  assert.ok(r.json.answer,         "answer must be present for auto_answer");
+  assert.ok(r.json.source,         "source must be present for auto_answer");
+});
+
+await test("C03 — nonsense question → escalate (no candidates)", () => {
+  const r = runCli([
+    "--answer",
+    "--run-id", cliIntakeId,
+    "--phase", "1",
+    "--question", "zzzxqq-completely-unrelated-xyzzy-gibberish",
+    "--bgsd-dir", cliBgsdDir,
+  ]);
+  assert.equal(r.status, 0, "exit code must be 0 for escalate path");
+  assert.ok(r.json, `stdout must be valid JSON; got: ${JSON.stringify(r.stdout)}`);
+  assert.equal(r.json.action, "escalate", "nonsense question must escalate");
+  assert.equal(r.json.confidence, 0, "no candidates → confidence 0");
+});
+
+await test("C04 — stdout is ONLY the JSON object (no extra output)", () => {
+  const r = runCli([
+    "--answer",
+    "--run-id", cliIntakeId,
+    "--phase", "1",
+    "--question", "scope bounded deliverable",
+    "--bgsd-dir", cliBgsdDir,
+    "--threshold", "0.1",
+  ]);
+  assert.equal(r.status, 0);
+  // stdout should parse cleanly as a single JSON object
+  const trimmed = r.stdout.trim();
+  assert.ok(trimmed.startsWith("{") && trimmed.endsWith("}"),
+    `stdout must be a single JSON object; got: ${trimmed.slice(0, 200)}`);
+  // No stray lines
+  const lines = trimmed.split("\n").filter(Boolean);
+  assert.equal(lines.length, 1,
+    `stdout must be exactly one line (the JSON); got ${lines.length} lines`);
+});
+
+await test("C05 — --help exits 0 and writes usage to stderr", () => {
+  const r = runCli(["--help"]);
+  assert.equal(r.status, 0, "--help must exit 0");
+  assert.ok(r.stderr && r.stderr.includes("--answer"),
+    "help output must include '--answer' flag description");
+  assert.ok(r.stderr && r.stderr.includes("--run-id"),
+    "help output must include '--run-id'");
+  // stdout should be empty for --help
+  assert.equal(r.stdout.trim(), "", "--help must not write to stdout");
+});
+
+// Cleanup CLI temp dir
+rmSync(cliTmpRoot, { recursive: true, force: true });
 
 // ---------------------------------------------------------------------------
 // Cleanup
