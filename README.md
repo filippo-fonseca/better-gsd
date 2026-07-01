@@ -189,6 +189,8 @@ Full doc pages live in [`bgsd/docs/`](./bgsd/docs); start at [`docs/index.mdx`](
 
 Contributions are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for dev setup, the pure and seam and test conventions, the "no silent green" rule, the branch and release model, and commit and PR conventions. Please also read the [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) and report security issues per [`SECURITY.md`](./SECURITY.md).
 
+ I'd especially love to fan out from supporting just Claude Code to Codex, Cursor, the Gemini suite, and other AI systems as well. - Filippo
+
 ---
 
 ## License
