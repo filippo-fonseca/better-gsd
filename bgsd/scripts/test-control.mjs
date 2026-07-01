@@ -46,7 +46,8 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, rmSync, readdirSync, readFileSync, mkdtempSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -762,6 +763,65 @@ test("C38 validateControlFile: rejects negative context_bytes", () => {
 test("C39 validateControlFile: rejects invalid context_pressure", () => {
   const obj = makeControlObj({ context_pressure: "huge" });
   assert.throws(() => validateControlFile(obj), /context_pressure.*must be one of/);
+});
+
+// ---------------------------------------------------------------------------
+// CLI — create/update verbs (used by the /bgsd-run-agent pipeline agent)
+// ---------------------------------------------------------------------------
+
+const CONTROL_CLI = join(__dir, "control.mjs");
+
+test("C33: CLI create writes a schema-valid control file", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "bgsd-ctrl-cli-"));
+  const cf = join(tmp, "control", "u1.json");
+  try {
+    const r = spawnSync(process.execPath, [CONTROL_CLI, "create",
+      "--path", cf, "--agent-id", "a1", "--run-id", "r1",
+      "--worktree", "/tmp/wt", "--branch", "r1/u1", "--unit-id", "u1", "--phase", "plan"],
+      { encoding: "utf8" });
+    assert.equal(r.status, 0, `create should exit 0, stderr: ${r.stderr}`);
+    const obj = JSON.parse(readFileSync(cf, "utf8"));
+    validateControlFile(obj); // must not throw
+    assert.equal(obj.unit_id, "u1");
+    assert.equal(obj.phase, "plan");
+    assert.equal(obj.status, "running");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("C34: CLI update sets status/phase, progress note+iteration, appends commit", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "bgsd-ctrl-cli-"));
+  const cf = join(tmp, "u1.json");
+  try {
+    createControlFile(cf, { agent_id: "a1", run_id: "r1", worktree: "/tmp/wt", branch: "r1/u1", unit_id: "u1" });
+    const r = spawnSync(process.execPath, [CONTROL_CLI, "update",
+      "--path", cf, "--status", "running", "--phase", "execute",
+      "--note", "executing", "--iteration", "2", "--commit", "abc123"],
+      { encoding: "utf8" });
+    assert.equal(r.status, 0, `update should exit 0, stderr: ${r.stderr}`);
+    const obj = JSON.parse(readFileSync(cf, "utf8"));
+    assert.equal(obj.phase, "execute");
+    assert.equal(obj.progress.note, "executing");
+    assert.equal(obj.progress.iteration, 2);
+    assert.deepEqual(obj.commits, ["abc123"]);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("C35: CLI update rejects an invalid status (no silent green)", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "bgsd-ctrl-cli-"));
+  const cf = join(tmp, "u1.json");
+  try {
+    createControlFile(cf, { agent_id: "a1", run_id: "r1", worktree: "/tmp/wt", branch: "r1/u1", unit_id: "u1" });
+    const r = spawnSync(process.execPath, [CONTROL_CLI, "update", "--path", cf, "--status", "bogus"],
+      { encoding: "utf8" });
+    assert.notEqual(r.status, 0, "invalid status must exit non-zero");
+    assert.match(r.stderr, /status.*must be one of/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------

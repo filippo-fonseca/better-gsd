@@ -815,7 +815,79 @@ if (
       : `file://${process.cwd()}/`
   ).href
 ) {
-  process.stdout.write("control.mjs — Phase 2 control-file protocol (library module)\n");
-  process.stdout.write("Import and use its exported functions from the Conductor or tests.\n");
-  process.exit(0);
+  // A thin CLI so a bash-driven pipeline agent (/bgsd-run-agent) can manage its
+  // own control file without hand-writing JSON. Two verbs: create + update.
+  function parseFlags(args) {
+    const flags = {};
+    for (let i = 0; i < args.length; i++) {
+      if (args[i].startsWith("--")) {
+        const key = args[i].slice(2);
+        const next = args[i + 1];
+        if (next && !next.startsWith("--")) { flags[key] = next; i++; }
+        else { flags[key] = true; }
+      }
+    }
+    return flags;
+  }
+
+  function usage(code) {
+    process.stderr.write(
+      "control.mjs — agent control-file CLI\n\n" +
+      "Usage:\n" +
+      "  node control.mjs create --path <file> --agent-id <a> --run-id <r> \\\n" +
+      "       --worktree <w> --branch <b> --unit-id <u> [--phase <p>] [--status <s>]\n" +
+      "  node control.mjs update --path <file> [--status <s>] [--phase <p>] \\\n" +
+      "       [--note <text>] [--iteration <n>] [--commit <sha>]\n\n" +
+      `  phase  ∈ [${PHASES.join(", ")}]\n` +
+      `  status ∈ [${STATUSES.join(", ")}]\n`
+    );
+    process.exit(code);
+  }
+
+  const argv = process.argv.slice(2);
+  const verb = argv[0];
+  const flags = parseFlags(argv.slice(1));
+
+  if (flags.help || !verb) usage(flags.help ? 0 : 1);
+  if (!flags.path) { process.stderr.write("error: --path is required\n"); usage(1); }
+  const controlPath = String(flags.path);
+
+  try {
+    if (verb === "create") {
+      for (const req of ["agent-id", "run-id", "worktree", "branch", "unit-id"]) {
+        if (!flags[req]) { process.stderr.write(`error: --${req} is required for create\n`); usage(1); }
+      }
+      const data = createControlFile(controlPath, {
+        agent_id: String(flags["agent-id"]),
+        run_id:   String(flags["run-id"]),
+        worktree: String(flags.worktree),
+        branch:   String(flags.branch),
+        unit_id:  String(flags["unit-id"]),
+        ...(flags.phase  ? { phase:  String(flags.phase)  } : {}),
+        ...(flags.status ? { status: String(flags.status) } : {}),
+      });
+      process.stdout.write(`created ${controlPath} (status=${data.status}, phase=${data.phase})\n`);
+    } else if (verb === "update") {
+      const current = readControlFile(controlPath);
+      const updates = {};
+      if (flags.status) updates.status = String(flags.status);
+      if (flags.phase)  updates.phase  = String(flags.phase);
+      if (flags.note !== undefined || flags.iteration !== undefined) {
+        updates.progress = {
+          ...current.progress,
+          ...(flags.note !== undefined ? { note: String(flags.note) } : {}),
+          ...(flags.iteration !== undefined ? { iteration: Number(flags.iteration) } : {}),
+        };
+      }
+      if (flags.commit) updates.commits = [...(current.commits ?? []), String(flags.commit)];
+      const data = updateControlFile(controlPath, updates);
+      process.stdout.write(`updated ${controlPath} (status=${data.status}, phase=${data.phase})\n`);
+    } else {
+      process.stderr.write(`error: unknown verb "${verb}"\n`);
+      usage(1);
+    }
+  } catch (err) {
+    process.stderr.write(`control.mjs: ${err.message}\n`);
+    process.exit(1);
+  }
 }
