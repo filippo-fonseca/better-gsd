@@ -55,6 +55,17 @@ echo "${BGSD_USAGE_TESTING:-1}"
 Everything below this section is the FULL-mode ladder. Skip it entirely in
 code-only mode.
 
+**Headless (discreet) mode: `BGSD_HEADLESS_UI`.** When `BGSD_HEADLESS_UI=1`, run
+Playwright **headless**: do not pop a visible browser window or a foreground
+server on the user's machine. Launch the browser headless (and boot any app
+server in the background), so verification is silent. When it is `0` or unset,
+headed is fine. This is independent of usage-testing: headless only changes
+*how* the Playwright rung runs, not *whether* it runs.
+
+```bash
+echo "usage=${BGSD_USAGE_TESTING:-1}  headless=${BGSD_HEADLESS_UI:-0}"
+```
+
 ---
 
 ## Pre-flight: MCP Probe (DRIVER-03)

@@ -30,7 +30,7 @@ flowchart TD
 
     G["Loop 2 re-run\nloop2.mjs integration verify→fix\nover the updated next branch"] --> H
 
-    E["--fast: parallel fix agents (or single for trivial)\nSonnet/medium (multi) or Haiku/low (single trivial)\nNO computer-use verification\nresult_status = UNVERIFIED always — NFR-06"] --> H
+    E["--fast: parallel fix agents (or single for trivial)\nOpus/medium (multi) or Sonnet/low (single trivial)\nNO computer-use verification\nresult_status = UNVERIFIED always — NFR-06"] --> H
 
     H["Return to User Review Gate\n/bgsd-user-eval checklist + selector"] --> H2
 
@@ -148,8 +148,8 @@ Full mode is bounded by `max_iterations` (default: 5) and the per-run budget cap
 
 | Item set | Agent strategy | Model |
 |----------|---------------|-------|
-| 1 item with severity `low` | Single agent | Haiku/low |
-| Otherwise | Parallel agents | Sonnet/medium |
+| 1 item with severity `low` | Single agent | Sonnet/low |
+| Otherwise | Parallel agents | Opus/medium |
 
 The multi/single decision is a deterministic scored choice (item count + severity) — never a model call (NFR-05).
 
@@ -161,7 +161,7 @@ The multi/single decision is a deterministic scored choice (item count + severit
     "mode":                  "fast",
     "loops":                 ["fast_fix"],
     "agent_strategy":        "parallel",
-    "model_hint":            "Sonnet/medium",
+    "model_hint":            "Opus/medium",
     "verified":              false,
     "verification_skipped":  true,
     "result_status":         "UNVERIFIED",

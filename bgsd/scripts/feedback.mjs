@@ -63,7 +63,7 @@
  *     mode:            "full" | "fast",
  *     loops:           ["loop1","loop2"] | ["fast_fix"],  // full vs fast
  *     agent_strategy:  "parallel" | "single",             // fast only
- *     model_hint:      "Haiku/low" | "Sonnet/medium",     // fast only
+ *     model_hint:      "Sonnet/low" | "Opus/medium",     // fast only
  *     verified:        boolean,    // false for --fast (NFR-06)
  *     verification_skipped: boolean,  // true for --fast
  *     result_status:   "PENDING" | "UNVERIFIED",  // UNVERIFIED for --fast
@@ -274,7 +274,7 @@ export function parseFeedbackItems({ source, runId = "unknown" }) {
  *   - agent_strategy: "parallel" if items > 1, "single" if exactly 1 trivial item.
  *   - verified: false — ALWAYS. No silent green (NFR-06).
  *   - result_status: "UNVERIFIED" — ALWAYS. Never "PASS".
- *   - model_hint: "Haiku/low" for single trivial; "Sonnet/medium" for multi.
+ *   - model_hint: "Sonnet/low" for single trivial; "Opus/medium" for multi.
  *
  * Both modes respect max_iterations (NFR-08) and record the strategy as a
  * deterministic scored choice (NFR-05, FEEDBACK-04).
@@ -309,11 +309,11 @@ export function planReRun({ items, mode, maxIterations = 5, budgetCap = "default
 
   // FAST MODE: single/parallel fix pass, NO verification (FEEDBACK-03)
   // Decision: multi-agent vs single-agent is a deterministic scored choice.
-  //   - 1 item with severity "low" -> single agent, Haiku/low
-  //   - otherwise -> parallel agents, Sonnet/medium
+  //   - 1 item with severity "low" -> single agent, Sonnet/low
+  //   - otherwise -> parallel agents, Opus/medium
   const isTrivialSingle = items.length === 1 && items[0]?.severity === "low";
   const agentStrategy   = isTrivialSingle ? "single" : "parallel";
-  const modelHint       = isTrivialSingle ? "Haiku/low" : "Sonnet/medium";
+  const modelHint       = isTrivialSingle ? "Sonnet/low" : "Opus/medium";
 
   return {
     mode:                 "fast",

@@ -16,8 +16,8 @@
  *   (i) planReRun (fast) — loops:["fast_fix"], verified:false (FEEDBACK-03)
  *   (j) planReRun (fast) — result_status is "UNVERIFIED", NOT "PASS" (NFR-06)
  *   (k) planReRun (fast) — verification_skipped:true (no silent green, NFR-06)
- *   (l) planReRun (fast, single trivial) — agent_strategy:"single", Haiku/low
- *   (m) planReRun (fast, multi) — agent_strategy:"parallel", Sonnet/medium
+ *   (l) planReRun (fast, single trivial) — agent_strategy:"single", Sonnet/low
+ *   (m) planReRun (fast, multi) — agent_strategy:"parallel", Opus/medium
  *
  *   (n) ingestFeedback — review.json source: items parsed correctly (FEEDBACK-01)
  *   (o) ingestFeedback — full plan includes both loops (FEEDBACK-02)
@@ -220,24 +220,24 @@ await test("(k) planReRun (fast): verification_skipped:true (no silent green, NF
 });
 
 // ---------------------------------------------------------------------------
-// (l) planReRun (fast, single trivial) — agent_strategy:"single", Haiku/low
+// (l) planReRun (fast, single trivial) — agent_strategy:"single", Sonnet/low
 // ---------------------------------------------------------------------------
 
-await test("(l) planReRun (fast, single trivial item): single agent, Haiku/low", () => {
+await test("(l) planReRun (fast, single trivial item): single agent, Sonnet/low", () => {
   const trivialItem = [{ id: "x", description: "Minor text typo", severity: "low" }];
   const plan = planReRun({ items: trivialItem, mode: "fast" });
   assert.equal(plan.agent_strategy, "single",    "single trivial item -> single agent strategy");
-  assert.equal(plan.model_hint,     "Haiku/low", "single trivial item -> Haiku/low model");
+  assert.equal(plan.model_hint,     "Sonnet/low", "single trivial item -> Sonnet/low model");
 });
 
 // ---------------------------------------------------------------------------
-// (m) planReRun (fast, multi) — agent_strategy:"parallel", Sonnet/medium
+// (m) planReRun (fast, multi) — agent_strategy:"parallel", Opus/medium
 // ---------------------------------------------------------------------------
 
-await test("(m) planReRun (fast, multi items): parallel agents, Sonnet/medium", () => {
+await test("(m) planReRun (fast, multi items): parallel agents, Opus/medium", () => {
   const plan = planReRun({ items: SAMPLE_CHANGE_ITEMS, mode: "fast" });
   assert.equal(plan.agent_strategy, "parallel",      "multiple items -> parallel agents");
-  assert.equal(plan.model_hint,     "Sonnet/medium", "multiple items -> Sonnet/medium");
+  assert.equal(plan.model_hint,     "Opus/medium", "multiple items -> Opus/medium");
 });
 
 // ---------------------------------------------------------------------------

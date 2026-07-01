@@ -100,6 +100,41 @@ per-repo by telling Kiwi.
 
 ---
 
+## Modes, headless UI, and the planning selector
+
+Two more orthogonal knobs, plus how Kiwi opens a session.
+
+**Execution modes (per role, three levels).** Pipeline agents and verifiers each
+run in one of three modes:
+
+| Mode | Pipeline agents | Verifiers |
+|------|-----------------|-----------|
+| `fast` | skip research, go straight to plan/execute | code-only, quick checks |
+| `thorough` | research every unit before planning | full driver ladder every time |
+| `adaptive` | **the Conductor decides per unit and adapts** | **decides per unit** |
+
+`adaptive` is the **default and recommended** setting: Kiwi sizes each unit and
+gives the hard ones research while trivial ones skip it. Override per-session
+with `--mode <fast|thorough|adaptive>` (pipeline) and `--verify-mode <…>`
+(verifiers), or persist in `BGSD.md` under `modes`.
+
+**Headless UI.** `--headless-ui` runs Playwright **headless**: no visible browser
+or server window pops up on your machine (discreet). It is orthogonal to
+`--no-usage-verification` (that decides *whether* the Playwright rung runs;
+headless decides *how* it runs). Persist as `verification.headless` in `BGSD.md`.
+Both propagate to every Tester via `BGSD_HEADLESS_UI`.
+
+**Ask at the start.** When you open a session (especially at project scale),
+present a short **AskUserQuestion selector** for how thorough to be, before fan-out:
+the pipeline mode (Fast / Thorough / Adaptive-recommended) and, if it matters,
+the verifier mode, with Adaptive pre-selected. The user can also just accept the
+defaults. This is the GSD-style "how thorough do you want planning" prompt.
+
+**Precedence (absolute).** A manually-passed flag ALWAYS wins, above everything:
+flag > `BGSD.md` config > default. Kiwi never overrides a flag the user typed.
+
+---
+
 ## How Kiwi picks the scale (auto mode)
 
 Deterministic, zero required model calls. Kiwi reads cheap signals from the prompt:
@@ -342,3 +377,4 @@ The old commands still work and map to internal session stages:
 | `/bgsd-status` | the always-on live view, shown continuously |
 | `/bgsd-resume` | pick up an interrupted session from `.bgsd/runs/` (auto-selects the latest in-flight run) |
 | `/bgsd-gui` | open/close the live web dashboard tracking every agent by lane + GSD substage |
+| `/bgsd-memory` | save a setting or preference to `BGSD.md` in natural language (flags still override) |

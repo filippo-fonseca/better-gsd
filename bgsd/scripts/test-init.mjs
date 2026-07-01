@@ -198,6 +198,13 @@ test("I07d — defaultBgsdConfig: verification.usage_testing defaults true", () 
   assert.equal(c.verification.usage_testing, true);
 });
 
+test("I07d2 — defaultBgsdConfig: verification.headless + modes defaults", () => {
+  const c = defaultBgsdConfig();
+  assert.equal(c.verification.headless, false);
+  assert.equal(c.modes.pipeline, "adaptive");
+  assert.equal(c.modes.verifier, "adaptive");
+});
+
 test("I07e — BGSD.md documents + round-trips the verification knob", () => {
   const md = renderBgsdMd(defaultBgsdConfig());
   assert.ok(

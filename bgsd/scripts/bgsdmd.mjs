@@ -99,3 +99,52 @@ export function rememberLive(bgsdDir, name, content) {
   writeAtomic(file, content.endsWith("\n") ? content : content + "\n");
   return { file };
 }
+
+// ---------------------------------------------------------------------------
+// CLI — the front door for /bgsd-memory
+// ---------------------------------------------------------------------------
+
+const invokedDirectly =
+  typeof process.argv[1] === "string" && /[\\/]bgsdmd\.mjs$/.test(process.argv[1]);
+if (invokedDirectly) {
+  const [sub, ...rest] = process.argv.slice(2);
+  const out = (s) => process.stdout.write(s);
+
+  const repoRoot = (() => {
+    try {
+      const r = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" });
+      return r.status === 0 && r.stdout ? r.stdout.trim() : process.cwd();
+    } catch (_) {
+      return process.cwd();
+    }
+  })();
+
+  try {
+    if (sub === "set") {
+      const dotPath = rest[0];
+      const raw = rest.slice(1).join(" ");
+      if (!dotPath || raw === "") {
+        process.stderr.write('Usage: bgsdmd.mjs set <dot.path> <value>\n');
+        process.exit(1);
+      }
+      let value;
+      try { value = JSON.parse(raw); } catch (_) { value = raw; } // "true"->bool, "3"->num, else string
+      const res = editSettingLive(repoRoot, dotPath, value);
+      out(`\nBGSD.md: ${dotPath}  ${JSON.stringify(res.oldValue)} -> ${JSON.stringify(res.newValue)}\n\n`);
+    } else if (sub === "remember") {
+      const note = rest.join(" ").trim();
+      if (!note) { process.stderr.write('Usage: bgsdmd.mjs remember "<preference>"\n'); process.exit(1); }
+      addPreferenceLive(repoRoot, note);
+      out(`\nBGSD.md Notes += "${note}"\n\n`);
+    } else if (sub === "show") {
+      const p = join(repoRoot, "BGSD.md");
+      out(existsSync(p) ? readFileSync(p, "utf8") : "(no BGSD.md yet — run /bgsd-init)\n");
+    } else {
+      process.stderr.write('Usage:\n  bgsdmd.mjs set <dot.path> <value>\n  bgsdmd.mjs remember "<preference>"\n  bgsdmd.mjs show\n');
+      process.exit(1);
+    }
+  } catch (err) {
+    process.stderr.write(`bgsdmd: ${err.message}\n`);
+    process.exit(1);
+  }
+}

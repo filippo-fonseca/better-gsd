@@ -20,6 +20,9 @@ import {
   buildDepthPlan,
   startSession,
   resolveUsageTesting,
+  resolveMode,
+  resolveHeadless,
+  EXECUTION_MODES,
 } from "./session.mjs";
 
 let passed = 0;
@@ -82,6 +85,28 @@ await test("UV: BGSD.md verification.usage_testing=false disables it (no flag)",
 await test("UV: config usage_testing=true keeps it on", () => {
   assert.equal(
     resolveUsageTesting({ config: { verification: { usage_testing: true } } }),
+    true
+  );
+});
+
+await test("MODE: default is adaptive; flag beats config beats default", () => {
+  assert.deepEqual([...EXECUTION_MODES], ["fast", "thorough", "adaptive"]);
+  assert.equal(resolveMode({}), "adaptive");
+  assert.equal(resolveMode({ configMode: "thorough" }), "thorough");
+  // flag wins over config, always
+  assert.equal(resolveMode({ flagMode: "fast", configMode: "thorough" }), "fast");
+  // unknown values are ignored (fall through)
+  assert.equal(resolveMode({ flagMode: "bogus", configMode: "fast" }), "fast");
+  assert.equal(resolveMode({ configMode: "nope" }), "adaptive");
+});
+
+await test("HEADLESS: flag forces on; else config decides (default headed)", () => {
+  assert.equal(resolveHeadless({}), false);
+  assert.equal(resolveHeadless({ headlessFlag: true }), true);
+  assert.equal(resolveHeadless({ config: { verification: { headless: true } } }), true);
+  // flag wins even if config says headed
+  assert.equal(
+    resolveHeadless({ config: { verification: { headless: false } }, headlessFlag: true }),
     true
   );
 });

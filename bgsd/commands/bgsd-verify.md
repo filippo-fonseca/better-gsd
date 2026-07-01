@@ -35,6 +35,7 @@ is a single verdict line on stdout and a report file on disk.
 | `--criteria <file>` | One of `--criteria` or `--inline` | Acceptance criteria from a GSD `UI-SPEC.md` or acceptance file. |
 | `--inline "..."` | One of `--criteria` or `--inline` | Acceptance criteria given inline (quote the string; separate criteria with `;` or newlines). |
 | `--no-usage-verification` | No | Code-only mode: run the goal-backward gsd-verifier against the criteria but **skip the Playwright usage-testing ladder** (no browser). Equivalent to `BGSD_USAGE_TESTING=0`. |
+| `--headless-ui` | No | Run Playwright **headless** (no visible browser/server window). Equivalent to `BGSD_HEADLESS_UI=1`. Orthogonal to usage-testing. |
 
 ---
 

@@ -85,11 +85,22 @@ export function defaultBgsdConfig() {
     // runs. usage_testing toggles the heavier Playwright/vision rung (driving the
     // real app: console -> network -> DOM -> vision). Turn it off for repos or
     // sessions where browser UI testing is overkill (a quick fix, a non-UI
-    // change). The Conductor can flip this per-session (--no-usage-verification)
-    // or persist it here. Never disables code verification; "no silent green"
-    // still holds via the gsd-verifier.
+    // change). headless runs Playwright without popping a visible browser/server
+    // window (more discreet). Both are per-session flippable
+    // (--no-usage-verification, --headless-ui) or persisted here. Never disables
+    // code verification; "no silent green" still holds via the gsd-verifier.
     verification: {
       usage_testing: true,
+      headless: false,
+    },
+    // Execution "modes" — how much work each role does. Three levels each:
+    //   fast     — pipeline: skip research; verifier: code-only, quick checks.
+    //   thorough — pipeline: research every unit; verifier: full driver ladder.
+    //   adaptive — the Conductor decides per unit and adapts (DEFAULT, recommended).
+    // Override per-session (--mode, --verify-mode) or persist here.
+    modes: {
+      pipeline: "adaptive",
+      verifier: "adaptive",
     },
     conductor: {
       persona: "kiwi",
@@ -196,6 +207,16 @@ Notes section and Kiwi will respect them.
   testing. Toggle per-session with \`--no-usage-verification\`, or tell Kiwi
   ("stop UI-testing quick fixes") and it sets this for you. It never disables
   code verification — "no silent green" still holds.
+- **verification.headless** — \`true\` drives Playwright headless, no visible
+  browser or server window pops up on your machine (discreet). \`false\` lets it
+  run headed. Toggle per-session with \`--headless-ui\`, or tell Kiwi ("always
+  verify headless").
+- **modes.pipeline / modes.verifier** — how much work each role does, three
+  levels: \`fast\` (pipeline skips research; verifier code-only), \`thorough\`
+  (pipeline researches every unit; verifier full driver ladder), or \`adaptive\`
+  (the Conductor decides per unit and adapts). \`adaptive\` is the default and
+  recommended. Override per-session with \`--mode\` / \`--verify-mode\`, or
+  persist here. A manually-passed flag always wins over this file.
 - **conductor** — persona + narration. \`narrate\` streams stage-aware live
   updates; \`suggest_gate_commands\` makes Kiwi hand you the exact command at
   every human gate.

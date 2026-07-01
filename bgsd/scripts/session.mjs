@@ -1003,6 +1003,40 @@ export function resolveUsageTesting({ config, noUsageVerification } = {}) {
   return config?.verification?.usage_testing !== false;
 }
 
+/** The three execution modes for pipeline agents and verifiers. */
+export const EXECUTION_MODES = Object.freeze(["fast", "thorough", "adaptive"]);
+
+/**
+ * Resolve a role's execution mode. A manually-passed flag ALWAYS wins over the
+ * BGSD.md config; config wins over the fallback. Unknown values are ignored.
+ *
+ * @param {object} opts
+ * @param {string} [opts.flagMode]   per-session flag value (fast|thorough|adaptive)
+ * @param {string} [opts.configMode] the BGSD.md modes.<role> value
+ * @param {string} [opts.fallback="adaptive"]
+ * @returns {"fast"|"thorough"|"adaptive"}
+ */
+export function resolveMode({ flagMode, configMode, fallback = "adaptive" } = {}) {
+  if (flagMode && EXECUTION_MODES.includes(flagMode)) return flagMode;
+  if (configMode && EXECUTION_MODES.includes(configMode)) return configMode;
+  return fallback;
+}
+
+/**
+ * Resolve whether Playwright runs headless (discreet, no visible browser). The
+ * `--headless-ui` flag forces it on; otherwise the BGSD.md verification.headless
+ * knob decides (default false = headed).
+ *
+ * @param {object} opts
+ * @param {object|null} [opts.config]
+ * @param {boolean} [opts.headlessFlag]
+ * @returns {boolean}
+ */
+export function resolveHeadless({ config, headlessFlag } = {}) {
+  if (headlessFlag) return true;
+  return config?.verification?.headless === true;
+}
+
 // ---------------------------------------------------------------------------
 // CLI entrypoint
 // ---------------------------------------------------------------------------
@@ -1031,8 +1065,10 @@ if (
     const prompt = typeof flags.prompt === "string" ? flags.prompt : "";
     if (!prompt) {
       process.stderr.write(
-        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--no-usage-verification] [--gui] [--plan-only | --dry-run]\n' +
-        '  Default (no flag): executes the session. --plan-only / --dry-run: preview only. --gui: open the live dashboard.\n'
+        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
+        '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
+        '        [--no-usage-verification] [--headless-ui] [--gui] [--plan-only | --dry-run]\n' +
+        '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
       );
       process.exit(1);
     }
@@ -1046,6 +1082,9 @@ if (
     const planOnly = flags["plan-only"] === true || flags["dry-run"] === true;
     const noUsageVerification = flags["no-usage-verification"] === true;
     const gui = flags.gui === true;
+    const headlessFlag = flags["headless-ui"] === true;
+    const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
+    const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
 
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
@@ -1059,6 +1098,9 @@ if (
       if (existsSync(bgsdMdPath)) bgsdConfig = parseBgsdMd(readFileSync(bgsdMdPath, "utf8"));
     } catch (_) { bgsdConfig = null; }
     const usageTesting = resolveUsageTesting({ config: bgsdConfig, noUsageVerification });
+    const headless = resolveHeadless({ config: bgsdConfig, headlessFlag });
+    const pipelineMode = resolveMode({ flagMode: modeFlag, configMode: bgsdConfig?.modes?.pipeline });
+    const verifierMode = resolveMode({ flagMode: verifyModeFlag, configMode: bgsdConfig?.modes?.verifier });
 
     // CLI: classify + build the depth plan always; then either preview (--plan-only / --dry-run)
     // or execute (the default). Real irreversible actions (git merge, gh pr create) remain
@@ -1078,9 +1120,10 @@ if (
     process.stdout.write(`  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`);
     process.stdout.write(
       `  verify:  ${usageTesting
-        ? "full (gsd-verifier code check + Playwright usage testing)"
+        ? `full (gsd-verifier + Playwright usage testing${headless ? ", headless" : ""})`
         : "code-only (gsd-verifier; Playwright UI usage testing OFF)"}\n`
     );
+    process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
@@ -1090,8 +1133,12 @@ if (
     } else {
       // Propagate the verification mode to every spawned agent + Tester. Children
       // inherit process.env; the Tester (tester.md) and /bgsd-verify honor
-      // BGSD_USAGE_TESTING=0 by skipping the Playwright ladder (code-only).
+      // BGSD_USAGE_TESTING=0 by skipping the Playwright ladder (code-only), and
+      // BGSD_HEADLESS_UI=1 by launching Playwright headless (no visible browser).
       process.env.BGSD_USAGE_TESTING = usageTesting ? "1" : "0";
+      process.env.BGSD_HEADLESS_UI = headless ? "1" : "0";
+      process.env.BGSD_PIPELINE_MODE = pipelineMode;
+      process.env.BGSD_VERIFIER_MODE = verifierMode;
       // sesh preflight: ensure init + ff-sync the integration branch from base.
       try {
         const { resolveRepoRoot, seshPreflight } = await import("./init-live.mjs");
