@@ -98,16 +98,20 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | Flag | What it does |
 |------|--------------|
 | *(none)* | Conductor auto-detects scale and executes immediately. |
+| *(no prompt)* | `/bgsd-sesh` with no prompt: Kiwi proposes the next item from your backlog. |
 | `--quick` | Force small scale. No discussion, fast, still fully verified (Loop 1 is never skipped). |
 | `--feature` | Force feature scale. A few units, some parallelism, integration loop if more than one unit. |
 | `--project` | Force full pipeline. Kiwi discusses with you first (brainstorm, clarify, plan), then executes. |
+| `--mode fast\|thorough\|adaptive` | Pipeline-agent depth. `fast` skips research, `thorough` researches every unit, `adaptive` (default) lets Kiwi decide per unit. |
+| `--verify-mode fast\|thorough\|adaptive` | Verifier depth, same three levels; `adaptive` is the default. |
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
+| `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 
-A manual scale flag always wins: it bypasses auto-scale thresholds unconditionally.
+A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
-Kiwi orchestrates a handful of other commands for you, so you rarely call them directly: `/bgsd-init`, `/bgsd-queue` (cross-session backlog: add/status/peek/done/start), `/bgsd-verify`, `/bgsd-resume` (resume an interrupted session from `.bgsd/runs/`), `/bgsd-gui`, `/bgsd-status`, `/bgsd-user-eval` (review gate), `/bgsd-integrate` (Loop 2), `/bgsd-feedback`, `/bgsd-changelog`, and `/bgsd-run`.
+You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. Kiwi orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
 
 ---
 
