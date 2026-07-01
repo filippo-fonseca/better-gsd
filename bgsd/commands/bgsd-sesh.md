@@ -275,6 +275,33 @@ gives the full URL to click, never a bare port.
 
 ---
 
+## Brand every subagent (emoji + role + model)
+
+When you spawn ANY subagent (a Pipeline Agent, researcher, Tester, integrator,
+reviewer, or a helper like Explore), give it a **consistent, branded label** so
+the user can tell at a glance what it is, which unit it owns, and what model it
+runs, the way GSD tags its agents. The task **description** you pass is what shows
+in the Claude Code UI, so make it: `<emoji> <Role> · <unit> (<model>)`.
+
+| Role | Emoji | Example description |
+|------|-------|---------------------|
+| Conductor (you) | 🥝 | `🥝 Kiwi · conductor` |
+| Pipeline Agent (executor) | 🔧 | `🔧 Pipeline · search-bar (opus/xhigh)` |
+| Researcher | 🔎 | `🔎 Research · search-bar (sonnet)` |
+| UI designer | 🎨 | `🎨 UI · header (opus)` |
+| Tester (usage verify) | 🧪 | `🧪 Tester · search-bar` |
+| Verifier (code / gsd) | ⚖️ | `⚖️ Verify · search-bar` |
+| Integrator (Loop 2) | 🔀 | `🔀 Integrator · next` |
+| Reviewer (gate) | 📋 | `📋 Review · next` |
+
+Keep it uniform across the whole fan-out so a wave of agents reads as one branded
+set. (The colored background on the agent tag is Claude Code's own rendering; the
+emoji + role + model is the part bgsd controls, and it is what makes them
+recognizable.) Use the same emoji when you register the agent on the dashboard
+(`gui-live.mjs agent …`) so the terminal and the dashboard match.
+
+---
+
 ## The always-on, non-blocking session
 
 A session is a live, fully async loop. Nothing about it blocks the conversation:

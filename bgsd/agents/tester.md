@@ -1,6 +1,6 @@
 ---
 name: bgsd-tester
-description: "Drives a running app through the console → network → DOM → vision ladder and emits a structured verification-report.json. Spawned by /bgsd-verify."
+description: "🧪 Tester — drives a running app through the console → network → DOM → vision ladder and emits a structured verification-report.json. Spawned by /bgsd-verify."
 tools: Read, Write, Bash, Grep, Glob
 ---
 
