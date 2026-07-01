@@ -66,17 +66,16 @@ export function defaultBgsdConfig() {
       require_remote: true,
     },
     // Configurable model posture — defaults mirror decompose.mjs today.
-    // Four difficulty bands map to executor model + effort.
+    // Two difficulty bands, quality-first: opus for the hard half, sonnet for
+    // the easy half, both at xhigh effort.
     model_posture: {
-      thresholds: { xhigh: 0.7, high: 0.4, mid: 0.2 },
+      thresholds: { high: 0.4 },
       tiers: {
-        xhigh: { model: "opus", effort: "xhigh" },
-        high: { model: "opus", effort: "high" },
-        mid: { model: "sonnet", effort: "high" },
-        low: { model: "haiku", effort: "high" },
+        high: { model: "opus", effort: "xhigh" },
+        base: { model: "sonnet", effort: "xhigh" },
       },
-      // executor uses the unit's own tier; researcher is one tier below
-      // (floored at haiku/high); verifier is fixed.
+      // executor uses the unit's own band; researcher is one band below
+      // (floored at sonnet/xhigh); verifier is fixed.
       researcher: "one-tier-below",
       verifier: { model: "haiku", effort: "low" },
     },
@@ -195,10 +194,10 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **model_posture** — the per-unit model + effort routing, in four difficulty
-  bands: \`xhigh\` (opus/xhigh), \`high\` (opus/high), \`mid\` (sonnet/high),
-  \`low\` (haiku/high). Executor uses the unit's band; researcher drops one band
-  (floored at haiku/high); verifier is fixed at haiku/low. Override any tier,
+- **model_posture** — the per-unit model + effort routing, in two quality-first
+  difficulty bands: \`high\` (opus/xhigh) for score >= 0.4, \`base\`
+  (sonnet/xhigh) below. Executor uses the unit's band; researcher drops one band
+  (floored at sonnet/xhigh); verifier is fixed at haiku/low. Override any tier,
   threshold, or role here.
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI

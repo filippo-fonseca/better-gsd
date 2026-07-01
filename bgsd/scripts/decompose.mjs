@@ -43,14 +43,12 @@
  *                    + 0.2 * title_word_factor
  *                    + 0.1 * scope_len_factor
  *
- * Resulting posture tiers (four bands):
- *   xhigh (>= 0.7): executor = { model: "opus",   effort: "xhigh" }
- *   high  (>= 0.4): executor = { model: "opus",   effort: "high"  }
- *   mid   (>= 0.2): executor = { model: "sonnet", effort: "high"  }
- *   low   (<  0.2): executor = { model: "haiku",  effort: "high"  }
+ * Resulting posture tiers (two bands, quality-first):
+ *   >= 0.4: executor = { model: "opus",   effort: "xhigh" }
+ *   <  0.4: executor = { model: "sonnet", effort: "xhigh" }
  *
- * Researcher and verifier are always demoted relative to executor (Plan Part 11):
- *   researcher: one tier below executor (floored at haiku/high)
+ * Researcher and verifier are demoted relative to executor (Plan Part 11):
+ *   researcher: one band below executor (floored at sonnet/xhigh)
  *   verifier:   always haiku/low
  *
  * Usage (library):
@@ -139,36 +137,30 @@ export function difficultyScore({ touched = [], deps = [], title = "", scope = "
  * Executor is promoted on hard units; researcher/verifier are always demoted.
  */
 const POSTURE_TIERS = {
-  xhigh: { model: "opus",   effort: "xhigh" },
-  high:  { model: "opus",   effort: "high"  },
-  mid:   { model: "sonnet", effort: "high"  },
-  low:   { model: "haiku",  effort: "high"  },
+  high: { model: "opus",   effort: "xhigh" },
+  base: { model: "sonnet", effort: "xhigh" },
 };
 
 const DEMOTION_MAP = {
-  xhigh: "high",  // executor=xhigh -> researcher=high
-  high:  "mid",   // executor=high  -> researcher=mid
-  mid:   "low",   // executor=mid   -> researcher=low
-  low:   "low",   // executor=low   -> researcher=low (already at floor)
+  high: "base",  // executor=opus -> researcher=sonnet
+  base: "base",  // executor=sonnet -> researcher=sonnet (already at floor)
 };
 
 /**
- * The executor tier for a difficulty score. Four bands (GRAPH-04):
- *   score >= 0.7  -> xhigh (opus/xhigh)
- *   score >= 0.4  -> high  (opus/high)
- *   score >= 0.2  -> mid   (sonnet/high)
- *   score <  0.2  -> low   (haiku/high)
+ * The executor tier for a difficulty score. Two bands, quality-first (GRAPH-04):
+ *   score >= 0.4  -> high (opus/xhigh)
+ *   score <  0.4  -> base (sonnet/xhigh)
  */
 export function tierForScore(score) {
-  return score >= 0.7 ? "xhigh" : score >= 0.4 ? "high" : score >= 0.2 ? "mid" : "low";
+  return score >= 0.4 ? "high" : "base";
 }
 
 /**
  * Derive the per-unit model posture from a difficulty score.
  * Returns the would-be .planning/config.json `bgsd_unit_posture` structure.
  *
- * Executor tier (see tierForScore): opus/xhigh, opus/high, sonnet/high, haiku/high.
- * Researcher: one tier below executor (floored at haiku/high).
+ * Executor tier (see tierForScore): opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4).
+ * Researcher: one band below executor (floored at sonnet/xhigh).
  * Verifier: always haiku/low — cheap, deterministic verification.
  *
  * @param {number} score   difficulty score in [0, 1]

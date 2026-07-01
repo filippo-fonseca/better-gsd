@@ -24,10 +24,10 @@
  *   D11 — parseDecompositionResponse: throws on unit missing title
  *   D12 — difficultyScore: returns value in [0, 1]
  *   D13 — difficultyScore: more touched entries -> higher score
- *   D14  — deriveModelPosture: >=0.7 -> opus/xhigh executor
- *   D15  — deriveModelPosture: 0.4..0.7 -> opus/high executor
- *   D16  — deriveModelPosture: 0.2..0.4 -> sonnet/high executor
- *   D16b — deriveModelPosture: <0.2 -> haiku/high executor
+ *   D14  — deriveModelPosture: >=0.4 -> opus/xhigh executor
+ *   D15  — deriveModelPosture: >=0.4 -> opus/xhigh executor
+ *   D16  — deriveModelPosture: <0.4 -> sonnet/xhigh executor
+ *   D16b — deriveModelPosture: very low -> still sonnet/xhigh executor
  *   D17  — deriveModelPosture: verifier is always haiku/low
  *   D18 — serializeUnits: produces non-empty markdown with unit ids
  *   D19 — writeUnitConfig: writes bgsd_unit_posture to config.json (config seam)
@@ -291,22 +291,22 @@ await test("D14: deriveModelPosture(>=0.7) -> executor=opus/xhigh", () => {
   assert.equal(posture.executor.effort, "xhigh");
 });
 
-await test("D15: deriveModelPosture(0.4..0.7) -> executor=opus/high", () => {
+await test("D15: deriveModelPosture(>=0.4) -> executor=opus/xhigh", () => {
   const posture = deriveModelPosture(0.5);
   assert.equal(posture.executor.model, "opus");
-  assert.equal(posture.executor.effort, "high");
+  assert.equal(posture.executor.effort, "xhigh");
 });
 
-await test("D16: deriveModelPosture(0.2..0.4) -> executor=sonnet/high", () => {
+await test("D16: deriveModelPosture(<0.4) -> executor=sonnet/xhigh", () => {
   const posture = deriveModelPosture(0.3);
   assert.equal(posture.executor.model, "sonnet");
-  assert.equal(posture.executor.effort, "high");
+  assert.equal(posture.executor.effort, "xhigh");
 });
 
-await test("D16b: deriveModelPosture(<0.2) -> executor=haiku/high", () => {
+await test("D16b: deriveModelPosture(very low) -> still sonnet/xhigh", () => {
   const posture = deriveModelPosture(0.1);
-  assert.equal(posture.executor.model, "haiku");
-  assert.equal(posture.executor.effort, "high");
+  assert.equal(posture.executor.model, "sonnet");
+  assert.equal(posture.executor.effort, "xhigh");
 });
 
 await test("D17: deriveModelPosture always yields verifier=haiku/low regardless of score", () => {

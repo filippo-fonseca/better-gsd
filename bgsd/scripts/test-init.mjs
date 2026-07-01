@@ -122,13 +122,10 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.git.integration_to_main, "manual");
   assert.equal(c.env.propagate, true);
   assert.ok(Array.isArray(c.env.files) && c.env.files.includes(".env"));
-  assert.equal(c.model_posture.tiers.xhigh.model, "opus");
-  assert.equal(c.model_posture.tiers.xhigh.effort, "xhigh");
   assert.equal(c.model_posture.tiers.high.model, "opus");
-  assert.equal(c.model_posture.tiers.high.effort, "high");
-  assert.equal(c.model_posture.tiers.mid.model, "sonnet");
-  assert.equal(c.model_posture.tiers.low.model, "haiku");
-  assert.equal(c.model_posture.tiers.low.effort, "high");
+  assert.equal(c.model_posture.tiers.high.effort, "xhigh");
+  assert.equal(c.model_posture.tiers.base.model, "sonnet");
+  assert.equal(c.model_posture.tiers.base.effort, "xhigh");
   assert.equal(c.model_posture.verifier.model, "haiku");
   assert.equal(c.model_posture.verifier.effort, "low");
   assert.equal(c.conductor.suggest_gate_commands, true);
@@ -136,9 +133,9 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
 
 test("I02 — defaultBgsdConfig: fresh deep copy", () => {
   const a = defaultBgsdConfig();
-  a.model_posture.tiers.xhigh.model = "MUTATED";
+  a.model_posture.tiers.high.model = "MUTATED";
   const b = defaultBgsdConfig();
-  assert.equal(b.model_posture.tiers.xhigh.model, "opus");
+  assert.equal(b.model_posture.tiers.high.model, "opus");
 });
 
 test("I03 — deepMerge: nested merge, scalar replace, no mutation", () => {
