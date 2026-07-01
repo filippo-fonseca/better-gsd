@@ -164,6 +164,23 @@ or server window pops up on your machine (discreet). It is orthogonal to
 headless decides *how* it runs). Persist as `verification.headless` in `BGSD.md`.
 Both propagate to every Tester via `BGSD_HEADLESS_UI`.
 
+**Model swap — `--fable`.** `--fable` swaps the **top-tier model** from Opus 4.8 to
+**`claude-fable-5`** everywhere the pipeline would otherwise reach for Opus:
+
+- The **moment** you see `--fable`, switch your own model: run **`/model claude-fable-5`**.
+- Every agent whose model posture resolves to **Opus** (the executor/researcher/
+  verifier tiers that `decompose.mjs` marks `opus`) is spawned as `claude-fable-5`
+  instead, and its **branded label shows the real model** (e.g.
+  `Agent · 🔧 Pipeline · search-bar (claude-fable-5)`). Sonnet/Haiku tiers are
+  unaffected — this only replaces Opus.
+- **Revert anytime, conversationally.** Tell the Conductor "drop fable", "back to
+  Opus", or similar, and it runs **`/model`** back to the default (Opus 4.8) and
+  resumes normal posture from that point on — no restart needed. The user never
+  has to re-pass a flag to undo it.
+- Persist as `models.top_tier: claude-fable-5` in `BGSD.md` to make it the default
+  for every sesh; a passed `--fable` (or a revert) always wins for the current
+  session (flag > `BGSD.md` > default).
+
 **Ask at the start.** When you open a session (especially at project scale),
 present a short **AskUserQuestion selector** for how thorough to be, before fan-out:
 the pipeline mode (Fast / Thorough / Adaptive-recommended) and, if it matters,
