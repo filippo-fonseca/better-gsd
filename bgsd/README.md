@@ -2,7 +2,7 @@
 
 **Autonomous, self-verifying orchestration built on top of GSD — as an additive Claude Code plugin.**
 
-You talk to the Conductor (codename **Kiwi**). Kiwi handles everything else.
+You talk to the Conductor (default name **Kiwi**, can be customized). They handle everything else.
 
 > "Very good, sir. I shall begin verification at once."
 > — Kiwi, the bgsd Conductor
@@ -44,11 +44,11 @@ bgsd keeps one standing integration branch, **`next`** (the name is configurable
 
 bgsd always runs the same pipeline. Scale determines how deep and wide it goes.
 
-| Signal | What Kiwi does |
-|--------|----------------|
-| **quick** (one bug, a minor change; ≤2 units, 1 surface) | One agent, no pre-discussion, direct execution — but still fully verified. Never skips the Loop 1 verify→fix cycle. |
-| **feature** (a few units, mid-size; a few units, mid-size scope) | A few agents, no pre-discussion, some parallelism, integration loop if >1 unit. |
-| **project** (broad prompt, many units; ≥4 units or ≥3 surfaces) | Full parallel pipeline: decompose → parallel git worktrees → Loop 1 per worktree → conflict pre-check + merge into `next` → Loop 2 integration on `next` → review. Pre-discusses with you first. |
+| Signal                                                           | What Kiwi does                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **quick** (one bug, a minor change; ≤2 units, 1 surface)         | One agent, no pre-discussion, direct execution — but still fully verified. Never skips the Loop 1 verify→fix cycle.                                                                              |
+| **feature** (a few units, mid-size; a few units, mid-size scope) | A few agents, no pre-discussion, some parallelism, integration loop if >1 unit.                                                                                                                  |
+| **project** (broad prompt, many units; ≥4 units or ≥3 surfaces)  | Full parallel pipeline: decompose → parallel git worktrees → Loop 1 per worktree → conflict pre-check + merge into `next` → Loop 2 integration on `next` → review. Pre-discusses with you first. |
 
 The scale threshold is decided by the Conductor, not by you. You can override with a flag.
 
@@ -58,14 +58,14 @@ The scale threshold is decided by the Conductor, not by you. You can override wi
 
 ## Flags
 
-| Flag | Behavior |
-|------|----------|
-| *(none)* | Conductor auto-detects scale and **executes immediately**. |
-| `--quick` | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Executes immediately. |
-| `--feature` | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Executes immediately. |
-| `--project` | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan), then executes. Real merges/PRs are human-gated at checkpoints. |
-| `--plan-only` | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing executes. |
-| `--dry-run` | Alias for `--plan-only`. Same preview behavior. |
+| Flag          | Behavior                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none)_      | Conductor auto-detects scale and **executes immediately**.                                                                                                 |
+| `--quick`     | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Executes immediately.                                        |
+| `--feature`   | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Executes immediately.                                                      |
+| `--project`   | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan), then executes. Real merges/PRs are human-gated at checkpoints. |
+| `--plan-only` | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing executes.                                                               |
+| `--dry-run`   | Alias for `--plan-only`. Same preview behavior.                                                                                                            |
 
 A manual flag always wins, unconditionally; the auto-scale thresholds apply only in auto mode.
 
@@ -75,13 +75,13 @@ A manual flag always wins, unconditionally; the auto-scale thresholds apply only
 
 `BGSD.md` is the user-editable settings file, written by `/bgsd-init` at the repo root. It works like a CLAUDE.md: you edit it, Kiwi reads it at the start of every sesh, and Kiwi can self-edit it when you ask it to change a setting in chat ("Kiwi, use a branch called `staging` instead of `next`"). Every knob ships with a default, so an unedited `BGSD.md` is a complete, working config.
 
-| Setting | What it controls | Default |
-|---------|------------------|---------|
-| Integration branch name | The standing integration branch worktrees merge into | `next` |
-| Model + effort posture | Which models and effort bands the pipeline uses | balanced/auto-escalating |
-| Env-file propagation | Which `.env*` files are copied into each worktree | `.env`, `.env.local` |
+| Setting                  | What it controls                                                | Default                           |
+| ------------------------ | --------------------------------------------------------------- | --------------------------------- |
+| Integration branch name  | The standing integration branch worktrees merge into            | `next`                            |
+| Model + effort posture   | Which models and effort bands the pipeline uses                 | balanced/auto-escalating          |
+| Env-file propagation     | Which `.env*` files are copied into each worktree               | `.env`, `.env.local`              |
 | GitHub issue/PR behavior | Whether to open atomic issues and PRs, and against which branch | atomic issues on; PRs into `next` |
-| Kiwi narration | Verbosity and tone of the Conductor's live narration | on, conversational |
+| Kiwi narration           | Verbosity and tone of the Conductor's live narration            | on, conversational                |
 
 **Env propagation.** Git worktrees do not carry gitignored files, so apps that need `.env*` to boot would otherwise come up broken in a worktree. The Conductor copies the configured `.env*` files from the repo root into each worktree so every app boots with its real environment.
 
@@ -91,15 +91,15 @@ A manual flag always wins, unconditionally; the auto-scale thresholds apply only
 
 ## Scale comparison
 
-| | quick | feature | project |
-|---|---|---|---|
-| **Example** | "change this button to blue" | "add a dark-mode toggle" | "build auth + billing + a dashboard" |
-| **Auto-scale trigger** | ≤2 units, 1 surface | a few units, mid-size | ≥4 units or ≥3 surfaces |
-| **Upfront discussion** | no | no | yes (intake/brainstorm) |
-| **Decompose + parallel worktrees** | no — single | some, low concurrency | full fan-out |
-| **Integration loop (Loop 2)** | no | yes if >1 unit | yes |
-| **Formal review gate** | no (Loop 1 PASS + 1-line confirm) | yes | yes |
-| **Verification (Loop 1)** | always | always | always |
+|                                    | quick                             | feature                  | project                              |
+| ---------------------------------- | --------------------------------- | ------------------------ | ------------------------------------ |
+| **Example**                        | "change this button to blue"      | "add a dark-mode toggle" | "build auth + billing + a dashboard" |
+| **Auto-scale trigger**             | ≤2 units, 1 surface               | a few units, mid-size    | ≥4 units or ≥3 surfaces              |
+| **Upfront discussion**             | no                                | no                       | yes (intake/brainstorm)              |
+| **Decompose + parallel worktrees** | no — single                       | some, low concurrency    | full fan-out                         |
+| **Integration loop (Loop 2)**      | no                                | yes if >1 unit           | yes                                  |
+| **Formal review gate**             | no (Loop 1 PASS + 1-line confirm) | yes                      | yes                                  |
+| **Verification (Loop 1)**          | always                            | always                   | always                               |
 
 ---
 
@@ -107,20 +107,22 @@ A manual flag always wins, unconditionally; the auto-scale thresholds apply only
 
 These are **internal stages** — you never call them directly. Kiwi orchestrates all of them on your behalf:
 
-| Stage | What it does |
-|-------|--------------|
-| **Init / preflight** | Runs `/bgsd-init`: ensures `next` exists and is fast-forwarded from `main`, scaffolds `.bgsd/`, writes `BGSD.md`, copies configured `.env*` files into worktrees |
-| **Classify / route** | Determines scale (quick / feature / project) and builds the execution plan |
-| **Decompose** | For project-scale: breaks the prompt into a verified DAG of GSD units |
-| **Worktree fan-out** | Spawns parallel git worktrees, one per unit, isolated from each other (with the configured `.env*` files copied in so apps boot) |
-| **Loop 1 — verify→fix per worktree** | Runs each GSD unit, then verifies with real browser testing. On defects, re-routes to GSD for a fix. Loops up to the configured max, escalating model effort each time |
-| **Conflict pre-check + merge into `next`** | Detects merge conflicts before they land; merges verified branches into the standing `next` integration branch in dependency order |
-| **Loop 2 — integration verify→fix** | Boots the integrated app on `next` and verifies end-to-end. Dispatches parallel fix agents on defects, re-merges, re-verifies |
-| **User Review Gate** | Boots `next`, shows a per-criterion checklist, waits for your approval. Never auto-passes |
-| **Feedback ingestion** | Turns your review findings into a new fix pass. `--fast` mode runs parallel fix agents without re-verification (always flagged `UNVERIFIED`) |
-| **CHANGELOG + PR** | Aggregates per-agent changelogs across all loops and assembles a PR body. Opens an atomic PR into `next` behind `--live`; the `next` → `main` merge stays human-only |
+| Stage                                      | What it does                                                                                                                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Init / preflight**                       | Runs `/bgsd-init`: ensures `next` exists and is fast-forwarded from `main`, scaffolds `.bgsd/`, writes `BGSD.md`, copies configured `.env*` files into worktrees       |
+| **Classify / route**                       | Determines scale (quick / feature / project) and builds the execution plan                                                                                             |
+| **Decompose**                              | For project-scale: breaks the prompt into a verified DAG of GSD units                                                                                                  |
+| **Worktree fan-out**                       | Spawns parallel git worktrees, one per unit, isolated from each other (with the configured `.env*` files copied in so apps boot)                                       |
+| **Loop 1 — verify→fix per worktree**       | Runs each GSD unit, then verifies with real browser testing. On defects, re-routes to GSD for a fix. Loops up to the configured max, escalating model effort each time |
+| **Conflict pre-check + merge into `next`** | Detects merge conflicts before they land; merges verified branches into the standing `next` integration branch in dependency order                                     |
+| **Loop 2 — integration verify→fix**        | Boots the integrated app on `next` and verifies end-to-end. Dispatches parallel fix agents on defects, re-merges, re-verifies                                          |
+| **User Review Gate**                       | Boots `next`, shows a per-criterion checklist, waits for your approval. Never auto-passes                                                                              |
+| **Feedback ingestion**                     | Turns your review findings into a new fix pass. `--fast` mode runs parallel fix agents without re-verification (always flagged `UNVERIFIED`)                           |
+| **CHANGELOG + PR**                         | Aggregates per-agent changelogs across all loops and assembles a PR body. Opens an atomic PR into `next`; the `next` → `main` merge stays human-only   |
 
-Throughout the run, the Conductor ("Kiwi") narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The always-on live status view (`/bgsd-status` machinery) is Kiwi's dashboard: it runs throughout and shows you what every agent is doing, where Loop 1 stands per worktree, merge history, budget, and context pressure. (The conversational narration layer is being wired now.)
+Throughout the run, the Conductor ("Kiwi") narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The always-on live status view (`/bgsd-status` machinery) is Kiwi's dashboard: it runs throughout and shows you what every agent is doing, where Loop 1 stands per worktree, merge history, budget, and context pressure.
+
+Cool oh-my-logo gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline Kiwi is at a glance.
 
 ---
 
@@ -140,12 +142,12 @@ The Conductor inherits this guarantee. Every path through the pipeline — wheth
 
 bgsd uses a four-rung driver ladder — cheapest and most reliable first:
 
-| Rung | Tool | What it catches |
-|------|------|-----------------|
-| **1 Console** | `browser_console_messages` | React warnings, hydration errors, JS exceptions |
-| **2 Network** | `browser_network_requests` | 4xx/5xx responses, failed resource loads |
-| **3 DOM** | `browser_snapshot` | Missing elements, wrong structure, unmet criteria |
-| **4 Vision** | `browser_take_screenshot` | Purely visual criteria (fallback only) |
+| Rung          | Tool                       | What it catches                                   |
+| ------------- | -------------------------- | ------------------------------------------------- |
+| **1 Console** | `browser_console_messages` | React warnings, hydration errors, JS exceptions   |
+| **2 Network** | `browser_network_requests` | 4xx/5xx responses, failed resource loads          |
+| **3 DOM**     | `browser_snapshot`         | Missing elements, wrong structure, unmet criteria |
+| **4 Vision**  | `browser_take_screenshot`  | Purely visual criteria (fallback only)            |
 
 Vision is a last resort, not a crutch. Most bugs die at rung 1.
 
@@ -153,18 +155,64 @@ Vision is a last resort, not a crutch. Most bugs die at rung 1.
 
 ---
 
+## Talk to one thing: the sesh
+
+Vanilla GSD, like most Claude Code frameworks, runs one linear flow at a time. That never matched how you actually want to drive Claude Code: one intent in, many things happening at once, all under one roof. So bgsd wraps GSD in a **sesh**.
+
+Everything starts with a single command:
+
+```
+/bgsd-sesh "build new public-facing forum portion of app"
+```
+
+You pick how big the job is with a scope flag:
+
+| Flag | Scope | Reach for it when |
+| --- | --- | --- |
+| `--quick` | a single change | a bug fix, a copy tweak, one endpoint |
+| `--feature` | one feature | a settings page, an export button, Google sign-in |
+| `--project` | a whole slice of product | a forum, billing, an onboarding flow |
+
+From there you talk to one entity: the Conductor (codename Kiwi). It asks you a short set of scoping questions, breaks the work into units, and orchestrates everything else. One prompt in, one reviewable branch out.
+
+## GSD on steroids: GSD runs inside every agent
+
+Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.
+
+When you fire `--project "build new public-facing forum portion of app"`, the Conductor scopes it into units and spins up one git-worktree agent per unit, for example:
+
+- `auth` for accounts, sessions, sign-in
+- `posts api` for threads, replies, the data layer
+- `feed ui` for the public feed and post views
+- `moderation` for reports, flags, safe-content rules
+
+Each of those agents runs its **own full GSD batch** in its **own isolated worktree**, at the same time. So instead of one linear GSD pass over the project, you get N complete GSD cycles running in parallel, one per slice.
+
+The Conductor decides which GSD phases each unit gets: research phases on harder units, `/gsd-ui-phase` for UI-heavy units, `/gsd-ai-integration-phase` for AI integration units, a code-review gate on harder work. Trivial or quick units skip GSD phases entirely and apply a direct fix. This is per-unit tailoring, not a one-size-fits-all flow.
+
+Think of vanilla GSD as one chef cooking a five-course meal start to finish. bgsd is the head chef (the Conductor) who takes the order, hands each course to its own station, has every station cook its full recipe at once, and tastes every plate before it leaves the kitchen.
+
+## Verified for real, then a safe landing
+
+Nothing is trusted on faith. Every agent's work is checked by a Playwright tester that drives the actual app: clicking, screenshotting, and reading the console, network, and DOM. Insufficient evidence returns `INSUFFICIENT_EVIDENCE`, never a silent green.
+
+Only verified work converges onto a `next` branch. No agent ever writes to `main`. The `next` to `main` merge is yours, and yours alone.
+
+---
+
 ## Build history
 
-| Version | Name | Status |
-|---------|------|--------|
-| **v0** | Standalone Tester + verify engine | **PROVEN** (2026-06-29) |
-| **v1** | Fix-stream + Loop 1 | **BUILT** (2026-06-29) |
-| **v2** | Conductor (Kiwi) + parallel orchestration + status view | **BUILT** (2026-06-29) |
-| **v3** | Loop 2 + User Review Gate + feedback mode | **BUILT** (2026-06-29) |
-| **v2-intake** | Conductor intake/proxy extension (E1–E6) | In progress |
-| v4 | Remote orchestration | Planned |
+| Version       | Name                                                    | Status                  |
+| ------------- | ------------------------------------------------------- | ----------------------- |
+| **v0**        | Standalone Tester + verify engine                       | **PROVEN** (2026-06-29) |
+| **v1**        | Fix-stream + Loop 1                                     | **BUILT** (2026-06-29)  |
+| **v2**        | Conductor (Kiwi) + parallel orchestration + status view | **BUILT** (2026-06-29)  |
+| **v3**        | Loop 2 + User Review Gate + feedback mode               | **BUILT** (2026-06-29)  |
+| **v0.5.0**    | End-to-end pipeline runs; per-unit GSD tailoring; gradient banners | **LIVE** (2026-07-01) |
+| **v2-intake** | Conductor intake/proxy extension (E1–E6)                | In progress             |
+| v4            | Remote orchestration                                    | Planned                 |
 
-All live runs are guarded behind `--live` and remain human-gated. The deterministic core is unit-tested (19 suites green across v0+v1+v2+v3).
+As of v0.5.0, the full two-loop autonomous pipeline runs end-to-end. A plain `/bgsd-sesh` fires the entire pipeline with zero friction (no `--live` human-gate for the execution path itself; only the `main`/`master` branch guard remains). The deterministic core is unit-tested (19 suites green across v0+v1+v2+v3).
 
 ---
 
@@ -283,15 +331,15 @@ Runtime output (gitignored) lands in `.bgsd/runs/<run-id>/`; scratch in `.bgsd-t
 
 These invariants are enforced in code, not just aspirationally documented:
 
-| Invariant | Enforcement |
-|-----------|-------------|
+| Invariant                        | Enforcement                                                                                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Agents never write to `main`** | `main` (the production/default branch) is never written, committed, or PR'd by an agent. All integration lands on the standing `next` branch; the `next` → `main` merge is a manual, human-only step. |
-| **Additive only** | bgsd lives under `bgsd/` (plus runtime `.bgsd*/` dirs). It never edits GSD's directories. |
-| **Never edit vendored GSD** | `commands/`, `agents/`, `gsd-core/`, `skills/`, `hooks/`, root `README.md`, `LICENSE`, `docs/` — all read-only to bgsd. |
-| **Seams only** | bgsd reaches GSD only through (1) `/gsd-*` slash commands, (2) the `.planning/` file contract, and (3) `config.json`. |
-| **No silent green (NFR-06)** | Insufficient evidence → `INSUFFICIENT_EVIDENCE`. MCP absent → `BLOCKED`. Never a fabricated `PASS`. |
-| **Bounded autonomy (NFR-08)** | Every loop is bounded by `max_iterations`; every Conductor run by `--budget-cap`; every wave requires a human go/no-go. |
-| **Live runs human-gated** | `--live` flag required for multi-process orchestration and live captures. Guards check `process.argv` and throw a detailed refusal if absent. |
+| **Additive only**                | bgsd lives under `bgsd/` (plus runtime `.bgsd*/` dirs). It never edits GSD's directories.                                                                                                             |
+| **Never edit vendored GSD**      | `commands/`, `agents/`, `gsd-core/`, `skills/`, `hooks/`, root `README.md`, `LICENSE`, `docs/` — all read-only to bgsd.                                                                               |
+| **Seams only**                   | bgsd reaches GSD only through (1) `/gsd-*` slash commands, (2) the `.planning/` file contract, and (3) `config.json`.                                                                                 |
+| **No silent green (NFR-06)**     | Insufficient evidence → `INSUFFICIENT_EVIDENCE`. MCP absent → `BLOCKED`. Never a fabricated `PASS`.                                                                                                   |
+| **Bounded autonomy (NFR-08)**    | Every loop is bounded by `max_iterations`; every Conductor run by `--budget-cap`; every wave requires a human go/no-go.                                                                               |
+| **Live runs human-gated**        | `--live` flag required for multi-process orchestration and live captures. Guards check `process.argv` and throw a detailed refusal if absent.                                                         |
 
 ---
 
@@ -317,15 +365,15 @@ node bgsd/scripts/ui.mjs --demo
 
 Full doc pages live in `bgsd/docs/`. See [`docs/index.mdx`](./docs/index.mdx) for a linked table of contents.
 
-| Page | Contents |
-|------|----------|
-| [`docs/conductor-session.mdx`](./docs/conductor-session.mdx) | **Start here.** The Conductor session — `/bgsd-sesh` entry, auto-scale, flags, full pipeline flowchart |
-| [`docs/quickstart.mdx`](./docs/quickstart.mdx) | Install, canary proof, first verify run |
-| [`docs/bgsd-verify.mdx`](./docs/bgsd-verify.mdx) | Arguments, criteria formats, report schema, driver-ladder details (internal stage) |
-| [`docs/bgsd-queue.mdx`](./docs/bgsd-queue.mdx) | Fix-stream lifecycle, state machine, Loop 1 behavior (internal stage) |
-| [`docs/bgsd-run.mdx`](./docs/bgsd-run.mdx) | Conductor pipeline, graph, scheduler, conflict resolver (internal stage) |
-| [`docs/bgsd-status.mdx`](./docs/bgsd-status.mdx) | Live status view, color badges, budget telemetry |
-| [`docs/hyperpolymath-capture.mdx`](./docs/hyperpolymath-capture.mdx) | Capture adapter, cron setup, human-gated live hookup |
+| Page                                                                 | Contents                                                                                               |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [`docs/conductor-session.mdx`](./docs/conductor-session.mdx)         | **Start here.** The Conductor session — `/bgsd-sesh` entry, auto-scale, flags, full pipeline flowchart |
+| [`docs/quickstart.mdx`](./docs/quickstart.mdx)                       | Install, canary proof, first verify run                                                                |
+| [`docs/bgsd-verify.mdx`](./docs/bgsd-verify.mdx)                     | Arguments, criteria formats, report schema, driver-ladder details (internal stage)                     |
+| [`docs/bgsd-queue.mdx`](./docs/bgsd-queue.mdx)                       | Fix-stream lifecycle, state machine, Loop 1 behavior (internal stage)                                  |
+| [`docs/bgsd-run.mdx`](./docs/bgsd-run.mdx)                           | Conductor pipeline, graph, scheduler, conflict resolver (internal stage)                               |
+| [`docs/bgsd-status.mdx`](./docs/bgsd-status.mdx)                     | Live status view, color badges, budget telemetry                                                       |
+| [`docs/hyperpolymath-capture.mdx`](./docs/hyperpolymath-capture.mdx) | Capture adapter, cron setup, human-gated live hookup                                                   |
 
 ---
 
@@ -349,4 +397,4 @@ MIT — see [`LICENSE`](../LICENSE) at the repo root.
 
 ---
 
-*bgsd is an additive layer on [`@opengsd/gsd-core`](https://github.com/opengsd/gsd-core). `main` is production and is never written to by agents; the standing `next` branch is the integration mirror that the pipeline builds on, and `next` → `main` is always a manual, human-only merge.*
+_bgsd is an additive layer on [`@opengsd/gsd-core`](https://github.com/opengsd/gsd-core). `main` is production and is never written to by agents; the standing `next` branch is the integration mirror that the pipeline builds on, and `next` → `main` is always a manual, human-only merge._

@@ -833,6 +833,7 @@
     <div class="nav-links">
       <a href="#how-it-works" class="nav-link">how-it-works</a>
       <a href="#pipeline"     class="nav-link">pipeline</a>
+      <a href="#sesh"         class="nav-link">the-sesh</a>
       <a href="#commands"     class="nav-link">commands</a>
       <a href="#milestones"   class="nav-link">milestones</a>
       <a href="#install"      class="nav-link">install</a>
@@ -865,7 +866,7 @@
         <span class="hero-eyebrow">
           <!-- lucide: git-fork -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-          Open-source · additive layer on GSD · MIT · v0.4.3
+          Open-source · additive layer on GSD · MIT · v0.5.0
         </span>
 
         <h1 class="hero-title">
@@ -891,7 +892,7 @@
         </div>
 
         <div class="hero-meta">
-          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0–v3 built · all verified</span>
+          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0.5.0 · pipeline runs end-to-end</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Conductor codename Kiwi</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> No silent green, ever</span>
         </div>
@@ -1603,6 +1604,133 @@
 
 
 <!-- ============================================================
+     §04d HOW THE SESH WORKS
+     ============================================================ -->
+<section id="sesh" class="section" aria-labelledby="sesh-heading">
+  <div class="container">
+    <div class="section-header center">
+      <span class="kicker"><span class="num">04d</span> · how the sesh works</span>
+      <h2 id="sesh-heading" class="section-title">One prompt in. One reviewable branch out.</h2>
+      <p class="section-sub">
+        Vanilla GSD runs one linear flow at a time. bgsd wraps GSD in a sesh: one intent in,
+        many things happening at once, all under one roof. The Conductor (Kiwi) handles the rest.
+      </p>
+    </div>
+
+    <div class="grid-cards">
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: terminal -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+        </span>
+        <div class="card-title">Talk to one thing: the sesh</div>
+        <p class="card-body">
+          Everything starts with a single command and a scope flag. The Conductor asks a short set
+          of scoping questions, breaks the work into units, and orchestrates everything else.
+          You never manage agents, worktrees, or GSD phases directly.
+        </p>
+        <div class="code" style="margin-top:0.9rem;font-size:12px;">
+          <span class="cmd">/bgsd-sesh</span> <span class="path">"build public-facing forum"</span> <span class="flag">--project</span>
+        </div>
+        <span class="card-tag">flag: --quick · --feature · --project</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: git-fork -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+        </span>
+        <div class="card-title">GSD runs inside every agent</div>
+        <p class="card-body">
+          GSD does not run once over your whole request. The Conductor scopes the work into units
+          (for example: <code>auth</code>, <code>posts api</code>, <code>feed ui</code>,
+          <code>moderation</code>) and spins up one git-worktree agent per unit. Each agent runs
+          its <strong style="color:var(--fg)">own full GSD batch</strong>, in its own isolated
+          worktree, at the same time. N complete GSD cycles in parallel, one per slice.
+        </p>
+        <span class="card-tag">parallel worktrees · one GSD batch each</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: sliders-horizontal -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
+        </span>
+        <div class="card-title">Per-unit GSD tailoring</div>
+        <p class="card-body">
+          The Conductor decides which GSD phases each unit gets: research on harder units,
+          <code>/gsd-ui-phase</code> for UI-heavy work, <code>/gsd-ai-integration-phase</code> for
+          AI integration units, a code-review gate on harder work. Trivial or quick units skip GSD
+          phases and apply a direct fix. Not one-size-fits-all.
+        </p>
+        <span class="card-tag">/bgsd-run-agent · phaseconfig.mjs</span>
+      </div>
+
+      <div class="card">
+        <span class="card-ico">
+          <!-- lucide: shield-check -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+        </span>
+        <div class="card-title">Verified for real, then a safe landing</div>
+        <p class="card-body">
+          Nothing is trusted on faith. Every agent's work is checked by a Playwright tester that
+          drives the actual app: clicking, screenshotting, and reading the console, network, and
+          DOM. Insufficient evidence returns <code>INSUFFICIENT_EVIDENCE</code>, never a silent
+          green. Only verified work converges onto <code>next</code>. The <code>next → main</code>
+          merge is yours, and yours alone.
+        </p>
+        <span class="card-tag">Loop 1 + Loop 2 · no silent green</span>
+      </div>
+
+    </div>
+
+    <!-- Scope flag table -->
+    <div style="margin-top:2.5rem;">
+      <div class="scale-wrap">
+        <table class="scale-table">
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Scope</th>
+              <th>Reach for it when</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="scale-flag">--quick</span></td>
+              <td class="val-dim">a single change</td>
+              <td class="val-example">a bug fix, a copy tweak, one endpoint</td>
+            </tr>
+            <tr>
+              <td><span class="scale-flag">--feature</span></td>
+              <td class="val-dim">one feature</td>
+              <td class="val-example">a settings page, an export button, Google sign-in</td>
+            </tr>
+            <tr>
+              <td><span class="scale-flag">--project</span></td>
+              <td class="val-dim">a whole slice of product</td>
+              <td class="val-example">a forum, billing, an onboarding flow</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="scale-note">
+        <strong style="color:var(--fg)">A manual flag always wins, unconditionally.</strong>
+        Auto-scale thresholds apply only when no flag is given. Either way, the Conductor runs the
+        same verify-and-fix pipeline; scale determines depth and width. Verification in Loop 1 is
+        never skipped.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<div class="divider"></div>
+
+
+<!-- ============================================================
      §05 MILESTONES
      ============================================================ -->
 <section id="milestones" class="section" aria-labelledby="milestones-heading">
@@ -1672,6 +1800,24 @@
             per-criterion User Review Gate (never auto-passes), feedback mode for rapid iteration,
             per-agent CHANGELOG aggregation, and guarded <code>gh pr create</code> into
             <code>next</code>. 19 test suites green across v0+v1+v2+v3.
+          </p>
+        </div>
+      </div>
+
+      <div class="ms-item done">
+        <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div>
+          <div class="ms-ver">v0.5.0 <span class="chip pass">live</span></div>
+          <div class="ms-title">End-to-end pipeline runs + per-unit GSD tailoring + gradient banners</div>
+          <p class="ms-desc">
+            The full two-loop autonomous pipeline now runs end-to-end with zero friction. A plain
+            <code>/bgsd-sesh</code> fires Loop 1 per worktree (with per-unit GSD phase selection
+            driven by <code>/bgsd-run-agent</code> + <code>phaseconfig.mjs</code>), the decision
+            oracle proxies discuss-phase questions, Loop 2 integration verify&rarr;fix runs on
+            <code>next</code>, and the User Review Gate and PR wiring all execute. The old
+            <code>--live</code> execution gate is gone; only the <code>main</code>/<code>master</code>
+            branch guard remains. Oh-my-logo gradient banners print at session start, between stages,
+            at finish, and on init.
           </p>
         </div>
       </div>
@@ -1971,7 +2117,7 @@
     <div class="footer-brand">
       <!-- lucide: scan-eye -->
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="1"/><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"/></svg>
-      better-gsd (bgsd) · v0.4.3 · by Filippo Fonseca · MIT license
+      better-gsd (bgsd) · v0.5.0 · by Filippo Fonseca · MIT license
     </div>
     <nav class="footer-links" aria-label="Footer links">
       <a href="https://github.com/filippo-fonseca/better-gsd" class="footer-link" target="_blank" rel="noopener">GitHub</a>

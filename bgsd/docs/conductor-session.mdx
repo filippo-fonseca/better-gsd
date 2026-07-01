@@ -11,6 +11,30 @@ You describe what you need. Kiwi detects the scale, decides how many agents to r
 
 You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly; those are internal stages the Conductor runs for you.
 
+## Talk to one thing: the sesh
+
+Vanilla GSD runs one linear flow at a time. bgsd wraps GSD in a **sesh**: one intent in, many things happening at once, all under one roof. Everything starts with `/bgsd-sesh "<your task>"` and a scope flag.
+
+### GSD runs inside every agent
+
+GSD does not run once over your whole request. It runs inside every parallel agent.
+
+When you fire `--project "build new public-facing forum portion of app"`, the Conductor scopes it into units (for example: `auth`, `posts api`, `feed ui`, `moderation`) and spins up one git-worktree agent per unit. Each of those agents runs its **own full GSD batch** in its **own isolated worktree**, at the same time. Instead of one linear GSD pass over the project, you get N complete GSD cycles running in parallel, one per slice.
+
+The Conductor decides which GSD phases each unit gets: research phases on harder units, `/gsd-ui-phase` for UI-heavy work, `/gsd-ai-integration-phase` for AI integration, a code-review gate on harder units. Trivial or quick units skip GSD phases and apply a direct fix. This per-unit tailoring is driven by the `/bgsd-run-agent` command and `phaseconfig.mjs` resolver.
+
+Think of vanilla GSD as one chef cooking a five-course meal start to finish. bgsd is the head chef (the Conductor) who takes the order, hands each course to its own station, has every station cook its full recipe at once, and tastes every plate before it leaves the kitchen.
+
+### Verified for real, then a safe landing
+
+Nothing is trusted on faith. Every agent's work is checked by a Playwright tester that drives the actual app: clicking, screenshotting, and reading the console, network, and DOM. Insufficient evidence returns `INSUFFICIENT_EVIDENCE`, never a silent green.
+
+Only verified work converges onto the `next` branch. No agent ever writes to `main`. The `next` to `main` merge is yours, and yours alone.
+
+### Session banners
+
+Cool gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline Kiwi is at a glance.
+
 ## Install
 
 bgsd is an installable, standalone Claude Code plugin:
@@ -166,7 +190,7 @@ You never call these. Kiwi orchestrates all of them on your behalf as part of a 
 | Feedback ingestion | on request | on request | on request | Turns review findings into another fix pass |
 | CHANGELOG + PR | always | always | always | Aggregated changelog, atomic `gh pr create` into `next`; `next` → `main` stays human-only |
 
-Throughout the run, Kiwi narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The live status view (`/bgsd-status` machinery) runs alongside it. At any moment you can see active agents, the current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure. (The conversational narration layer is being wired now.)
+Throughout the run, Kiwi narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The live status view (`/bgsd-status` machinery) runs alongside it. At any moment you can see active agents, the current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure. Gradient banners print at session start, between each stage, at finish, and on init.
 
 ---
 
