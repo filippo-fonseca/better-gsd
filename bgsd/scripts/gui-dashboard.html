@@ -80,6 +80,37 @@
   .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 0; opacity: .7; }
   footer { color: var(--muted); font-size: 11.5px; padding: 8px 20px 22px; }
   .lock { color: var(--kiwi); }
+  /* Tab switcher (Current / All sessions). */
+  .tabs { display: inline-flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .tab { appearance: none; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12.5px; padding: 4px 12px; border-radius: 7px; cursor: pointer; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { background: var(--kiwi); color: #05130a; font-weight: 700; }
+  .view[hidden] { display: none; }
+  /* Sessions list. */
+  .sessions { display: flex; flex-direction: column; gap: 9px; }
+  .sess {
+    display: grid; grid-template-columns: minmax(160px, 1.4fr) auto auto auto auto;
+    align-items: center; gap: 12px; text-align: left; width: 100%;
+    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--muted);
+    border-radius: 10px; padding: 11px 13px; color: var(--ink); font: inherit; cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .sess:hover { background: #1e2a38; border-color: var(--kiwi-dim); }
+  .sess.viewing { border-color: var(--kiwi); }
+  .sess.st-in-progress { border-left-color: var(--run); }
+  .sess.st-completed { border-left-color: var(--done); }
+  .sess.st-aborted { border-left-color: var(--bad); }
+  .sess-id { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess-id .stage { display: block; color: var(--muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
+  .sess-scale { color: var(--muted); font-size: 11.5px; }
+  .sbadge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .sbadge.st-in-progress { background: rgba(88,166,255,.15); color: var(--run); }
+  .sbadge.st-completed { background: rgba(63,181,103,.16); color: var(--done); }
+  .sbadge.st-aborted { background: rgba(248,81,73,.15); color: var(--bad); }
+  .sess-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sess-counts .chip { font-size: 11px; padding: 2px 8px; }
+  .sess-when { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  @media (max-width: 720px) { .sess { grid-template-columns: 1fr auto; } .sess-scale, .sess-counts, .sess-when { grid-column: 1 / -1; } }
 </style>
 </head>
 <body>
@@ -96,14 +127,24 @@
     </div>
   </div>
   <div class="top" style="margin-top:8px">
+    <span class="tabs" role="tablist">
+      <button class="tab active" id="tab-current" role="tab">Current</button>
+      <button class="tab" id="tab-sessions" role="tab">All sessions</button>
+    </span>
+    <span class="meta" id="viewing-note" hidden></span>
     <span class="live" id="live"><span class="beat"></span><span id="live-text">connecting…</span></span>
     <span class="meta lock" style="margin-left:auto">&#128274; main-protected</span>
   </div>
 </header>
 <main>
-  <div class="pipeline" id="pipeline"></div>
-  <div class="note-bar" id="note-bar"></div>
-  <div class="lanes" id="lanes"></div>
+  <div class="view" id="view-current">
+    <div class="pipeline" id="pipeline"></div>
+    <div class="note-bar" id="note-bar"></div>
+    <div class="lanes" id="lanes"></div>
+  </div>
+  <div class="view" id="view-sessions" hidden>
+    <div class="sessions" id="sessions"></div>
+  </div>
 </main>
 <footer>bgsd live view · polls every 1.5s · <span id="stamp">—</span></footer>
 
@@ -186,14 +227,107 @@
     document.getElementById("live-text").textContent = text;
   }
 
+  // --- View + selected-run state -----------------------------------------
+  // activeTab: "current" | "sessions". viewingRun: a run id to pin, or null for latest.
+  var activeTab = "current";
+  var viewingRun = null;
+
+  var STATUS_LABEL = { "in-progress": "in progress", "completed": "completed", "aborted": "aborted" };
+
+  function setViewingNote() {
+    var note = document.getElementById("viewing-note");
+    if (viewingRun) {
+      note.hidden = false;
+      note.innerHTML = "";
+      note.appendChild(document.createTextNode("viewing "));
+      note.appendChild(el("b", null, viewingRun));
+      var back = el("button", "tab", "return to latest");
+      back.style.marginLeft = "8px";
+      back.addEventListener("click", function () { selectRun(null); showTab("current"); });
+      note.appendChild(back);
+    } else {
+      note.hidden = true;
+      note.innerHTML = "";
+    }
+  }
+
+  function selectRun(id) {
+    viewingRun = id || null;
+    setViewingNote();
+    tick();
+  }
+
+  function stateUrl() {
+    return viewingRun ? "/api/state?run=" + encodeURIComponent(viewingRun) : "/api/state";
+  }
+
   function tick() {
-    fetch("/api/state", { cache: "no-store" })
+    fetch(stateUrl(), { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
       .then(function (model) { setLive("", "live"); render(model); })
-      .catch(function () { setLive("lost", "connection lost — retrying"); });
+      .catch(function () { setLive("lost", "connection lost, retrying"); });
   }
+
+  function renderSessions(list) {
+    var wrap = document.getElementById("sessions");
+    wrap.innerHTML = "";
+    if (!list || !list.length) { wrap.appendChild(el("div", "empty", "no runs found under .bgsd/runs")); return; }
+    list.forEach(function (s) {
+      var row = el("button", "sess st-" + s.status);
+      if (viewingRun && s.run_id === viewingRun) row.className += " viewing";
+
+      var idCell = el("div", "sess-id", s.run_id || "(unknown run)");
+      idCell.appendChild(el("span", "stage", "stage: " + (s.stage || "—")));
+      row.appendChild(idCell);
+
+      row.appendChild(el("div", "sess-scale", s.scale || "—"));
+      row.appendChild(el("span", "sbadge st-" + s.status, STATUS_LABEL[s.status] || s.status));
+
+      var counts = el("div", "sess-counts");
+      counts.appendChild(el("span", "chip run", "running " + (s.counts.running || 0)));
+      counts.appendChild(el("span", "chip done", "done " + (s.counts.done || 0)));
+      counts.appendChild(el("span", "chip bad", "blocked " + (s.counts.blocked || 0)));
+      row.appendChild(counts);
+
+      var when = s.updated_at ? new Date(s.updated_at).toLocaleString() : "—";
+      row.appendChild(el("div", "sess-when", when));
+
+      row.addEventListener("click", function () { selectRun(s.run_id); showTab("current"); });
+      wrap.appendChild(row);
+    });
+  }
+
+  function loadSessions() {
+    fetch("/api/sessions", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (list) { renderSessions(list); })
+      .catch(function () {
+        var wrap = document.getElementById("sessions");
+        wrap.innerHTML = "";
+        wrap.appendChild(el("div", "empty", "could not load sessions, retrying"));
+      });
+  }
+
+  function showTab(tab) {
+    activeTab = tab;
+    var isCurrent = tab === "current";
+    document.getElementById("tab-current").className = "tab" + (isCurrent ? " active" : "");
+    document.getElementById("tab-sessions").className = "tab" + (isCurrent ? "" : " active");
+    document.getElementById("view-current").hidden = !isCurrent;
+    document.getElementById("view-sessions").hidden = isCurrent;
+    if (isCurrent) tick();
+    else loadSessions();
+  }
+
+  document.getElementById("tab-current").addEventListener("click", function () { showTab("current"); });
+  document.getElementById("tab-sessions").addEventListener("click", function () { showTab("sessions"); });
+
+  setViewingNote();
   tick();
-  setInterval(tick, POLL_MS);
+  setInterval(function () {
+    if (activeTab === "current") tick();
+    else loadSessions();
+  }, POLL_MS);
 </script>
 </body>
 </html>
