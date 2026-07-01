@@ -1070,6 +1070,7 @@ if (
     }
     const plan = buildDepthPlan(classification.scale, { prompt });
 
+    try { const { splash } = await import("./ui.mjs"); splash(); } catch (_) { /* splash is cosmetic */ }
     process.stdout.write(`\nKiwi · bgsd Conductor   [lock] main-protected\n`);
     process.stdout.write(`  prompt:  ${prompt}\n`);
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);

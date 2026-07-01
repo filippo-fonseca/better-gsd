@@ -231,9 +231,11 @@ function previewPlan(repoRoot) {
   return { alreadyInitialized, actions, integrationBranch, baseBranch };
 }
 
-export function main() {
+export async function main() {
   const repoRoot = resolveRepoRoot();
   const out = (s) => process.stdout.write(s);
+
+  try { const { splash } = await import("./ui.mjs"); splash({ ready: "Setting up this repo for bgsd." }); } catch (_) { /* splash is cosmetic */ }
 
   const planOnly =
     process.argv.includes("--plan-only") || process.argv.includes("--dry-run");
@@ -264,10 +266,8 @@ export function main() {
 const invokedDirectly =
   typeof process.argv[1] === "string" && /[\\/]init-live\.mjs$/.test(process.argv[1]);
 if (invokedDirectly) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     process.stderr.write(`${err.message}\n`);
     process.exit(1);
-  }
+  });
 }

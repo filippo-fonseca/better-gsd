@@ -12,6 +12,9 @@
  */
 
 import process from 'node:process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Environment detection
@@ -123,6 +126,56 @@ export function kiwiPill(label = "kiwi · conductor", { env = process.env, isTTY
  * @param {object} [opts]
  * @param {string} [opts.subtitle] - Optional subtitle line below the banner.
  */
+/** Wrap text in the kiwi-green 256-color foreground (plain when color is off). */
+function kiwiGreen(t) {
+  if (!COLOR_OK) return t;
+  return `\x1b[38;5;${KIWI_GREEN_256}m${t}\x1b[39m`;
+}
+
+// Block-letter "bgsd" logo (shown in the splash).
+const BGSD_ART = [
+  '██████╗   ██████╗  ███████╗ ██████╗ ',
+  '██╔══██╗ ██╔════╝  ██╔════╝ ██╔══██╗',
+  '██████╔╝ ██║  ███╗ ███████╗ ██║  ██║',
+  '██╔══██╗ ██║   ██║ ╚════██║ ██║  ██║',
+  '██████╔╝ ╚██████╔╝ ███████║ ██████╔╝',
+  '╚═════╝   ╚═════╝  ╚══════╝ ╚═════╝ ',
+];
+
+/** Read the installed plugin version from ../.claude-plugin/plugin.json. */
+export function pluginVersion() {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pj = JSON.parse(readFileSync(join(here, '..', '.claude-plugin', 'plugin.json'), 'utf8'));
+    return pj.version ? `v${pj.version}` : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
+ * Print the branded bgsd splash: a block-letter logo, the tagline, the version,
+ * and a "ready" line. Shown at the start of every /bgsd-sesh and on /bgsd-init.
+ * Degrades to plain text under NO_COLOR / non-TTY.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.subtitle]  Tagline line under the logo.
+ * @param {string} [opts.ready]     Ready line (e.g. "Kiwi online").
+ * @param {string} [opts.version]   Version string; defaults to pluginVersion().
+ */
+export function splash({ subtitle, ready = 'Kiwi online, at your service.', version } = {}) {
+  const ver = version ?? pluginVersion();
+  const tag = subtitle
+    ?? 'Autonomous, self-verifying orchestration on top of GSD. Talk to the Conductor; it handles everything.';
+  process.stdout.write('\n');
+  for (const line of BGSD_ART) process.stdout.write('  ' + kiwiGreen(line) + '\n');
+  process.stdout.write('\n');
+  process.stdout.write('  ' + bold('better-gsd') + (ver ? '  ' + dim(ver) : '') + '\n');
+  process.stdout.write('  ' + dim(tag) + '\n');
+  if (ready) process.stdout.write('\n  ' + kiwiGreen('✓') + ' ' + ready + '\n');
+  process.stdout.write('\n');
+}
+
 export function banner({ subtitle } = {}) {
   const top    = bold(cyan('╔════════════════════════════════════════╗'));
   const mid    = bold(cyan('║')) + bold(brightCyan('  bgsd · Kiwi  '))
