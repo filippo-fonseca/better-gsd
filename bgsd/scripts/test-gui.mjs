@@ -21,9 +21,18 @@
  * G18 — summarizeSessions: status derivation (in-progress / completed / aborted)
  * G19 — summarizeSessions: counts present + entry shape
  * G20 — sessionStatus: run.state overrides agent-derived status
+ *
+ * gui-live daemonize path (the "localhost dies after ~20 min" fix):
+ * D01 — startDaemon spawns process.execPath with the __serve argv, detached, unref'd
+ * D02 — startDaemon reads the real port/url/pid back from the pointer the daemon writes
+ * D03 — startDaemon passes an explicit --port through unchanged
+ * D04 — startDaemon returns nulls (times out) when no pointer ever appears
  */
 
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   LANES,
@@ -42,6 +51,8 @@ import {
   sessionStatus,
 } from "./gui.mjs";
 
+import { startDaemon } from "./gui-live.mjs";
+
 let passed = 0;
 let failed = 0;
 const failures = [];
@@ -55,6 +66,46 @@ function test(name, fn) {
     failures.push({ name, error: err.message });
     failed++;
   }
+}
+async function atest(name, fn) {
+  try {
+    await fn();
+    process.stdout.write(`  PASS  ${name}\n`);
+    passed++;
+  } catch (err) {
+    process.stdout.write(`  FAIL  ${name}\n        ${err.message}\n`);
+    failures.push({ name, error: err.message });
+    failed++;
+  }
+}
+
+/**
+ * A fake spawn: records the exact call and returns a child stub with pid + unref.
+ * Never launches a real process, so the daemonize tests stay fast and hermetic.
+ */
+function fakeSpawn(record, { writesPointerTo } = {}) {
+  return (cmd, argv, opts) => {
+    record.cmd = cmd;
+    record.argv = argv;
+    record.opts = opts;
+    record.unrefCalled = false;
+    // Simulate the real daemon writing its pointer once it is listening, so the
+    // poll in startDaemon has something to read back — without any real process.
+    if (writesPointerTo) {
+      writeFileSync(writesPointerTo, JSON.stringify({
+        pid: 999999, port: 61234, url: "http://localhost:61234", run_id: "run-demo",
+        started_at: new Date().toISOString(),
+      }), "utf8");
+    }
+    return { pid: 424242, unref() { record.unrefCalled = true; } };
+  };
+}
+
+// Temp .bgsd repo. Returns { dir, cleanup }.
+function tempRepo() {
+  const dir = mkdtempSync(join(tmpdir(), "bgsd-gui-"));
+  mkdirSync(join(dir, ".bgsd"), { recursive: true });
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 const agent = (agent_id, phase, status, extra = {}) => ({
@@ -324,6 +375,80 @@ test("G20 — sessionStatus: run.state overrides agent-derived status", () => {
   // needs_input with nothing running is treated as aborted (needs the user).
   assert.equal(sessionStatus(null, [agent("a", "discuss", "needs_input")]), "aborted");
 });
+
+// ---------------------------------------------------------------------------
+// gui-live daemonize path — the fix for the dashboard dying after ~20 minutes.
+// These assert `start`'s detached-spawn contract WITHOUT booting a real daemon,
+// by injecting a fake spawn (spawnImpl) and reading the port back from a pointer
+// the fake writes (standing in for what the real listening daemon writes).
+// ---------------------------------------------------------------------------
+
+await (async () => {
+  process.stdout.write("\nbgsd gui-live daemonize tests\n\n");
+
+  await atest("D01 — startDaemon spawns node with __serve argv, detached + unref'd", async () => {
+    const { dir, cleanup } = tempRepo();
+    try {
+      const rec = {};
+      const spawnImpl = fakeSpawn(rec, { writesPointerTo: join(dir, ".bgsd", "gui.json") });
+      await startDaemon(dir, { runId: "run-demo", port: 0, spawnImpl });
+
+      assert.equal(rec.cmd, process.execPath, "spawns the same node binary running this test");
+      // argv: [thisScript, "__serve", "--run-id", "run-demo", "--port", "0"]
+      assert.ok(/gui-live\.mjs$/.test(rec.argv[0]), "argv[0] is the absolute gui-live.mjs path");
+      assert.equal(rec.argv[1], "__serve", "invokes the internal daemon subcommand");
+      const runIdx = rec.argv.indexOf("--run-id");
+      assert.ok(runIdx >= 0 && rec.argv[runIdx + 1] === "run-demo", "passes --run-id through");
+      const portIdx = rec.argv.indexOf("--port");
+      assert.ok(portIdx >= 0 && rec.argv[portIdx + 1] === "0", "passes --port through (0 = auto)");
+      assert.equal(rec.opts.detached, true, "detached so it survives the parent");
+      assert.equal(rec.opts.cwd, dir, "runs in the repo root");
+      assert.ok(Array.isArray(rec.opts.stdio) && rec.opts.stdio.length === 3, "stdio wires a log fd");
+      assert.equal(rec.opts.stdio[0], "ignore", "stdin ignored");
+      assert.equal(rec.unrefCalled, true, "child.unref() cuts it loose from this process");
+    } finally { cleanup(); }
+  });
+
+  await atest("D02 — startDaemon reads real port/url/pid back from the daemon's pointer", async () => {
+    const { dir, cleanup } = tempRepo();
+    try {
+      const rec = {};
+      const spawnImpl = fakeSpawn(rec, { writesPointerTo: join(dir, ".bgsd", "gui.json") });
+      const res = await startDaemon(dir, { runId: "run-demo", port: 0, spawnImpl });
+      // The pointer the (fake) daemon wrote reports port 61234 — start must echo THAT,
+      // not the requested 0, so the URL it prints is the one the daemon actually bound.
+      assert.equal(res.port, 61234, "port comes from the pointer, not the request");
+      assert.equal(res.url, "http://localhost:61234");
+      assert.equal(res.pid, 999999, "pid is the daemon's (from pointer), not start's launcher pid");
+      assert.equal(res.runId, "run-demo");
+    } finally { cleanup(); }
+  });
+
+  await atest("D03 — startDaemon passes an explicit --port through unchanged", async () => {
+    const { dir, cleanup } = tempRepo();
+    try {
+      const rec = {};
+      const spawnImpl = fakeSpawn(rec, { writesPointerTo: join(dir, ".bgsd", "gui.json") });
+      await startDaemon(dir, { runId: "run-demo", port: 52444, spawnImpl });
+      const portIdx = rec.argv.indexOf("--port");
+      assert.equal(rec.argv[portIdx + 1], "52444", "explicit port reaches the daemon argv");
+    } finally { cleanup(); }
+  });
+
+  await atest("D04 — startDaemon times out to nulls when no pointer ever appears", async () => {
+    const { dir, cleanup } = tempRepo();
+    try {
+      const rec = {};
+      // A fake that never writes a pointer: the daemon never came up.
+      const spawnImpl = fakeSpawn(rec);
+      const res = await startDaemon(dir, { runId: "run-demo", port: 0, spawnImpl, timeoutMs: 120, intervalMs: 20 });
+      assert.equal(res.url, null, "no url when the daemon never wrote its pointer");
+      assert.equal(res.port, null, "no port either");
+      assert.equal(res.pid, 424242, "falls back to the launcher child pid so callers can report something");
+      assert.equal(rec.unrefCalled, true, "still detaches even on timeout");
+    } finally { cleanup(); }
+  });
+})();
 
 process.stdout.write(`\ngui.mjs: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) {

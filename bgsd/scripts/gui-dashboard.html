@@ -6,115 +6,263 @@
 <title>bgsd · live view</title>
 <style>
   :root {
-    --bg: #0d1117; --panel: #131a24; --panel-2: #1a2430; --line: #26303c;
-    --ink: #e6edf3; --muted: #8b98a5; --kiwi: #3fb567; --kiwi-dim: #1f5f38;
-    --run: #58a6ff; --warn: #e3b341; --bad: #f85149; --done: #3fb567;
+    /* Banner-matched palette (assets/banner.svg). */
+    --bg0: #0A0C12; --bg1: #0C0F16; --bg2: #08090E;
+    --panel: #0E121A; --panel-2: #10141D; --panel-3: #131a24;
+    --line: #232B3A; --line-2: #2A3446;
+    --ink: #EAECF2; --ink-2: #C2CBDD; --muted: #8B98A5; --muted-2: #6b7686;
+    --kiwi: #A3E635; --kiwi-deep: #7FB03A; --kiwi-ink: #071105; --kiwi-dim: #16210B;
+    --emerald: #34D399; --emerald-deep: #2A7A5C;
+    --violet: #8A63D2; --violet-2: #A78BFA;
+    --run: #58a6ff; --warn: #F0B429; --bad: #F85149; --done: #34D399;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin: 0; color: var(--ink);
+    font: 14px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    background:
+      radial-gradient(680px 520px at 12% 34%, rgba(138,99,210,.16), transparent 60%),
+      radial-gradient(560px 440px at 46% 62%, rgba(163,230,53,.10), transparent 62%),
+      radial-gradient(520px 420px at 88% 58%, rgba(52,211,153,.10), transparent 62%),
+      linear-gradient(150deg, var(--bg0) 0%, var(--bg1) 55%, var(--bg2) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
+  /* Fine dotted texture over everything, matching the banner pattern. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(255,255,255,.035) 1.1px, transparent 1.1px);
+    background-size: 26px 26px;
+  }
+  body > * { position: relative; z-index: 1; }
+  .clean-sans { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+  /* ---- Header --------------------------------------------------------- */
   header {
-    position: sticky; top: 0; z-index: 5; background: linear-gradient(180deg,#0d1117,#0d1117ee);
-    border-bottom: 1px solid var(--line); padding: 14px 20px; backdrop-filter: blur(6px);
+    position: sticky; top: 0; z-index: 20;
+    background: linear-gradient(180deg, rgba(10,12,18,.92), rgba(10,12,18,.72));
+    border-bottom: 1px solid var(--line); padding: 14px 22px 12px;
+    backdrop-filter: blur(10px);
+  }
+  /* The thin gradient accent line under the header (banner accentline). */
+  header::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--kiwi), var(--emerald) 50%, var(--violet));
+    opacity: .8;
   }
   .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .pill {
-    display: inline-flex; align-items: center; gap: 7px; background: var(--kiwi);
-    color: #05130a; font-weight: 700; border-radius: 999px; padding: 3px 12px; letter-spacing: .2px;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, #16210B, #111A0C);
+    color: var(--kiwi); font-weight: 700; border-radius: 999px; padding: 5px 13px 5px 11px;
+    letter-spacing: .2px; border: 1px solid rgba(163,230,53,.32);
+    box-shadow: 0 0 22px rgba(163,230,53,.10);
   }
-  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #05130a; opacity: .55; }
-  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .pill .kdot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #EAF7C8, var(--kiwi) 55%, var(--kiwi-deep));
+    box-shadow: 0 0 0 0 rgba(163,230,53,.55); animation: kbeat 2.6s ease-out infinite;
+  }
+  @keyframes kbeat {
+    0% { box-shadow: 0 0 0 0 rgba(163,230,53,.45); }
+    70% { box-shadow: 0 0 0 7px rgba(163,230,53,0); }
+    100% { box-shadow: 0 0 0 0 rgba(163,230,53,0); }
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px; color: var(--ink-2); }
   .meta { color: var(--muted); }
   .meta b { color: var(--ink); font-weight: 600; }
-  .counts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
-  .chip { border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; color: var(--muted); }
-  .chip b { color: var(--ink); }
+  .counts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; align-items: center; }
+  .chip {
+    border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; color: var(--muted);
+    background: rgba(255,255,255,.012); transition: border-color .25s, color .25s;
+  }
+  .chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
   .chip.run b { color: var(--run); } .chip.done b { color: var(--done); } .chip.bad b { color: var(--bad); }
-  .overall { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 3px 12px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; border: 1px solid var(--line); color: var(--muted); }
-  .overall .odot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .chip.pop { animation: chippop .5s ease; }
+  @keyframes chippop { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+  .overall {
+    display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 4px 13px;
+    font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+    border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,.015);
+  }
+  .overall .odot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
   .overall.running { color: var(--run); border-color: #24425f; }
-  .overall.done { color: var(--done); border-color: var(--kiwi-dim); }
+  .overall.done { color: var(--done); border-color: var(--emerald-deep); }
   .overall.blocked { color: var(--bad); border-color: #5c2320; }
   .overall.needs_input { color: var(--warn); border-color: #5c4a1e; }
   .overall.idle { color: var(--muted); }
-  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .overall.running .odot { animation: kbeat 1.8s ease-out infinite; }
+
+  .live { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
   .live .beat { width: 8px; height: 8px; border-radius: 50%; background: var(--kiwi); box-shadow: 0 0 0 0 var(--kiwi); animation: beat 1.6s infinite; }
   .live.stale .beat { background: var(--warn); animation: none; }
   .live.lost .beat { background: var(--bad); animation: none; }
-  @keyframes beat { 0%{box-shadow:0 0 0 0 rgba(63,181,103,.5)} 70%{box-shadow:0 0 0 7px rgba(63,181,103,0)} 100%{box-shadow:0 0 0 0 rgba(63,181,103,0)} }
-  .pipeline { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 12px 0 2px; }
-  .step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-  .step .num { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; background: #0c141d; color: var(--muted); }
-  .step.done { color: var(--done); border-color: var(--kiwi-dim); }
-  .step.done .num { background: var(--kiwi-dim); color: #d6ffe4; }
-  .step.active { color: #05130a; background: var(--kiwi); border-color: var(--kiwi); font-weight: 700; }
-  .step.active .num { background: #05130a; color: var(--kiwi); }
-  .note-bar { color: var(--ink); font-size: 12.5px; min-height: 18px; }
-  .note-bar b { color: var(--kiwi); }
-  .note-bar .muted { color: var(--muted); }
-  main { padding: 18px 20px; }
-  .lanes { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; align-items: start; }
-  @media (max-width: 980px) { .lanes { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px) { .lanes { grid-template-columns: 1fr; } }
-  .lane { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 90px; }
-  .lane-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 4px 10px; }
-  .lane-title { font-weight: 600; font-size: 12.5px; letter-spacing: .3px; color: var(--ink); }
-  .lane-count { color: var(--muted); font-size: 12px; }
-  .card {
-    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--muted);
-    border-radius: 10px; padding: 10px 11px; margin-bottom: 9px; transition: border-color .2s;
+  @keyframes beat { 0%{box-shadow:0 0 0 0 rgba(163,230,53,.5)} 70%{box-shadow:0 0 0 7px rgba(163,230,53,0)} 100%{box-shadow:0 0 0 0 rgba(163,230,53,0)} }
+
+  /* Tab switcher (Current / All sessions). */
+  .tabs { display: inline-flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .tab { appearance: none; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12.5px; padding: 5px 13px; border-radius: 7px; cursor: pointer; transition: color .2s, background .2s; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { background: linear-gradient(180deg, var(--kiwi), var(--kiwi-deep)); color: var(--kiwi-ink); font-weight: 700; box-shadow: 0 0 16px rgba(163,230,53,.22); }
+  .lock { color: var(--kiwi); }
+
+  /* ---- The hero pipeline stepper ------------------------------------- */
+  .hero {
+    margin: 18px 22px 6px; padding: 20px 22px 10px; border-radius: 18px;
+    background:
+      radial-gradient(120% 140% at 50% -10%, rgba(163,230,53,.05), transparent 55%),
+      linear-gradient(180deg, rgba(16,20,29,.85), rgba(12,15,22,.72));
+    border: 1px solid var(--line); position: relative; overflow: hidden;
   }
-  .card.running { border-left-color: var(--run); }
+  .hero::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(163,230,53,.5), rgba(52,211,153,.4), rgba(138,99,210,.4), transparent);
+  }
+  .hero-label {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted-2);
+    margin: 0 0 4px;
+  }
+  .hero-label b { color: var(--kiwi); font-weight: 700; letter-spacing: .3px; }
+  .stepper-wrap { position: relative; width: 100%; overflow-x: auto; padding: 6px 0 2px; }
+  #stepper { display: block; width: 100%; height: 132px; min-width: 720px; }
+
+  /* SVG stepper node styling (classes set on <g>). */
+  .snode .ring { fill: #0C1017; stroke: var(--line-2); stroke-width: 1.5; transition: stroke .3s, fill .3s; }
+  .snode .core { fill: #0B0E15; transition: fill .3s; }
+  .snode .glow { opacity: 0; transition: opacity .4s; }
+  .snode .slabel { fill: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .3px; transition: fill .3s; }
+  .snode .snum { fill: var(--muted); font-size: 12px; font-weight: 700; transition: fill .3s; }
+  .snode .tick { stroke: var(--kiwi-ink); stroke-width: 2.4; fill: none; opacity: 0; stroke-linecap: round; stroke-linejoin: round; transition: opacity .3s; }
+
+  .snode.done .ring { fill: var(--kiwi-dim); stroke: var(--kiwi-deep); }
+  .snode.done .core { fill: var(--kiwi); }
+  .snode.done .tick { opacity: 1; }
+  .snode.done .snum { opacity: 0; }
+  .snode.done .slabel { fill: var(--done); }
+  .snode.done .glow { opacity: .5; }
+
+  .snode.active .ring { stroke: var(--kiwi); fill: #111A0C; }
+  .snode.active .core { fill: var(--kiwi); }
+  .snode.active .snum { fill: var(--kiwi-ink); }
+  .snode.active .slabel { fill: var(--kiwi); font-weight: 700; }
+  .snode.active .glow { opacity: 1; }
+  .snode.active .pulse { animation: nodepulse 2s ease-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes nodepulse {
+    0% { opacity: .55; r: 20; } 70% { opacity: 0; r: 34; } 100% { opacity: 0; r: 34; }
+  }
+  .snode.pending .ring { stroke-dasharray: 3 4; opacity: .8; }
+  .snode.pending .slabel { opacity: .7; }
+  .snode.pending .snum { opacity: .8; }
+
+  .sconn { stroke: var(--line-2); stroke-width: 2.5; fill: none; transition: stroke .3s; }
+  .sconn.done { stroke: var(--kiwi-deep); }
+  .sconn.active { stroke: url(#connGrad); }
+  .flowdot { display: none; }
+  .sconn-live .flowdot { display: inline; }
+
+  /* ---- Conductor note bar -------------------------------------------- */
+  .note-bar {
+    margin: 12px 22px 4px; color: var(--ink-2); font-size: 12.5px; min-height: 20px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .note-bar .tag {
+    display: inline-flex; align-items: center; gap: 6px; color: var(--kiwi);
+    font-weight: 700; letter-spacing: .3px;
+  }
+  .note-bar .tag .spin {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1.6px solid rgba(163,230,53,.25); border-top-color: var(--kiwi); animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .note-bar .sep { color: var(--line-2); }
+  .note-bar .muted { color: var(--muted); font-weight: 400; }
+
+  /* ---- Lanes ---------------------------------------------------------- */
+  main { padding: 12px 22px 4px; }
+  .lanes { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 15px; align-items: start; }
+  @media (max-width: 1040px) { .lanes { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 580px) { .lanes { grid-template-columns: 1fr; } }
+  .lane {
+    background: linear-gradient(180deg, rgba(19,26,36,.55), rgba(14,18,26,.55));
+    border: 1px solid var(--line); border-radius: 14px; padding: 11px; min-height: 96px;
+    position: relative; overflow: hidden;
+  }
+  .lane::before {
+    content: ""; position: absolute; left: 11px; right: 11px; top: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(163,230,53,.22), transparent);
+  }
+  .lane-head { display: flex; align-items: center; justify-content: space-between; margin: 3px 4px 11px; }
+  .lane-title { font-weight: 600; font-size: 12px; letter-spacing: .4px; color: var(--ink-2); text-transform: uppercase; }
+  .lane-count {
+    color: var(--muted); font-size: 11px; min-width: 20px; text-align: center;
+    border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums;
+  }
+  .card {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line); border-left: 3px solid var(--muted);
+    border-radius: 11px; padding: 11px 12px; margin-bottom: 10px;
+    transition: border-color .25s, box-shadow .25s;
+    animation: cardin .42s cubic-bezier(.2,.7,.2,1) both;
+  }
+  @keyframes cardin { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+  .card.running { border-left-color: var(--run); box-shadow: 0 0 0 1px rgba(88,166,255,.08), 0 0 24px rgba(88,166,255,.06); }
   .card.done { border-left-color: var(--done); }
-  .card.blocked, .card.failed { border-left-color: var(--bad); }
+  .card.blocked, .card.failed { border-left-color: var(--bad); box-shadow: 0 0 24px rgba(248,81,73,.09); }
   .card.needs_input, .card.stalled { border-left-color: var(--warn); }
   .card-top { display: flex; align-items: center; gap: 8px; }
-  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .role { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; text-transform: uppercase; letter-spacing: .4px; }
-  .status { margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
-  .status.running { color: var(--run); } .status.done { color: var(--done); }
+  .emoji { font-size: 15px; line-height: 1; filter: saturate(1.1); }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+  .role { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; text-transform: uppercase; letter-spacing: .4px; }
+  .status { margin-left: auto; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; display: inline-flex; align-items: center; gap: 5px; }
+  .status .sdot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.running { color: var(--run); } .status.running .sdot { animation: kbeat 1.6s ease-out infinite; }
+  .status.done { color: var(--done); }
   .status.blocked, .status.failed { color: var(--bad); } .status.needs_input, .status.stalled { color: var(--warn); }
-  .sub { margin: 8px 0 6px; display: flex; align-items: center; gap: 8px; }
-  .badge { background: var(--kiwi-dim); color: #d6ffe4; border-radius: 6px; padding: 1px 8px; font-size: 11px; }
-  .iter { color: var(--muted); font-size: 11.5px; }
-  .bar { height: 5px; background: #0c141d; border-radius: 999px; overflow: hidden; margin-top: 4px; }
-  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--kiwi-dim), var(--kiwi)); }
-  .flow { display: flex; align-items: flex-start; gap: 3px; margin-top: 8px; }
-  .flow-step { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1 1 0; min-width: 0; }
-  .flow-step .fdot { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; background: #0c141d; border: 1px solid var(--line); color: var(--muted); }
-  .flow-step .flabel { font-size: 9px; letter-spacing: .2px; color: var(--muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; opacity: .8; }
-  .flow-step.done .fdot { background: var(--kiwi-dim); border-color: var(--kiwi-dim); color: #d6ffe4; }
+  .sub { margin: 9px 0 7px; display: flex; align-items: center; gap: 8px; }
+  .badge { background: var(--kiwi-dim); color: #d6ffe4; border: 1px solid rgba(163,230,53,.22); border-radius: 6px; padding: 1px 8px; font-size: 11px; color: #C6F08B; }
+  .iter { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .bar { height: 5px; background: #0A0E15; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--kiwi-deep), var(--kiwi)); box-shadow: 0 0 8px rgba(163,230,53,.4); transition: width .5s cubic-bezier(.2,.7,.2,1); }
+
+  /* Per-agent GSD mini-flow. */
+  .flow { display: flex; align-items: flex-start; gap: 3px; margin-top: 9px; }
+  .flow-step { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1 1 0; min-width: 0; position: relative; }
+  .flow-step + .flow-step::before {
+    content: ""; position: absolute; left: -50%; top: 6px; width: 100%; height: 1.4px; background: var(--line);
+  }
+  .flow-step.done::before, .flow-step.done + .flow-step::before { background: var(--kiwi-deep); }
+  .flow-step .fdot { width: 13px; height: 13px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; line-height: 1; background: #0A0E15; border: 1px solid var(--line); color: var(--muted); position: relative; z-index: 1; }
+  .flow-step .flabel { font-size: 8.5px; letter-spacing: .2px; color: var(--muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; opacity: .8; }
+  .flow-step.done .fdot { background: var(--kiwi-dim); border-color: var(--kiwi-deep); color: #d6ffe4; }
   .flow-step.done .flabel { color: var(--done); opacity: 1; }
-  .flow-step.active .fdot { background: var(--kiwi); border-color: var(--kiwi); color: #05130a; box-shadow: 0 0 0 2px rgba(63,181,103,.22); }
+  .flow-step.active .fdot { background: var(--kiwi); border-color: var(--kiwi); color: var(--kiwi-ink); box-shadow: 0 0 0 3px rgba(163,230,53,.18); animation: kbeat 1.9s ease-out infinite; }
   .flow-step.active .flabel { color: var(--kiwi); font-weight: 700; opacity: 1; }
   .flow-step.blocked .fdot { background: var(--bad); border-color: var(--bad); color: #2a0d0c; }
   .flow-step.blocked .flabel { color: var(--bad); font-weight: 700; opacity: 1; }
   .flow-step.pending .fdot { opacity: .55; }
-  .note { color: var(--muted); font-size: 11.5px; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note { color: var(--muted); font-size: 11px; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pressure { font-size: 10.5px; margin-top: 6px; }
   .pressure.elevated { color: var(--warn); } .pressure.critical { color: var(--bad); }
-  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 0; opacity: .7; }
-  footer { color: var(--muted); font-size: 11.5px; padding: 8px 20px 22px; }
-  .lock { color: var(--kiwi); }
-  /* Tab switcher (Current / All sessions). */
-  .tabs { display: inline-flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
-  .tab { appearance: none; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 12.5px; padding: 4px 12px; border-radius: 7px; cursor: pointer; }
-  .tab:hover { color: var(--ink); }
-  .tab.active { background: var(--kiwi); color: #05130a; font-weight: 700; }
+  .empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 6px; opacity: .65; }
+  .empty .ph { display: block; margin-top: 6px; font-size: 10.5px; opacity: .7; }
+
+  footer { color: var(--muted); font-size: 11.5px; padding: 12px 22px 26px; text-align: center; }
   .view[hidden] { display: none; }
-  /* Sessions list. */
+
+  /* ---- Sessions list -------------------------------------------------- */
   .sessions { display: flex; flex-direction: column; gap: 9px; }
   .sess {
     display: grid; grid-template-columns: minmax(160px, 1.4fr) auto auto auto auto;
     align-items: center; gap: 12px; text-align: left; width: 100%;
-    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--muted);
-    border-radius: 10px; padding: 11px 13px; color: var(--ink); font: inherit; cursor: pointer;
-    transition: border-color .2s, background .2s;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line); border-left: 3px solid var(--muted);
+    border-radius: 11px; padding: 12px 14px; color: var(--ink); font: inherit; cursor: pointer;
+    transition: border-color .2s, background .2s, transform .12s;
   }
-  .sess:hover { background: #1e2a38; border-color: var(--kiwi-dim); }
-  .sess.viewing { border-color: var(--kiwi); }
+  .sess:hover { background: #141c27; border-color: var(--emerald-deep); transform: translateY(-1px); }
+  .sess.viewing { border-color: var(--kiwi); box-shadow: 0 0 18px rgba(163,230,53,.12); }
   .sess.st-in-progress { border-left-color: var(--run); }
   .sess.st-completed { border-left-color: var(--done); }
   .sess.st-aborted { border-left-color: var(--bad); }
@@ -123,7 +271,7 @@
   .sess-scale { color: var(--muted); font-size: 11.5px; }
   .sbadge { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
   .sbadge.st-in-progress { background: rgba(88,166,255,.15); color: var(--run); }
-  .sbadge.st-completed { background: rgba(63,181,103,.16); color: var(--done); }
+  .sbadge.st-completed { background: rgba(52,211,153,.16); color: var(--done); }
   .sbadge.st-aborted { background: rgba(248,81,73,.15); color: var(--bad); }
   .sess-counts { display: flex; gap: 6px; flex-wrap: wrap; }
   .sess-counts .chip { font-size: 11px; padding: 2px 8px; }
@@ -134,18 +282,18 @@
 <body>
 <header>
   <div class="top">
-    <span class="pill"><span class="dot"></span>kiwi · conductor</span>
-    <h1>live view</h1>
+    <span class="pill"><span class="kdot"></span>kiwi · conductor</span>
+    <h1 class="clean-sans">live view</h1>
     <span class="meta">run <b id="run-id">—</b> · scale <b id="run-scale">—</b> · <b id="run-state">—</b></span>
     <div class="counts">
       <span class="overall idle" id="overall"><span class="odot"></span><span id="overall-text">idle</span></span>
-      <span class="chip run">running <b id="c-running">0</b></span>
-      <span class="chip done">done <b id="c-done">0</b></span>
-      <span class="chip bad">blocked <b id="c-blocked">0</b></span>
-      <span class="chip">total <b id="c-total">0</b></span>
+      <span class="chip run" id="chip-running">running <b id="c-running">0</b></span>
+      <span class="chip done" id="chip-done">done <b id="c-done">0</b></span>
+      <span class="chip bad" id="chip-blocked">blocked <b id="c-blocked">0</b></span>
+      <span class="chip" id="chip-total">total <b id="c-total">0</b></span>
     </div>
   </div>
-  <div class="top" style="margin-top:8px">
+  <div class="top" style="margin-top:10px">
     <span class="tabs" role="tablist">
       <button class="tab active" id="tab-current" role="tab">Current</button>
       <button class="tab" id="tab-sessions" role="tab">All sessions</button>
@@ -155,22 +303,50 @@
     <span class="meta lock" style="margin-left:auto">&#128274; main-protected</span>
   </div>
 </header>
-<main>
-  <div class="view" id="view-current">
-    <div class="pipeline" id="pipeline"></div>
-    <div class="note-bar" id="note-bar"></div>
-    <div class="lanes" id="lanes"></div>
-  </div>
-  <div class="view" id="view-sessions" hidden>
-    <div class="sessions" id="sessions"></div>
-  </div>
-</main>
+
+<div class="view" id="view-current">
+  <section class="hero">
+    <div class="hero-label"><b>pipeline</b> · <span>one sesh, end to end</span> · <span id="hero-scope" class="muted" style="color:var(--muted)"></span></div>
+    <div class="stepper-wrap">
+      <svg id="stepper" viewBox="0 0 1000 132" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="run pipeline">
+        <defs>
+          <linearGradient id="connGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#A3E635"/>
+            <stop offset="0.5" stop-color="#34D399"/>
+            <stop offset="1" stop-color="#8A63D2"/>
+          </linearGradient>
+          <radialGradient id="nodeGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#A3E635" stop-opacity="0.45"/>
+            <stop offset="1" stop-color="#A3E635" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <g id="stepper-conns"></g>
+        <g id="stepper-nodes"></g>
+      </svg>
+    </div>
+  </section>
+
+  <div class="note-bar" id="note-bar"></div>
+  <main><div class="lanes" id="lanes"></div></main>
+</div>
+
+<div class="view" id="view-sessions" hidden>
+  <main><div class="sessions" id="sessions"></div></main>
+</div>
+
 <footer>bgsd live view · polls every 1.5s · <span id="stamp">—</span></footer>
 
 <script>
   var POLL_MS = 1500;
+  var SVGNS = "http://www.w3.org/2000/svg";
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
-  function pct(p) { if (!p || !p.total) return 0; return Math.round((p.index / (p.total - 1)) * 100); }
+  function svg(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    if (attrs) for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  // Progress from normalizeAgent's { index, total } (index/(total-1)).
+  function pct(p) { if (!p || !p.total || p.total < 2) return p && p.index ? 100 : 0; return Math.round((p.index / (p.total - 1)) * 100); }
   function deriveOverall(c) {
     if (!c || !c.total) return "idle";
     if (c.blocked > 0) return "blocked";
@@ -178,13 +354,100 @@
     if (c.running > 0) return "running";
     return "done";
   }
+  // A tasteful emoji per role, derived from the agent's classified role.
+  function roleEmoji(role) {
+    return ({ verifier: "🔍", integrator: "🔀", reviewer: "🛡️", pipeline: "🧩" })[role] || "⚙️";
+  }
+
+  // ---- The hero pipeline stepper (SVG). Rebuilt when the stage set changes.
+  var lastPipeSig = null;
+  function renderPipeline(pipeline) {
+    pipeline = pipeline || [];
+    var svgEl = document.getElementById("stepper");
+    var conns = document.getElementById("stepper-conns");
+    var nodes = document.getElementById("stepper-nodes");
+
+    // Layout inside the 1000 x 132 viewBox.
+    var n = pipeline.length || 1;
+    var padX = 60, top = 46, r = 19;
+    var span = n > 1 ? (1000 - padX * 2) / (n - 1) : 0;
+    var cx = function (i) { return padX + span * i; };
+
+    // Rebuild the skeleton only when the stage identities change (not every poll),
+    // so the flowing SMIL dots keep their rhythm across status-only updates.
+    var sig = pipeline.map(function (s) { return s.id; }).join(">") + "|" + n;
+    if (sig !== lastPipeSig) {
+      lastPipeSig = sig;
+      conns.innerHTML = ""; nodes.innerHTML = "";
+
+      // Connectors first (behind nodes), each with a flowing dot along it.
+      for (var i = 0; i < n - 1; i++) {
+        var x1 = cx(i) + r + 4, x2 = cx(i + 1) - r - 4, y = top;
+        var pathId = "conn-" + i;
+        var path = svg("path", { id: pathId, class: "sconn", d: "M" + x1 + "," + y + " L" + x2 + "," + y });
+        conns.appendChild(path);
+        // Flowing dot (SMIL animateMotion) — hidden until the connector is "live".
+        var dot = svg("circle", { class: "flowdot", r: "3.4", fill: "#A3E635" });
+        var mm = svg("animateMotion", { dur: "1.7s", repeatCount: "indefinite", rotate: "auto" });
+        mm.appendChild(svg("mpath", { href: "#" + pathId }));
+        // Older SVG needs xlink; set both.
+        mm.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "#" + pathId);
+        dot.appendChild(mm);
+        conns.appendChild(dot);
+      }
+
+      // Nodes on top.
+      pipeline.forEach(function (s, i) {
+        var g = svg("g", { class: "snode", "data-i": String(i) });
+        g.setAttribute("transform", "translate(" + cx(i) + "," + top + ")");
+        g.appendChild(svg("circle", { class: "glow", r: "40", cx: "0", cy: "0", fill: "url(#nodeGlow)" }));
+        g.appendChild(svg("circle", { class: "pulse", r: "20", cx: "0", cy: "0", fill: "none", stroke: "#A3E635", "stroke-width": "1.5", opacity: "0" }));
+        g.appendChild(svg("circle", { class: "ring", r: String(r), cx: "0", cy: "0" }));
+        g.appendChild(svg("circle", { class: "core", r: "7", cx: "0", cy: "0" }));
+        var num = svg("text", { class: "snum", x: "0", y: "4", "text-anchor": "middle" });
+        num.textContent = String(i + 1);
+        g.appendChild(num);
+        var tick = svg("path", { class: "tick", d: "M-5,0 l3.5,3.6 l7,-8" });
+        g.appendChild(tick);
+        var label = svg("text", { class: "slabel", x: "0", y: String(r + 22), "text-anchor": "middle" });
+        label.textContent = s.label;
+        g.appendChild(label);
+        nodes.appendChild(g);
+      });
+    }
+
+    // Cheap per-poll status refresh: retag nodes + connectors.
+    var nodeGs = nodes.querySelectorAll(".snode");
+    pipeline.forEach(function (s, i) {
+      if (nodeGs[i]) nodeGs[i].setAttribute("class", "snode " + s.status);
+    });
+    // A connector is "done" if its right node is done/active, "active" (with the
+    // live flowing dot) when it leads INTO the active node.
+    var activeIdx = pipeline.findIndex(function (s) { return s.status === "active"; });
+    var doneCount = pipeline.filter(function (s) { return s.status === "done"; }).length;
+    var connPaths = conns.querySelectorAll(".sconn");
+    var dots = conns.querySelectorAll(".flowdot");
+    for (var i = 0; i < connPaths.length; i++) {
+      var leadsIntoActive = (i + 1) === activeIdx;
+      var isDone = (i + 1) <= doneCount || (i + 1) < activeIdx || activeIdx < 0 && false;
+      var cls = "sconn";
+      if (leadsIntoActive) cls += " active sconn-live";
+      else if (i < doneCount) cls += " done";
+      connPaths[i].setAttribute("class", cls);
+      if (dots[i]) dots[i].style.display = leadsIntoActive ? "inline" : "none";
+    }
+  }
 
   function renderAgent(a) {
     var card = el("div", "card " + a.status);
     var top = el("div", "card-top");
+    top.appendChild(el("span", "emoji", roleEmoji(a.role)));
     top.appendChild(el("span", "name", a.unit || a.id));
     top.appendChild(el("span", "role", a.role));
-    top.appendChild(el("span", "status " + a.status, a.status));
+    var st = el("span", "status " + a.status);
+    st.appendChild(el("span", "sdot"));
+    st.appendChild(el("span", null, a.status));
+    top.appendChild(st);
     card.appendChild(top);
 
     var sub = el("div", "sub");
@@ -195,8 +458,7 @@
     var bar = el("div", "bar"); var fill = el("i"); fill.style.width = pct(a.progress) + "%"; bar.appendChild(fill);
     card.appendChild(bar);
 
-    // The agent's OWN GSD flow (discuss→…→done): a compact per-step mini-stepper,
-    // so you can see where this agent sits within its own flow, not just one label.
+    // The agent's OWN GSD flow (discuss→…→done): a compact per-step mini-stepper.
     if (a.flow && a.flow.length) {
       var flow = el("div", "flow");
       a.flow.forEach(function (s) {
@@ -217,39 +479,58 @@
     return card;
   }
 
+  // Pop a count chip when its value changes, for a live pulse of feedback.
+  var lastCounts = {};
+  function setCount(id, chipId, val) {
+    document.getElementById(id).textContent = val;
+    if (lastCounts[id] !== undefined && lastCounts[id] !== val) {
+      var chip = document.getElementById(chipId);
+      chip.classList.remove("pop"); void chip.offsetWidth; chip.classList.add("pop");
+    }
+    lastCounts[id] = val;
+  }
+
   function render(model) {
     document.getElementById("run-id").textContent = model.run.run_id || "—";
     document.getElementById("run-scale").textContent = model.run.scale || "—";
     document.getElementById("run-state").textContent = model.run.state || "—";
-    document.getElementById("c-running").textContent = model.counts.running;
-    document.getElementById("c-done").textContent = model.counts.done;
-    document.getElementById("c-blocked").textContent = model.counts.blocked;
-    document.getElementById("c-total").textContent = model.counts.total;
+    setCount("c-running", "chip-running", model.counts.running);
+    setCount("c-done", "chip-done", model.counts.done);
+    setCount("c-blocked", "chip-blocked", model.counts.blocked);
+    setCount("c-total", "chip-total", model.counts.total);
+    document.getElementById("hero-scope").textContent =
+      model.run.scale ? "scale: " + model.run.scale : (model.run.run_id ? "" : "waiting for a session");
 
-    // Overall run status: one badge derived from counts (blocked > needs_input >
-    // running > done, else idle). Prefer the model's value, fall back locally.
+    // Overall run status: prefer the model's value, fall back to counts.
     var overall = model.overall || deriveOverall(model.counts);
     var ov = document.getElementById("overall");
     ov.className = "overall " + overall;
     document.getElementById("overall-text").textContent = overall.replace("_", " ");
 
-    // Pipeline timeline — visible even before any agent spawns (discuss/decompose).
-    var pipe = document.getElementById("pipeline");
-    pipe.innerHTML = "";
-    (model.pipeline || []).forEach(function (s, i) {
-      var step = el("div", "step " + s.status);
-      step.appendChild(el("span", "num", s.status === "done" ? "✓" : String(i + 1)));
-      step.appendChild(el("span", null, s.label));
-      pipe.appendChild(step);
-    });
+    // Hero pipeline stepper — visible even before any agent spawns.
+    renderPipeline(model.pipeline);
 
     // What the Conductor is doing right now (its current stage + note).
     var nb = document.getElementById("note-bar");
     nb.innerHTML = "";
-    if (model.run.stage || model.run.note) {
-      nb.appendChild(document.createTextNode("Conductor: "));
+    var noRun = !model.run.run_id && model.counts.total === 0 && !model.run.stage;
+    if (noRun) {
+      var idle = el("span", "muted", "No active session yet. Run ");
+      var code = el("b", "tag"); code.style.gap = "0"; code.textContent = "/bgsd-sesh";
+      idle.appendChild(code);
+      idle.appendChild(document.createTextNode(" and the full pipeline lights up here."));
+      nb.appendChild(idle);
+    } else if (model.run.stage || model.run.note) {
+      var tag = el("span", "tag");
+      tag.appendChild(el("span", "spin"));
+      tag.appendChild(el("span", null, "Conductor"));
+      nb.appendChild(tag);
+      nb.appendChild(el("span", "sep", "·"));
       nb.appendChild(el("b", null, model.run.stage || "working"));
-      if (model.run.note) nb.appendChild(document.createTextNode("  ·  " + model.run.note));
+      if (model.run.note) {
+        nb.appendChild(el("span", "sep", "·"));
+        nb.appendChild(el("span", "muted", model.run.note));
+      }
     } else if (model.counts.total === 0) {
       nb.appendChild(el("span", "muted", "Conductor is getting set up; agents will appear here as they spawn."));
     }
@@ -262,8 +543,11 @@
       head.appendChild(el("span", "lane-title", lane.title));
       head.appendChild(el("span", "lane-count", String(lane.agents.length)));
       col.appendChild(head);
-      if (!lane.agents.length) col.appendChild(el("div", "empty", "idle"));
-      else lane.agents.forEach(function (a) { col.appendChild(renderAgent(a)); });
+      if (!lane.agents.length) {
+        var empty = el("div", "empty", "idle");
+        empty.appendChild(el("span", "ph", "no agents here yet"));
+        col.appendChild(empty);
+      } else lane.agents.forEach(function (a) { col.appendChild(renderAgent(a)); });
       lanes.appendChild(col);
     });
     document.getElementById("stamp").textContent = "updated " + new Date(model.run.generated_at).toLocaleTimeString();
@@ -276,10 +560,8 @@
   }
 
   // --- View + selected-run state -----------------------------------------
-  // activeTab: "current" | "sessions". viewingRun: a run id to pin, or null for latest.
   var activeTab = "current";
   var viewingRun = null;
-
   var STATUS_LABEL = { "in-progress": "in progress", "completed": "completed", "aborted": "aborted" };
 
   function setViewingNote() {
@@ -369,6 +651,26 @@
 
   document.getElementById("tab-current").addEventListener("click", function () { showTab("current"); });
   document.getElementById("tab-sessions").addEventListener("click", function () { showTab("sessions"); });
+
+  // Read ?run=<id> from the URL so a deep-link pins a specific run.
+  (function () {
+    try {
+      var q = new URLSearchParams(window.location.search);
+      var r = q.get("run");
+      if (r && r.trim()) viewingRun = r.trim();
+    } catch (_) {}
+  })();
+
+  // Paint the empty pipeline immediately (all-pending) so it never flashes blank.
+  renderPipeline([
+    { id: "discuss", label: "Discuss", status: "pending" },
+    { id: "decompose", label: "Decompose", status: "pending" },
+    { id: "loop1", label: "Loop 1", status: "pending" },
+    { id: "merge", label: "Merge", status: "pending" },
+    { id: "loop2", label: "Loop 2", status: "pending" },
+    { id: "review", label: "Review", status: "pending" },
+    { id: "done", label: "Done", status: "pending" }
+  ]);
 
   setViewingNote();
   tick();

@@ -19,6 +19,7 @@
  */
 
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   readFileSync,
@@ -27,6 +28,7 @@ import {
   statSync,
   mkdirSync,
   rmSync,
+  openSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,11 +42,15 @@ import {
 import { buildDashboardModel, summarizeSessions } from "./gui.mjs";
 import { resolveRepoRoot } from "./init-live.mjs";
 
-const __dir = dirname(fileURLToPath(import.meta.url));
+// Resolve our own absolute path so the daemon can re-invoke this exact script,
+// even though the plugin runs from an absolute cache path.
+const THIS_SCRIPT = fileURLToPath(import.meta.url);
+const __dir = dirname(THIS_SCRIPT);
 const HTML_PATH = join(__dir, "gui-dashboard.html");
 
 function runsDir(repoRoot) { return join(repoRoot, ".bgsd", "runs"); }
 function pointerPath(repoRoot) { return join(repoRoot, ".bgsd", "gui.json"); }
+function logPath(repoRoot) { return join(repoRoot, ".bgsd", "gui.log"); }
 
 /** Most recently modified run id under .bgsd/runs, or null. */
 export function latestRunId(repoRoot) {
@@ -281,6 +287,70 @@ export function startServer(repoRoot, { runId, port = 0 } = {}) {
   });
 }
 
+/**
+ * Launch the dashboard server as a DETACHED, unref'd daemon so it survives the
+ * launching shell/Claude-Code process exiting. This is the real fix for the
+ * "localhost dies after ~20 minutes" bug: running `server.listen(...)` inside
+ * the current process ties the server's life to a process that Claude Code
+ * eventually reaps. Instead we re-invoke this same script with the internal
+ * `__serve` subcommand in a fully detached grandchild whose only job is to hold
+ * the listening server open. Its stdout/stderr go to `.bgsd/gui.log` so daemon
+ * errors are diagnosable (never silently swallowed).
+ *
+ * The daemon writes the pointer file itself (via startServer's `pid: process.pid`),
+ * so it records the DAEMON's pid — exactly what `stop` needs to kill. This
+ * function never writes the pointer; it only polls for the one the daemon writes,
+ * then reads the actual port/url back from it (correct even when port 0 lets the
+ * OS pick a free port).
+ *
+ * @param {string} repoRoot
+ * @param {object} opts { runId?, port?, spawnImpl?, timeoutMs?, intervalMs? }
+ *   `spawnImpl` is injectable so tests can assert the spawn call without booting
+ *   a real long-lived daemon. Defaults to node:child_process spawn.
+ * @returns {Promise<{ url: string|null, port: number|null, runId: string|null, pid: number|null }>}
+ */
+export async function startDaemon(
+  repoRoot,
+  { runId = null, port = 0, spawnImpl = spawn, timeoutMs = 5000, intervalMs = 50 } = {}
+) {
+  const resolvedRun = runId ?? latestRunId(repoRoot);
+
+  // A stale pointer from a previous daemon would confuse the poll below and let
+  // `stop` target a dead pid. Clear it up front; the fresh daemon writes its own.
+  clearPointer(repoRoot);
+
+  // Append daemon output to .bgsd/gui.log so failures are inspectable.
+  mkdirSync(dirname(logPath(repoRoot)), { recursive: true });
+  const fd = openSync(logPath(repoRoot), "a");
+
+  const argv = [THIS_SCRIPT, "__serve", "--run-id", String(resolvedRun ?? ""), "--port", String(port)];
+  const child = spawnImpl(process.execPath, argv, {
+    detached: true,
+    stdio: ["ignore", fd, fd],
+    cwd: repoRoot,
+  });
+  // Cut the daemon loose from this process's lifetime.
+  child.unref();
+
+  // Poll for the pointer the DAEMON writes once it is actually listening, so the
+  // URL/port we return is the real one it bound (correct even under port 0).
+  const deadline = Date.now() + timeoutMs;
+  let ptr = null;
+  while (Date.now() < deadline) {
+    ptr = readPointer(repoRoot);
+    if (ptr && ptr.port && ptr.url) break;
+    ptr = null;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  return {
+    url: ptr ? ptr.url : null,
+    port: ptr ? ptr.port : null,
+    runId: ptr ? (ptr.run_id ?? resolvedRun) : resolvedRun,
+    pid: ptr ? ptr.pid : (child && child.pid) ?? null,
+  };
+}
+
 /** Stop the running dashboard by pid from the pointer file. */
 export function stopServer(repoRoot) {
   const ptr = readPointer(repoRoot);
@@ -317,6 +387,23 @@ export async function main() {
   const argv = process.argv.slice(2);
   const sub = argv[0] && !argv[0].startsWith("--") ? argv[0] : "start";
   const flags = parseFlags(argv);
+
+  if (sub === "__serve") {
+    // Internal: the detached daemon body. Boot the actual HTTP server in THIS
+    // process and stay alive — the listening server holds the event loop open,
+    // so this blocks indefinitely until stopped (SIGTERM from `stop`, which
+    // targets the pid startServer records in the pointer file). Never called by
+    // users directly; `start` spawns it detached.
+    const runId = typeof flags["run-id"] === "string" && flags["run-id"] ? flags["run-id"] : null;
+    const port = typeof flags.port === "string" ? Number(flags.port) : 0;
+    const { url } = await startServer(repoRoot, { runId, port });
+    process.stdout.write(`[bgsd-gui] daemon listening at ${url} (pid ${process.pid})\n`);
+    // On SIGTERM (from `stop`), drop the pointer and exit cleanly.
+    const shutdown = () => { try { clearPointer(repoRoot); } catch (_) { /* noop */ } process.exit(0); };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+    return; // do NOT exit — the open server keeps this process alive.
+  }
 
   if (sub === "stop") {
     const r = stopServer(repoRoot);
@@ -377,11 +464,23 @@ export async function main() {
     return;
   }
 
-  const { url, runId: r } = await startServer(repoRoot, { runId, port });
+  // Daemonize: spawn a detached, unref'd grandchild (`__serve`) that runs the
+  // server independently of this launching shell/Claude-Code process, then read
+  // the real port/url back from the pointer the daemon writes and exit. This is
+  // the fix for the dashboard dying after ~20 minutes: the server no longer
+  // lives in a process Claude Code reaps.
+  const { url, port: actualPort, runId: r, pid } = await startDaemon(repoRoot, { runId, port });
+  if (!url) {
+    process.stderr.write(
+      `\nbgsd-gui: daemon did not come up in time. See ${logPath(repoRoot)} for details.\n\n`
+    );
+    process.exit(1);
+  }
   out(`\nbgsd-gui live at ${url}\n`);
   out(`  tracking run: ${r ?? "(none yet — will show agents as they start)"}\n`);
+  out(`  daemon pid ${pid} on port ${actualPort} (detached; survives this shell).\n`);
   out(`  open ${url} in your browser. Stop it with: node gui-live.mjs stop\n\n`);
-  // Keep the process alive; the server holds the event loop open.
+  // The `start` process exits here; the detached daemon keeps serving.
 }
 
 const invokedDirectly =
