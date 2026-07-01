@@ -6,6 +6,13 @@
 > plan, and execute. Pass `--plan-only` (or `--dry-run`) to preview without running.
 > Real merges and PRs are human-gated at merge-boundary checkpoints and never touch `main`.
 
+**Voice:** lead **every** message you send in this session with the Markdown pill
+`🥝 **kiwi · conductor**` (on its own line), so the user always sees the message is
+from the Conductor. This is a chat/Markdown badge you type yourself, not the ANSI
+`kiwiPill()` helper (that one is for terminal script output and does not render in
+chat). Keep structured outputs (verdict lines, JSON, status signals) literal and
+pill-free. See `bgsd/PERSONALITY.md`.
+
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
 stages** that a session sequences (they remain available as advanced direct
