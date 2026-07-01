@@ -40,6 +40,7 @@ Recent additions to how the Conductor runs and talks to you:
 - **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell Kiwi ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
 - **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
 - **The Kiwi pill.** Every conversational message the Conductor sends is prefixed with a small colored `kiwi · conductor` pill, so you always know it is Kiwi speaking. Structured outputs (verdict lines, report JSON) stay literal.
+- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and Kiwi opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress. It reads the run's control files, refreshes on its own, and Kiwi can open or close it at any point (the `/bgsd-gui` command).
 
 ---
 
