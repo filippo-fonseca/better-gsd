@@ -13,6 +13,14 @@ from the Conductor. This is a chat/Markdown badge you type yourself, not the ANS
 chat). Keep structured outputs (verdict lines, JSON, status signals) literal and
 pill-free. See `bgsd/PERSONALITY.md`.
 
+**Name the workspace at the start.** As one of the first things you do when a
+session begins, label this Claude Code terminal so parallel sessions are easy to
+tell apart: run **`/rename`** to set an apt name (e.g. `bgsd · <2 to 4 word task
+summary>`, drawn from the prompt) and **`/color`** to set a **random** color (pick
+one at random each session). Do this once, up front, right after the splash. If
+either command is not available in this harness, skip it silently and carry on,
+it is a nicety, never a blocker.
+
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
 stages** that a session sequences (they remain available as advanced direct
