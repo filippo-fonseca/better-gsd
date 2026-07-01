@@ -17,6 +17,10 @@
  * G14 — agentFlow: a blocked / failed agent marks its current step blocked
  * G15 — buildDashboardModel: every agent (model + lanes) carries a flow array
  * G16 — overallStatus: blocked > needs_input > running > done, empty is idle
+ * G17 — summarizeSessions: newest-first ordering by mtime
+ * G18 — summarizeSessions: status derivation (in-progress / completed / aborted)
+ * G19 — summarizeSessions: counts present + entry shape
+ * G20 — sessionStatus: run.state overrides agent-derived status
  */
 
 import assert from "node:assert/strict";
@@ -34,6 +38,8 @@ import {
   overallStatus,
   buildPipeline,
   buildDashboardModel,
+  summarizeSessions,
+  sessionStatus,
 } from "./gui.mjs";
 
 let passed = 0;
@@ -242,6 +248,81 @@ test("G16 — overallStatus: blocked > needs_input > running > done, empty is id
   // it also lands on the model
   const model = buildDashboardModel({ agents: [agent("unit-a", "execute", "running")] });
   assert.equal(model.overall, "running");
+});
+
+test("G17 — summarizeSessions orders newest-first by mtime", () => {
+  const sessions = summarizeSessions([
+    { runId: "old", run: { scale: "quick", state: "done" }, controls: [], mtime: 100 },
+    { runId: "new", run: { scale: "feature", state: "done" }, controls: [], mtime: 300 },
+    { runId: "mid", run: { scale: "project", state: "done" }, controls: [], mtime: 200 },
+  ]);
+  assert.deepEqual(sessions.map((s) => s.run_id), ["new", "mid", "old"]);
+  // updated_at is an ISO string derived from mtime.
+  assert.equal(sessions[0].updated_at, new Date(300).toISOString());
+});
+
+test("G18 — summarizeSessions derives in-progress / completed / aborted", () => {
+  const sessions = summarizeSessions([
+    // in-progress: an agent is still running, no terminal run.state.
+    {
+      runId: "running-run",
+      run: { scale: "feature", state: "executing", stage: "loop1" },
+      controls: [agent("unit-a", "execute", "running"), agent("unit-b", "done", "done")],
+      mtime: 30,
+    },
+    // completed: all agents terminal-done, no run.state hint.
+    {
+      runId: "done-run",
+      run: { scale: "feature", stage: "review" },
+      controls: [agent("unit-a", "done", "done"), agent("unit-b", "done", "done")],
+      mtime: 20,
+    },
+    // aborted: an agent failed and nothing is still running.
+    {
+      runId: "bad-run",
+      run: { scale: "feature", stage: "loop1" },
+      controls: [agent("unit-a", "execute", "failed"), agent("unit-b", "done", "done")],
+      mtime: 10,
+    },
+  ]);
+  const byId = Object.fromEntries(sessions.map((s) => [s.run_id, s.status]));
+  assert.equal(byId["running-run"], "in-progress");
+  assert.equal(byId["done-run"], "completed");
+  assert.equal(byId["bad-run"], "aborted");
+});
+
+test("G19 — summarizeSessions: counts present + entry shape", () => {
+  const [s] = summarizeSessions([
+    {
+      runId: "run-x",
+      run: { scale: "feature", state: "executing", stage: "loop1" },
+      controls: [agent("unit-a", "execute", "running"), agent("verifier-1", "verify", "blocked")],
+      mtime: 500,
+    },
+  ]);
+  assert.deepEqual(Object.keys(s).sort(), [
+    "counts", "run_id", "scale", "stage", "state", "status", "updated_at",
+  ]);
+  assert.equal(s.run_id, "run-x");
+  assert.equal(s.scale, "feature");
+  assert.equal(s.state, "executing");
+  assert.equal(s.stage, "loop1");
+  assert.equal(s.counts.total, 2);
+  assert.equal(s.counts.running, 1);
+  assert.equal(s.counts.blocked, 1);
+  // internal sort key must not leak into the serialized entry.
+  assert.equal(s._mtime, undefined);
+});
+
+test("G20 — sessionStatus: run.state overrides agent-derived status", () => {
+  // Explicitly aborted run, even though an agent is still running.
+  assert.equal(sessionStatus({ state: "aborted" }, [agent("a", "execute", "running")]), "aborted");
+  // Explicitly completed run, even with no agents.
+  assert.equal(sessionStatus({ state: "completed" }, []), "completed");
+  // No run.state and no agents: nothing has happened yet.
+  assert.equal(sessionStatus(null, []), "in-progress");
+  // needs_input with nothing running is treated as aborted (needs the user).
+  assert.equal(sessionStatus(null, [agent("a", "discuss", "needs_input")]), "aborted");
 });
 
 process.stdout.write(`\ngui.mjs: ${passed} passed, ${failed} failed\n`);
