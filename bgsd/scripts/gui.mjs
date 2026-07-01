@@ -176,3 +176,101 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
     agents: norm,
   };
 }
+
+/** Phases/statuses that mean an agent has finished its work for good. */
+const TERMINAL_DONE = Object.freeze(new Set(["done", "completed", "complete"]));
+/** Statuses that mean an agent hit a wall (needs input or failed). */
+const TERMINAL_BAD = Object.freeze(new Set(["blocked", "failed", "aborted"]));
+/** run.state values that mean the whole run is finished successfully. */
+const RUN_DONE_STATES = Object.freeze(new Set(["done", "completed", "complete", "finished"]));
+/** run.state values that mean the whole run ended badly. */
+const RUN_BAD_STATES = Object.freeze(new Set(["aborted", "failed", "cancelled", "canceled", "error"]));
+
+/**
+ * Roll a single agent's status/phase down to one of "done", "bad", or "active".
+ * A control file can express its terminal state via either `status` or `phase`.
+ *
+ * @param {object} agent  a raw control-file object
+ * @returns {"done"|"bad"|"active"}
+ */
+function agentDisposition(agent) {
+  const status = String(agent?.status ?? "").toLowerCase();
+  const phase = String(agent?.phase ?? "").toLowerCase();
+  if (TERMINAL_BAD.has(status)) return "bad";
+  if (status === "running" || status === "needs_input") {
+    return status === "needs_input" ? "bad" : "active";
+  }
+  if (TERMINAL_DONE.has(status) || TERMINAL_DONE.has(phase)) return "done";
+  return "active";
+}
+
+/**
+ * Derive a session-level status from its run metadata and agents.
+ *
+ * - "completed": run.state is a done state, or there are agents and all are
+ *   terminal-done.
+ * - "aborted": run.state is a bad state, or some agent failed/blocked while none
+ *   are still running.
+ * - "in-progress": anything else (still working, or nothing has happened yet).
+ *
+ * @param {object|null} run       parsed run.json (or null)
+ * @param {object[]} controls     raw control-file objects
+ * @returns {"completed"|"aborted"|"in-progress"}
+ */
+export function sessionStatus(run, controls = []) {
+  const state = String(run?.state ?? "").toLowerCase();
+  if (RUN_BAD_STATES.has(state)) return "aborted";
+  if (RUN_DONE_STATES.has(state)) return "completed";
+
+  const dispositions = controls.map(agentDisposition);
+  const anyRunning = dispositions.includes("active");
+  const anyBad = dispositions.includes("bad");
+  if (anyBad && !anyRunning) return "aborted";
+  if (dispositions.length > 0 && dispositions.every((d) => d === "done")) return "completed";
+  return "in-progress";
+}
+
+/**
+ * Summarize every bgsd run into a compact list for the "All sessions" tab.
+ * Pure: the live seam supplies the scanned runs. Sorted newest-first by mtime.
+ *
+ * @param {Array<{ runId: string, run: object|null, controls: object[], mtime?: number }>} runs
+ * @returns {Array<{
+ *   run_id: string,
+ *   scale: string|null,
+ *   state: string|null,
+ *   stage: string|null,
+ *   status: "completed"|"aborted"|"in-progress",
+ *   counts: { total, running, done, blocked, needs_input },
+ *   updated_at: string|null
+ * }>}
+ */
+export function summarizeSessions(runs = []) {
+  return runs
+    .map((entry) => {
+      const run = entry?.run ?? null;
+      const controls = Array.isArray(entry?.controls) ? entry.controls : [];
+      const model = buildDashboardModel({
+        run: {
+          run_id: entry?.runId ?? run?.run_id ?? null,
+          scale: run?.scale ?? null,
+          state: run?.state ?? null,
+          stage: run?.stage ?? null,
+        },
+        agents: controls,
+      });
+      const mtime = typeof entry?.mtime === "number" ? entry.mtime : 0;
+      return {
+        run_id: entry?.runId ?? run?.run_id ?? null,
+        scale: run?.scale ?? null,
+        state: run?.state ?? null,
+        stage: run?.stage ?? null,
+        status: sessionStatus(run, controls),
+        counts: model.counts,
+        updated_at: mtime ? new Date(mtime).toISOString() : null,
+        _mtime: mtime,
+      };
+    })
+    .sort((a, b) => b._mtime - a._mtime)
+    .map(({ _mtime, ...rest }) => rest);
+}
