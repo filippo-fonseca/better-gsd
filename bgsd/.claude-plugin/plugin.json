@@ -2,9 +2,9 @@
   "name": "bgsd",
   "displayName": "better-gsd",
   "version": "0.3.0",
-  "description": "Autonomous, self-verifying orchestration layer on top of GSD. v0: the Standalone Tester + /bgsd-verify.",
+  "description": "Autonomous, self-verifying orchestration layer on top of GSD: talk to the Conductor, it handles everything.",
   "author": {
-    "name": "better-gsd",
+    "name": "Filippo Fonseca",
     "url": "https://github.com/filippo-fonseca/better-gsd"
   },
   "homepage": "https://github.com/filippo-fonseca/better-gsd",

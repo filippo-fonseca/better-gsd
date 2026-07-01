@@ -4,17 +4,17 @@
     "description": "Local marketplace for the better-gsd (bgsd) plugin: An additive verification layer over GSD."
   },
   "owner": {
-    "name": "filippo-fonseca",
+    "name": "Filippo Fonseca",
     "email": "filifonsecacagnazzo@gmail.com"
   },
   "plugins": [
     {
       "name": "bgsd",
-      "description": "better-gsd v0 — the Standalone Tester + /bgsd-verify",
+      "description": "better-gsd: autonomous, self-verifying orchestration layer on top of GSD",
       "source": "./",
       "version": "0.3.0",
       "author": {
-        "name": "filippo-fonseca"
+        "name": "Filippo Fonseca"
       },
       "homepage": "https://github.com/filippo-fonseca/better-gsd",
       "license": "MIT",
