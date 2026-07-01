@@ -32,6 +32,13 @@
   .chip { border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; color: var(--muted); }
   .chip b { color: var(--ink); }
   .chip.run b { color: var(--run); } .chip.done b { color: var(--done); } .chip.bad b { color: var(--bad); }
+  .overall { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 3px 12px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; border: 1px solid var(--line); color: var(--muted); }
+  .overall .odot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .overall.running { color: var(--run); border-color: #24425f; }
+  .overall.done { color: var(--done); border-color: var(--kiwi-dim); }
+  .overall.blocked { color: var(--bad); border-color: #5c2320; }
+  .overall.needs_input { color: var(--warn); border-color: #5c4a1e; }
+  .overall.idle { color: var(--muted); }
   .live { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
   .live .beat { width: 8px; height: 8px; border-radius: 50%; background: var(--kiwi); box-shadow: 0 0 0 0 var(--kiwi); animation: beat 1.6s infinite; }
   .live.stale .beat { background: var(--warn); animation: none; }
@@ -74,6 +81,17 @@
   .iter { color: var(--muted); font-size: 11.5px; }
   .bar { height: 5px; background: #0c141d; border-radius: 999px; overflow: hidden; margin-top: 4px; }
   .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--kiwi-dim), var(--kiwi)); }
+  .flow { display: flex; align-items: flex-start; gap: 3px; margin-top: 8px; }
+  .flow-step { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1 1 0; min-width: 0; }
+  .flow-step .fdot { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; background: #0c141d; border: 1px solid var(--line); color: var(--muted); }
+  .flow-step .flabel { font-size: 9px; letter-spacing: .2px; color: var(--muted); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; opacity: .8; }
+  .flow-step.done .fdot { background: var(--kiwi-dim); border-color: var(--kiwi-dim); color: #d6ffe4; }
+  .flow-step.done .flabel { color: var(--done); opacity: 1; }
+  .flow-step.active .fdot { background: var(--kiwi); border-color: var(--kiwi); color: #05130a; box-shadow: 0 0 0 2px rgba(63,181,103,.22); }
+  .flow-step.active .flabel { color: var(--kiwi); font-weight: 700; opacity: 1; }
+  .flow-step.blocked .fdot { background: var(--bad); border-color: var(--bad); color: #2a0d0c; }
+  .flow-step.blocked .flabel { color: var(--bad); font-weight: 700; opacity: 1; }
+  .flow-step.pending .fdot { opacity: .55; }
   .note { color: var(--muted); font-size: 11.5px; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pressure { font-size: 10.5px; margin-top: 6px; }
   .pressure.elevated { color: var(--warn); } .pressure.critical { color: var(--bad); }
@@ -89,6 +107,7 @@
     <h1>live view</h1>
     <span class="meta">run <b id="run-id">—</b> · scale <b id="run-scale">—</b> · <b id="run-state">—</b></span>
     <div class="counts">
+      <span class="overall idle" id="overall"><span class="odot"></span><span id="overall-text">idle</span></span>
       <span class="chip run">running <b id="c-running">0</b></span>
       <span class="chip done">done <b id="c-done">0</b></span>
       <span class="chip bad">blocked <b id="c-blocked">0</b></span>
@@ -111,6 +130,13 @@
   var POLL_MS = 1500;
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
   function pct(p) { if (!p || !p.total) return 0; return Math.round((p.index / (p.total - 1)) * 100); }
+  function deriveOverall(c) {
+    if (!c || !c.total) return "idle";
+    if (c.blocked > 0) return "blocked";
+    if (c.needs_input > 0) return "needs_input";
+    if (c.running > 0) return "running";
+    return "done";
+  }
 
   function renderAgent(a) {
     var card = el("div", "card " + a.status);
@@ -128,6 +154,21 @@
     var bar = el("div", "bar"); var fill = el("i"); fill.style.width = pct(a.progress) + "%"; bar.appendChild(fill);
     card.appendChild(bar);
 
+    // The agent's OWN GSD flow (discuss→…→done): a compact per-step mini-stepper,
+    // so you can see where this agent sits within its own flow, not just one label.
+    if (a.flow && a.flow.length) {
+      var flow = el("div", "flow");
+      a.flow.forEach(function (s) {
+        var step = el("div", "flow-step " + s.status);
+        var dot = el("span", "fdot", s.status === "done" ? "✓" : (s.status === "blocked" ? "!" : ""));
+        step.appendChild(dot);
+        step.appendChild(el("span", "flabel", s.label));
+        step.title = s.label + " · " + s.status;
+        flow.appendChild(step);
+      });
+      card.appendChild(flow);
+    }
+
     if (a.note) card.appendChild(el("div", "note", a.note));
     if (a.context_pressure && a.context_pressure !== "normal") {
       card.appendChild(el("div", "pressure " + a.context_pressure, "context: " + a.context_pressure));
@@ -143,6 +184,13 @@
     document.getElementById("c-done").textContent = model.counts.done;
     document.getElementById("c-blocked").textContent = model.counts.blocked;
     document.getElementById("c-total").textContent = model.counts.total;
+
+    // Overall run status: one badge derived from counts (blocked > needs_input >
+    // running > done, else idle). Prefer the model's value, fall back locally.
+    var overall = model.overall || deriveOverall(model.counts);
+    var ov = document.getElementById("overall");
+    ov.className = "overall " + overall;
+    document.getElementById("overall-text").textContent = overall.replace("_", " ");
 
     // Pipeline timeline — visible even before any agent spawns (discuss/decompose).
     var pipe = document.getElementById("pipeline");

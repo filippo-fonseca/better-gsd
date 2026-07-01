@@ -11,6 +11,12 @@
  * G05 — normalizeAgent: flattens a control object to the UI shape
  * G06 — buildDashboardModel: lanes populated, counts correct, generated_at set
  * G07 — buildDashboardModel: empty run yields empty lanes + zero counts
+ * G11 — agentFlow: an execute agent has discuss/ui/plan done, execute active, rest pending
+ * G12 — agentFlow: a fixing agent re-lights execute as active
+ * G13 — agentFlow: a done-status agent has the whole flow done
+ * G14 — agentFlow: a blocked / failed agent marks its current step blocked
+ * G15 — buildDashboardModel: every agent (model + lanes) carries a flow array
+ * G16 — overallStatus: blocked > needs_input > running > done, empty is idle
  */
 
 import assert from "node:assert/strict";
@@ -24,6 +30,8 @@ import {
   gsdSubstage,
   phaseProgress,
   normalizeAgent,
+  agentFlow,
+  overallStatus,
   buildPipeline,
   buildDashboardModel,
 } from "./gui.mjs";
@@ -159,6 +167,81 @@ test("G10 — buildDashboardModel surfaces pipeline + stage + note (pre-fan-out)
   assert.ok(Array.isArray(model.pipeline), "model carries a pipeline timeline");
   assert.equal(model.pipeline.find((s) => s.id === "discuss").status, "active");
   assert.equal(model.counts.total, 0, "no agents yet, but stage is still visible");
+});
+
+test("G11 — agentFlow: execute agent has prior steps done, execute active, rest pending", () => {
+  const flow = agentFlow(agent("unit-a", "execute", "running"));
+  assert.equal(flow.length, GSD_FLOW.length, "flow spans the whole GSD flow");
+  const byPhase = Object.fromEntries(flow.map((s) => [s.phase, s.status]));
+  assert.equal(byPhase.discuss, "done");
+  assert.equal(byPhase.ui, "done");
+  assert.equal(byPhase.plan, "done");
+  assert.equal(byPhase.execute, "active");
+  assert.equal(byPhase.verify, "pending");
+  assert.equal(byPhase.done, "pending");
+  // steps carry their friendly labels too
+  assert.equal(flow.find((s) => s.phase === "ui").label, "UI design");
+});
+
+test("G12 — agentFlow: fixing agent re-lights execute as active", () => {
+  const flow = agentFlow(agent("unit-a", "fixing", "running"));
+  const byPhase = Object.fromEntries(flow.map((s) => [s.phase, s.status]));
+  assert.equal(byPhase.plan, "done", "steps before execute are done");
+  assert.equal(byPhase.execute, "active", "fixing maps onto execute active");
+  assert.equal(byPhase.verify, "pending");
+});
+
+test("G13 — agentFlow: done-status agent has the whole flow done", () => {
+  const flow = agentFlow(agent("unit-a", "done", "done"));
+  for (const s of flow) assert.equal(s.status, "done", `${s.phase} should be done`);
+  // a phase of "done" with a still-running status also completes the flow
+  const flow2 = agentFlow(agent("unit-b", "done", "running"));
+  for (const s of flow2) assert.equal(s.status, "done");
+});
+
+test("G14 — agentFlow: blocked / failed agent marks its current step blocked", () => {
+  const blocked = agentFlow(agent("unit-a", "plan", "blocked"));
+  const bp = Object.fromEntries(blocked.map((s) => [s.phase, s.status]));
+  assert.equal(bp.discuss, "done", "steps before current stay done");
+  assert.equal(bp.ui, "done");
+  assert.equal(bp.plan, "blocked", "the current step is blocked, not active");
+  assert.equal(bp.execute, "pending");
+
+  const failed = agentFlow(agent("unit-b", "execute", "failed"));
+  const fp = Object.fromEntries(failed.map((s) => [s.phase, s.status]));
+  assert.equal(fp.execute, "blocked", "a failed status blocks the current step");
+});
+
+test("G15 — buildDashboardModel puts a flow array on every agent", () => {
+  const model = buildDashboardModel({
+    run: { run_id: "run-x" },
+    agents: [
+      agent("unit-a", "execute", "running"),
+      agent("verifier-1", "verify", "running"),
+    ],
+  });
+  for (const a of model.agents) {
+    assert.ok(Array.isArray(a.flow), "each model.agents entry carries a flow array");
+    assert.equal(a.flow.length, GSD_FLOW.length);
+    for (const s of a.flow) {
+      assert.ok("phase" in s && "label" in s && "status" in s, "flow step has phase/label/status");
+    }
+  }
+  // the same flow rides along inside each lane's agents
+  const laneAgents = model.lanes.flatMap((l) => l.agents);
+  assert.ok(laneAgents.length > 0);
+  for (const a of laneAgents) assert.ok(Array.isArray(a.flow), "lane agents carry flow too");
+});
+
+test("G16 — overallStatus: blocked > needs_input > running > done, empty is idle", () => {
+  assert.equal(overallStatus({ total: 0, running: 0, done: 0, blocked: 0, needs_input: 0 }), "idle");
+  assert.equal(overallStatus({ total: 3, running: 2, done: 0, blocked: 1, needs_input: 1 }), "blocked");
+  assert.equal(overallStatus({ total: 2, running: 1, done: 0, blocked: 0, needs_input: 1 }), "needs_input");
+  assert.equal(overallStatus({ total: 2, running: 1, done: 1, blocked: 0, needs_input: 0 }), "running");
+  assert.equal(overallStatus({ total: 2, running: 0, done: 2, blocked: 0, needs_input: 0 }), "done");
+  // it also lands on the model
+  const model = buildDashboardModel({ agents: [agent("unit-a", "execute", "running")] });
+  assert.equal(model.overall, "running");
 });
 
 process.stdout.write(`\ngui.mjs: ${passed} passed, ${failed} failed\n`);

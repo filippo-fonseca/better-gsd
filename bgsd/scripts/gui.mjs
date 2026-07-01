@@ -111,6 +111,51 @@ export function phaseProgress(phase) {
 }
 
 /**
+ * Build an agent's OWN GSD flow (discuss → ui → plan → execute → verify → done)
+ * as an ordered array, marking each step done / active / pending / blocked
+ * relative to where the agent currently sits in its own flow. This is what lets
+ * a card show not just a single label, but the agent's position within its own
+ * pipeline (say, on "execute" of its discuss→…→done flow).
+ *
+ * Rules:
+ *  - Steps before the current phase are "done", the current phase is "active",
+ *    later steps are "pending".
+ *  - `fixing` maps onto the `execute` step being active (the fix / re-verify loop
+ *    is an execute-loop iteration, so it re-lights execute).
+ *  - A terminal agent `status` of `done` marks the WHOLE flow done.
+ *  - A `blocked` / `failed` phase or status marks the current step "blocked".
+ *
+ * @param {object} agent  a raw control-file object
+ * @returns {{ phase: string, label: string, status: "done"|"active"|"pending"|"blocked" }[]}
+ */
+export function agentFlow(agent) {
+  const phase = agent?.phase ?? null;
+  const status = agent?.status ?? null;
+
+  // Which GSD_FLOW step is the agent's current one?
+  let currentIdx;
+  if (status === "done" || phase === "done") {
+    currentIdx = GSD_FLOW.length; // whole flow complete: every step is before "current"
+  } else if (phase === "fixing") {
+    currentIdx = GSD_FLOW.indexOf("execute"); // fix/re-verify loop re-lights execute
+  } else {
+    currentIdx = GSD_FLOW.indexOf(phase);
+    if (currentIdx < 0) currentIdx = 0; // unknown / pre-flow phase clamps to discuss
+  }
+
+  const isBad =
+    status === "blocked" || status === "failed" || phase === "blocked" || phase === "failed";
+
+  return GSD_FLOW.map((p, i) => {
+    let stepStatus;
+    if (i < currentIdx) stepStatus = "done";
+    else if (i === currentIdx) stepStatus = isBad ? "blocked" : "active";
+    else stepStatus = "pending";
+    return { phase: p, label: gsdSubstage(p), status: stepStatus };
+  });
+}
+
+/**
  * Normalize one raw control-file object into the flat agent shape the UI uses.
  *
  * @param {object} agent
@@ -131,7 +176,24 @@ export function normalizeAgent(agent) {
     heartbeat_at: agent?.heartbeat_at ?? null,
     context_pressure: agent?.context_pressure ?? null,
     progress: phaseProgress(agent?.phase),
+    flow: agentFlow(agent),
   };
+}
+
+/**
+ * Derive a single overall run status from the agent counts, for the header badge.
+ * Priority: blocked wins, then needs_input, then running, then done; an empty run
+ * (no agents at all) reads "idle".
+ *
+ * @param {{ total: number, running: number, done: number, blocked: number, needs_input: number }} counts
+ * @returns {"blocked"|"needs_input"|"running"|"done"|"idle"}
+ */
+export function overallStatus(counts) {
+  if (!counts || counts.total === 0) return "idle";
+  if (counts.blocked > 0) return "blocked";
+  if (counts.needs_input > 0) return "needs_input";
+  if (counts.running > 0) return "running";
+  return "done";
 }
 
 /**
@@ -144,6 +206,7 @@ export function normalizeAgent(agent) {
  * @returns {{
  *   run: { run_id, scale, state, generated_at },
  *   counts: { total, running, done, blocked, needs_input },
+ *   overall: "blocked"|"needs_input"|"running"|"done"|"idle",
  *   lanes: { id, title, agents: object[] }[],
  *   agents: object[]
  * }}
@@ -155,6 +218,13 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
     agents: norm.filter((a) => a.lane === l.id),
   }));
   const countBy = (pred) => norm.filter(pred).length;
+  const counts = {
+    total: norm.length,
+    running: countBy((a) => a.status === "running"),
+    done: countBy((a) => a.status === "done"),
+    blocked: countBy((a) => a.status === "blocked" || a.status === "failed"),
+    needs_input: countBy((a) => a.status === "needs_input"),
+  };
   return {
     run: {
       run_id: run.run_id ?? null,
@@ -164,13 +234,8 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
       note: run.note ?? null,
       generated_at: new Date(now).toISOString(),
     },
-    counts: {
-      total: norm.length,
-      running: countBy((a) => a.status === "running"),
-      done: countBy((a) => a.status === "done"),
-      blocked: countBy((a) => a.status === "blocked" || a.status === "failed"),
-      needs_input: countBy((a) => a.status === "needs_input"),
-    },
+    counts,
+    overall: overallStatus(counts),
     pipeline: buildPipeline(run.stage ?? null),
     lanes,
     agents: norm,
