@@ -336,6 +336,9 @@ function safeRead(readFileFn, path, fallback = "") {
  *
  * @param {object} opts
  * @param {string}   opts.runId        The run id.
+ * @param {string}   [opts.title]      Short human-readable session title. Leads the
+ *                                     RUN.md header + the ledger row. Falls back to
+ *                                     the run id when unset.
  * @param {string}   opts.prompt       The original run prompt.
  * @param {string[]} opts.units        Array of unit ids in dependency order.
  * @param {Array<{
@@ -360,6 +363,7 @@ function safeRead(readFileFn, path, fallback = "") {
  */
 export function aggregateDocs({
   runId,
+  title,
   prompt,
   units,
   worktrees,
@@ -402,9 +406,12 @@ export function aggregateDocs({
     })
     .join("\n") || "| — | — | — | — | — |";
 
+  // Lead the record with the human title; keep the run id alongside.
+  const sessionTitle = (title && String(title).trim()) || runId;
   const runMd = [
-    `# Run: ${runId}`,
+    `# ${sessionTitle}`,
     "",
+    `**Run:** ${runId}`,
     `**Generated:** ${now}`,
     `**State:** ${runState}`,
     `**Branch:** rehearsal/${runId}`,
@@ -505,6 +512,7 @@ export function aggregateDocs({
     updateLedger({
       bgsdDir,
       runId,
+      title:        sessionTitle,
       state:        runState,
       prompt:       prompt ?? "",
       mergedCount:  worktrees.filter((w) => w.status === "done" || w.status === "merged").length,
@@ -527,6 +535,8 @@ export function aggregateDocs({
  * @param {object} opts
  * @param {string}   opts.bgsdDir      Absolute path to .bgsd directory.
  * @param {string}   opts.runId        The run id.
+ * @param {string}   [opts.title]      Short human-readable session title. Leads the
+ *                                     ledger row; falls back to the run id.
  * @param {string}   opts.state        Final run state.
  * @param {string}   [opts.prompt]     The original prompt (truncated to 60 chars).
  * @param {number}   [opts.mergedCount] Count of merged units.
@@ -538,6 +548,7 @@ export function aggregateDocs({
 export function updateLedger({
   bgsdDir,
   runId,
+  title,
   state,
   prompt = "",
   mergedCount = 0,
@@ -557,8 +568,8 @@ export function updateLedger({
 
   const HEADER =
     "# bgsd Run Ledger\n\n" +
-    "| Run ID | State | Merged | Held | Created At | Prompt |\n" +
-    "|--------|-------|--------|------|------------|--------|\n";
+    "| Title | Run ID | State | Merged | Held | Created At | Prompt |\n" +
+    "|-------|--------|-------|--------|------|------------|--------|\n";
 
   let existing = "";
   if (_exists(ledgerPath)) {
@@ -567,9 +578,10 @@ export function updateLedger({
     existing = HEADER;
   }
 
+  const sessionTitle = ((title && String(title).trim()) || runId).replace(/\n/g, " ");
   const promptExcerpt = (prompt).slice(0, 60).replace(/\n/g, " ");
   const now = new Date().toISOString();
-  const line = `| ${runId} | ${state} | ${mergedCount} | ${heldCount} | ${now} | ${promptExcerpt} |\n`;
+  const line = `| ${sessionTitle} | ${runId} | ${state} | ${mergedCount} | ${heldCount} | ${now} | ${promptExcerpt} |\n`;
 
   _write(ledgerPath, existing + line);
 }

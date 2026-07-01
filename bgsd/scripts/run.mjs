@@ -221,16 +221,20 @@ export function readRun(runPath) {
  * @param {object} opts
  * @param {string}   opts.runId    Run identifier (from mintRunId)
  * @param {string}   opts.prompt   The original decomposition prompt
+ * @param {string}   [opts.title]  A short human-readable session title (Title Case).
+ *                                 Optional; defaults to null and is filled in later
+ *                                 by the Conductor via gui-live.mjs `title`.
  * @param {string}   [opts.bgsdDir]  Absolute path to .bgsd directory
  * @returns {object}  The created run state object
  */
-export function createRun({ runId, prompt, bgsdDir }) {
+export function createRun({ runId, prompt, title = null, bgsdDir }) {
   const dir = bgsdDir ?? join(REPO_ROOT, ".bgsd");
   const runPath = runJsonPath(dir, runId);
 
   const now = new Date().toISOString();
   const data = {
     run_id:       runId,
+    title:        title ?? null,
     prompt,
     state:        "created",
     created_at:   now,
@@ -722,24 +726,26 @@ export function rehearsalBranch(runId) {
 
 /**
  * Append an entry to the global .bgsd/ledger.md index.
- * Each run gets one line: run-id, state, created_at, prompt excerpt.
+ * Each run gets one line, led by the human title: title, run-id, state,
+ * created_at, prompt excerpt. Title falls back to the run id when unset.
  *
  * @param {string} bgsdDir   Absolute path to .bgsd
  * @param {object} run       The run state object
  */
 export function appendLedgerEntry(bgsdDir, run) {
   const ledgerPath = join(bgsdDir, "ledger.md");
+  const title = (run.title ?? run.run_id ?? "").replace(/\n/g, " ");
   const prompt = (run.prompt ?? "").slice(0, 60).replace(/\n/g, " ");
   const line =
-    `| ${run.run_id} | ${run.state} | ${run.created_at} | ${prompt} |\n`;
+    `| ${title} | ${run.run_id} | ${run.state} | ${run.created_at} | ${prompt} |\n`;
 
   // Create ledger with header if it does not exist
   if (!existsSync(ledgerPath)) {
     writeFileSync(
       ledgerPath,
       "# bgsd Run Ledger\n\n" +
-      "| Run ID | State | Created At | Prompt |\n" +
-      "|--------|-------|------------|--------|\n",
+      "| Title | Run ID | State | Created At | Prompt |\n" +
+      "|-------|--------|-------|------------|--------|\n",
       "utf8"
     );
   }

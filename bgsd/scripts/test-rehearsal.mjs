@@ -290,6 +290,37 @@ await test("RH12 — aggregateDocs: produces RUN.md with prompt, units, and time
   assert.ok(runMd.includes("agent-bbb"), "agent-bbb in RUN.md");
 });
 
+await test("RH12b — aggregateDocs: human title leads the RUN.md header, run id alongside", () => {
+  const worktrees = makeWorktrees();
+  // With a title, the RUN.md header leads with it and keeps the run id.
+  const { runMd } = aggregateDocs({
+    runId:     "bgsd-0001-test",
+    title:     "Build The Auth System",
+    prompt:    "Build the new auth system",
+    units:     ["A", "B"],
+    worktrees,
+    bgsdDir:   null,
+    readFileFn: () => { throw new Error("not found"); },
+    writeFn:   () => {},
+    existsFn:  () => false,
+  });
+  assert.ok(runMd.includes("# Build The Auth System"), "title heads the RUN.md");
+  assert.ok(runMd.includes("**Run:** bgsd-0001-test"), "run id kept alongside the title");
+
+  // Without a title, the header falls back to the run id (backwards compatible).
+  const { runMd: runMd2 } = aggregateDocs({
+    runId:     "bgsd-0002-untitled",
+    prompt:    "no title here",
+    units:     ["A"],
+    worktrees,
+    bgsdDir:   null,
+    readFileFn: () => { throw new Error("not found"); },
+    writeFn:   () => {},
+    existsFn:  () => false,
+  });
+  assert.ok(runMd2.includes("# bgsd-0002-untitled"), "falls back to run id when no title");
+});
+
 await test("RH13 — aggregateDocs: produces AGENTS.md with per-agent sections", () => {
   const worktrees = makeWorktrees();
   const { agentsMd } = aggregateDocs({
@@ -426,6 +457,40 @@ await test("RH19 — updateLedger: appends to existing ledger", () => {
   assert.ok(ledger.includes("bgsd-0001-old"), "previous entry preserved");
   assert.ok(ledger.includes("bgsd-0002-new"), "new entry appended");
   assert.ok(ledger.includes("new prompt"), "new prompt in new entry");
+});
+
+await test("RH19b — updateLedger: human title leads the ledger row (falls back to run id)", () => {
+  const written = {};
+  updateLedger({
+    bgsdDir:     "/fake/bgsd",
+    runId:       "bgsd-0003-titled",
+    title:       "Add A Search Bar",
+    state:       "done",
+    prompt:      "add a search bar",
+    mergedCount: 1,
+    heldCount:   0,
+    writeFn:     (p, c) => { written[p] = c; },
+    readFn:      () => { throw new Error("not found"); },
+    existsFn:    () => false,
+  });
+  const ledger = written["/fake/bgsd/ledger.md"];
+  assert.ok(ledger.includes("| Title | Run ID |"), "ledger header carries a Title column");
+  assert.ok(/\| Add A Search Bar \| bgsd-0003-titled \|/.test(ledger),
+    "row leads with the title, run id alongside");
+
+  // No title → the row leads with the run id (backwards compatible).
+  const written2 = {};
+  updateLedger({
+    bgsdDir:     "/fake/bgsd",
+    runId:       "bgsd-0004-untitled",
+    state:       "done",
+    prompt:      "no title",
+    writeFn:     (p, c) => { written2[p] = c; },
+    readFn:      () => { throw new Error("not found"); },
+    existsFn:    () => false,
+  });
+  assert.ok(/\| bgsd-0004-untitled \| bgsd-0004-untitled \|/.test(written2["/fake/bgsd/ledger.md"]),
+    "title falls back to the run id when unset");
 });
 
 // ---------------------------------------------------------------------------

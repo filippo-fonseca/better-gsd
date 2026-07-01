@@ -228,6 +228,7 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
   return {
     run: {
       run_id: run.run_id ?? null,
+      title: run.title ?? null,
       scale: run.scale ?? null,
       state: run.state ?? null,
       stage: run.stage ?? null,
@@ -302,6 +303,7 @@ export function sessionStatus(run, controls = []) {
  * @param {Array<{ runId: string, run: object|null, controls: object[], mtime?: number }>} runs
  * @returns {Array<{
  *   run_id: string,
+ *   title: string|null,
  *   scale: string|null,
  *   state: string|null,
  *   stage: string|null,
@@ -318,6 +320,7 @@ export function summarizeSessions(runs = []) {
       const model = buildDashboardModel({
         run: {
           run_id: entry?.runId ?? run?.run_id ?? null,
+          title: run?.title ?? null,
           scale: run?.scale ?? null,
           state: run?.state ?? null,
           stage: run?.stage ?? null,
@@ -327,6 +330,7 @@ export function summarizeSessions(runs = []) {
       const mtime = typeof entry?.mtime === "number" ? entry.mtime : 0;
       return {
         run_id: entry?.runId ?? run?.run_id ?? null,
+        title: run?.title ?? null,
         scale: run?.scale ?? null,
         state: run?.state ?? null,
         stage: run?.stage ?? null,

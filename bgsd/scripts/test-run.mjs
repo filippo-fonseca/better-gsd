@@ -271,6 +271,21 @@ test("R05 — createRun: creates run.json with 'created' state + all fields", ()
   assert.ok(Array.isArray(run.transitions), "has transitions array");
   assert.equal(run.transitions.length, 1, "one initial transition");
   assert.equal(run.transitions[0].to, "created");
+  // title defaults to null when not supplied.
+  assert.ok("title" in run, "run.json carries a title field");
+  assert.equal(run.title, null, "title defaults to null when omitted");
+  rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test("R05b — createRun: stores an optional human-readable title", () => {
+  const tmpDir = makeTmpDir();
+  const bgsdDir = join(tmpDir, ".bgsd");
+  const { runId } = mintRunId("add user auth", bgsdDir);
+  const run = createRun({ runId, prompt: "add user auth", title: "Add User Auth", bgsdDir });
+  assert.equal(run.title, "Add User Auth", "title is stored on the run object");
+  // ...and it is persisted to run.json on disk.
+  const onDisk = readRun(runJsonPath(bgsdDir, runId));
+  assert.equal(onDisk.title, "Add User Auth", "title persisted to run.json");
   rmSync(tmpDir, { recursive: true, force: true });
 });
 

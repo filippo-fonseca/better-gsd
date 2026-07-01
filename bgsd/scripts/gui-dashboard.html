@@ -283,7 +283,7 @@
 <header>
   <div class="top">
     <span class="pill"><span class="kdot"></span>kiwi · conductor</span>
-    <h1 class="clean-sans">live view</h1>
+    <h1 class="clean-sans" id="run-title">live view</h1>
     <span class="meta">run <b id="run-id">—</b> · scale <b id="run-scale">—</b> · <b id="run-state">—</b></span>
     <div class="counts">
       <span class="overall idle" id="overall"><span class="odot"></span><span id="overall-text">idle</span></span>
@@ -491,6 +491,10 @@
   }
 
   function render(model) {
+    // The session's human-readable title leads the header; fall back to the run
+    // id, then to the generic "live view" when there is no session at all.
+    document.getElementById("run-title").textContent =
+      model.run.title || model.run.run_id || "live view";
     document.getElementById("run-id").textContent = model.run.run_id || "—";
     document.getElementById("run-scale").textContent = model.run.scale || "—";
     document.getElementById("run-state").textContent = model.run.state || "—";
@@ -606,8 +610,11 @@
       var row = el("button", "sess st-" + s.status);
       if (viewingRun && s.run_id === viewingRun) row.className += " viewing";
 
-      var idCell = el("div", "sess-id", s.run_id || "(unknown run)");
-      idCell.appendChild(el("span", "stage", "stage: " + (s.stage || "—")));
+      // Title is the primary label; the run id rides underneath, dim + secondary.
+      var idCell = el("div", "sess-id", s.title || s.run_id || "(unknown run)");
+      var sub = s.title ? (s.run_id || "") + " · stage: " + (s.stage || "—")
+                        : "stage: " + (s.stage || "—");
+      idCell.appendChild(el("span", "stage", sub));
       row.appendChild(idCell);
 
       row.appendChild(el("div", "sess-scale", s.scale || "—"));

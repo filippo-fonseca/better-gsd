@@ -15,6 +15,7 @@
  *   node gui-live.mjs start [--run-id <id>] [--port <n>]   # start the dashboard
  *   node gui-live.mjs stop                                 # stop the running one
  *   node gui-live.mjs status                               # is it up? where?
+ *   node gui-live.mjs title "<the title>" [--run-id <id>]  # set the session title
  *   node gui-live.mjs start --plan-only                    # print the plan only
  */
 
@@ -80,6 +81,7 @@ export function modelForRun(repoRoot, runId) {
       const r = JSON.parse(readFileSync(runJson, "utf8"));
       run = {
         run_id: runId,
+        title: r.title ?? null,
         scale: r.scale ?? null,
         state: r.state ?? null,
         stage: r.stage ?? null,
@@ -156,10 +158,10 @@ export function sessionsList(repoRoot) {
  * existing run.json.
  *
  * @param {string} repoRoot
- * @param {object} fields  { runId?, stage?, note?, scale?, state? }
+ * @param {object} fields  { runId?, stage?, note?, scale?, state?, title? }
  * @returns {object} the written run-state
  */
-export function setStage(repoRoot, { runId, stage, note, scale, state } = {}) {
+export function setStage(repoRoot, { runId, stage, note, scale, state, title } = {}) {
   const resolved = runId ?? latestRunId(repoRoot);
   if (!resolved) throw new Error("setStage: no run found under .bgsd/runs");
   const path = join(runsDir(repoRoot), resolved, "run.json");
@@ -170,6 +172,7 @@ export function setStage(repoRoot, { runId, stage, note, scale, state } = {}) {
   if (note !== undefined) next.note = note;
   if (scale !== undefined) next.scale = scale;
   if (state !== undefined) next.state = state;
+  if (title !== undefined) next.title = title;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(next, null, 2), "utf8");
   return next;
@@ -439,6 +442,22 @@ export async function main() {
     return;
   }
 
+  if (sub === "title") {
+    // Dedicated verb: set ONLY the session title. The Conductor calls this at
+    // session start so the human-readable title lands in run.json → dashboard.
+    const title = argv[1] && !argv[1].startsWith("--") ? argv[1] : flags.title;
+    if (typeof title !== "string" || !title.trim()) {
+      process.stderr.write(`title: a title string is required (node gui-live.mjs title "<the title>")\n`);
+      process.exit(1);
+    }
+    const r = setStage(repoRoot, {
+      runId: typeof flags["run-id"] === "string" ? flags["run-id"] : undefined,
+      title,
+    });
+    out(`\nbgsd-gui: run ${r.run_id} → title "${r.title}"\n\n`);
+    return;
+  }
+
   if (sub === "stage") {
     const stage = argv[1] && !argv[1].startsWith("--") ? argv[1] : flags.stage;
     const r = setStage(repoRoot, {
@@ -446,8 +465,9 @@ export async function main() {
       stage: typeof stage === "string" ? stage : undefined,
       note: typeof flags.note === "string" ? flags.note : undefined,
       state: typeof flags.state === "string" ? flags.state : undefined,
+      title: typeof flags.title === "string" ? flags.title : undefined,
     });
-    out(`\nbgsd-gui: run ${r.run_id} → stage ${r.stage ?? "—"}${r.note ? ` (${r.note})` : ""}\n\n`);
+    out(`\nbgsd-gui: run ${r.run_id} → stage ${r.stage ?? "—"}${r.note ? ` (${r.note})` : ""}${r.title ? ` [${r.title}]` : ""}\n\n`);
     return;
   }
 

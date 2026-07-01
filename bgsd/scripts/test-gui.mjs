@@ -30,7 +30,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -51,7 +51,7 @@ import {
   sessionStatus,
 } from "./gui.mjs";
 
-import { startDaemon } from "./gui-live.mjs";
+import { startDaemon, setStage } from "./gui-live.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -169,7 +169,7 @@ test("G05 — normalizeAgent flattens a control object", () => {
 
 test("G06 — buildDashboardModel populates lanes + counts", () => {
   const model = buildDashboardModel({
-    run: { run_id: "run-x", scale: "feature", state: "executing" },
+    run: { run_id: "run-x", title: "Ship The Thing", scale: "feature", state: "executing" },
     agents: [
       agent("unit-a", "execute", "running"),
       agent("unit-b", "done", "done"),
@@ -179,6 +179,7 @@ test("G06 — buildDashboardModel populates lanes + counts", () => {
     now: Date.parse("2026-06-30T12:34:56.000Z"),
   });
   assert.equal(model.run.run_id, "run-x");
+  assert.equal(model.run.title, "Ship The Thing", "buildDashboardModel returns the run title");
   assert.equal(model.run.generated_at, "2026-06-30T12:34:56.000Z");
   assert.equal(model.counts.total, 4);
   assert.equal(model.counts.running, 2);
@@ -198,6 +199,8 @@ test("G07 — buildDashboardModel: empty run -> empty lanes + zero counts", () =
   assert.equal(model.agents.length, 0);
   assert.equal(model.lanes.length, LANES.length);
   for (const l of model.lanes) assert.equal(l.agents.length, 0);
+  // title is null on an empty run (header falls back to run id / "live view").
+  assert.equal(model.run.title, null, "empty run has a null title");
 });
 
 test("G08 — buildPipeline marks done/active/pending around the current stage", () => {
@@ -346,15 +349,16 @@ test("G19 — summarizeSessions: counts present + entry shape", () => {
   const [s] = summarizeSessions([
     {
       runId: "run-x",
-      run: { scale: "feature", state: "executing", stage: "loop1" },
+      run: { title: "Search Bar", scale: "feature", state: "executing", stage: "loop1" },
       controls: [agent("unit-a", "execute", "running"), agent("verifier-1", "verify", "blocked")],
       mtime: 500,
     },
   ]);
   assert.deepEqual(Object.keys(s).sort(), [
-    "counts", "run_id", "scale", "stage", "state", "status", "updated_at",
+    "counts", "run_id", "scale", "stage", "state", "status", "title", "updated_at",
   ]);
   assert.equal(s.run_id, "run-x");
+  assert.equal(s.title, "Search Bar", "summarizeSessions surfaces the title");
   assert.equal(s.scale, "feature");
   assert.equal(s.state, "executing");
   assert.equal(s.stage, "loop1");
@@ -374,6 +378,35 @@ test("G20 — sessionStatus: run.state overrides agent-derived status", () => {
   assert.equal(sessionStatus(null, []), "in-progress");
   // needs_input with nothing running is treated as aborted (needs the user).
   assert.equal(sessionStatus(null, [agent("a", "discuss", "needs_input")]), "aborted");
+});
+
+test("G21 — summarizeSessions: title present, null when the run has none", () => {
+  const sessions = summarizeSessions([
+    { runId: "titled",   run: { title: "Add User Auth", state: "done" }, controls: [], mtime: 200 },
+    { runId: "untitled", run: { state: "done" },                          controls: [], mtime: 100 },
+  ]);
+  const byId = Object.fromEntries(sessions.map((s) => [s.run_id, s.title]));
+  assert.equal(byId["titled"], "Add User Auth", "title flows through to the summary");
+  assert.equal(byId["untitled"], null, "a run with no title reports null (UI falls back to run id)");
+});
+
+test("G22 — setStage / title verb writes the title onto run.json", () => {
+  const { dir, cleanup } = tempRepo();
+  try {
+    const runDir = join(dir, ".bgsd", "runs", "bgsd-0001-demo");
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(join(runDir, "run.json"),
+      JSON.stringify({ run_id: "bgsd-0001-demo", state: "created" }), "utf8");
+
+    // setStage with a title merges it onto run.json (like the `title` verb does).
+    const written = setStage(dir, { runId: "bgsd-0001-demo", title: "Ship The Search Bar" });
+    assert.equal(written.title, "Ship The Search Bar", "setStage returns the merged title");
+
+    const onDisk = JSON.parse(readFileSync(join(runDir, "run.json"), "utf8"));
+    assert.equal(onDisk.title, "Ship The Search Bar", "title landed on run.json");
+    assert.equal(onDisk.run_id, "bgsd-0001-demo", "existing fields preserved");
+    assert.equal(onDisk.state, "created", "unrelated fields untouched");
+  } finally { cleanup(); }
 });
 
 // ---------------------------------------------------------------------------

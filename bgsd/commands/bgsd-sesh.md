@@ -53,6 +53,19 @@ apt name (e.g. `bgsd · <2 to 4 word task summary>`, drawn from the prompt) and
 once, up front. If either command is not available in this harness, skip it silently
 and carry on, it is a nicety, never a blocker.
 
+**Assign a session title.** Right after minting the run and naming the workspace,
+give this session a concise, human-readable **title** (3 to 8 words, Title Case,
+drawn from the prompt) and set it once so it lands on `run.json` and surfaces
+everywhere, the dashboard header, the "All sessions" view, and the `.bgsd` records:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" title "<the title>"
+```
+
+Make it distinct and skimmable, matching the branded-label vocabulary (e.g. "Add
+Search Bar to Header", "Billing Dashboard with Stripe"), not a restatement of the
+run id. Do this once, up front.
+
 You never invoke `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, `/bgsd-integrate`,
 `/bgsd-user-eval`, or `/bgsd-feedback` directly anymore. Those are now **internal
 stages** that a session sequences (they remain available as advanced direct
