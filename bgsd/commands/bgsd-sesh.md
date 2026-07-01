@@ -188,6 +188,26 @@ Every scale runs the same conceptual pipeline — *route/plan → execute →
 
 ---
 
+## The live dashboard — `--gui` (open and close on command)
+
+Pass `--gui` to open a local web dashboard that tracks the whole pipeline live:
+the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2
+Integrator, and the Review Gate, each card showing the agent's GSD substage,
+status, and progress. It refreshes on its own (polls every 1.5s) and reads only
+the run's control files (read-only; it never touches git or `main`).
+
+```
+/bgsd-sesh "…" --gui      # run the session and open the dashboard
+```
+
+**Kiwi opens and closes it on command.** Tell Kiwi "open the dashboard" and it
+runs `gui-live.mjs start` and hands you the clickable `http://localhost:<port>`.
+Tell it "close the gui" and it runs `gui-live.mjs stop`. Kiwi can open or close
+it at any point in a session, not just at the start. See `/bgsd-gui` for the full
+command. As always, Kiwi gives the full URL to click, never a bare port.
+
+---
+
 ## The always-on, non-blocking session
 
 A session is a live, fully async loop. Nothing about it blocks the conversation:
@@ -295,3 +315,4 @@ The old commands still work and map to internal session stages:
 | `/bgsd-changelog` | CHANGELOG → PR assembly |
 | `/bgsd-status` | the always-on live view, shown continuously |
 | `/bgsd-resume` | pick up an interrupted session from `.bgsd/runs/` (auto-selects the latest in-flight run) |
+| `/bgsd-gui` | open/close the live web dashboard tracking every agent by lane + GSD substage |

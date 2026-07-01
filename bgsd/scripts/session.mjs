@@ -1031,8 +1031,8 @@ if (
     const prompt = typeof flags.prompt === "string" ? flags.prompt : "";
     if (!prompt) {
       process.stderr.write(
-        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--plan-only | --dry-run]\n' +
-        '  Default (no flag): executes the session. --plan-only / --dry-run: preview only.\n'
+        'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project] [--no-usage-verification] [--gui] [--plan-only | --dry-run]\n' +
+        '  Default (no flag): executes the session. --plan-only / --dry-run: preview only. --gui: open the live dashboard.\n'
       );
       process.exit(1);
     }
@@ -1045,6 +1045,7 @@ if (
     // plan-only is ONLY when explicitly requested; default (no flag) = run the session.
     const planOnly = flags["plan-only"] === true || flags["dry-run"] === true;
     const noUsageVerification = flags["no-usage-verification"] === true;
+    const gui = flags.gui === true;
 
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
@@ -1126,6 +1127,29 @@ if (
         process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
       } else {
         process.stdout.write(`  deps: Playwright skipped — code-only verification (gsd-verifier). No browser/UI usage testing this session.\n`);
+      }
+      // --gui: open the live dashboard (a detached, read-only observability
+      // server) and hand the user the clickable URL. Close it any time with
+      // `gui-live.mjs stop`. The dashboard outlives this harness on purpose.
+      if (gui) {
+        try {
+          const { spawn } = await import("node:child_process");
+          const { existsSync, readFileSync } = await import("node:fs");
+          const { resolveRepoRoot } = await import("./init-live.mjs");
+          const guiScript = new URL("./gui-live.mjs", import.meta.url).pathname;
+          spawn(process.execPath, [guiScript, "start"], { detached: true, stdio: "ignore" }).unref();
+          const ptr = `${resolveRepoRoot()}/.bgsd/gui.json`;
+          let url = null;
+          for (let i = 0; i < 20 && !url; i++) {
+            if (existsSync(ptr)) { try { url = JSON.parse(readFileSync(ptr, "utf8")).url; } catch (_) { /* not ready */ } }
+            if (!url) await new Promise((r) => setTimeout(r, 100));
+          }
+          process.stdout.write(
+            `  gui: live dashboard ${url ? `at ${url}` : "starting (see .bgsd/gui.json)"} — close it with: node "\${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" stop\n`
+          );
+        } catch (err) {
+          process.stdout.write(`  gui: could not open the dashboard (${err.message})\n`);
+        }
       }
       process.stdout.write(`\n  executing session: orchestration running. Real merges/PRs are human-gated at merge-boundary checkpoints (requireLiveFlag-guarded, never next).\n\n`);
     }
