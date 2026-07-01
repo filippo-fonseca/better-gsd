@@ -26,21 +26,27 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 - **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor (Kiwi). Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
 
+- **[Commands Reference](./commands-reference.mdx):** **every command, every flag.** The canonical one-page reference: a section per `/bgsd-*` command (all 15) with a purpose line, a usage block, and a full flags/subcommands table. Start here when you want the exact flag for anything, including `/bgsd-gui`, `/bgsd-resume`, and `/bgsd-memory`.
+
 - **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Run this once after installing.
 
 ---
 
 ## New in this release
 
-Recent additions to how the Conductor runs and talks to you:
+Recent additions to how the Conductor runs and talks to you (bgsd 0.4.3). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
 
 - **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), Kiwi enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
-- **Selector questions.** Every question Kiwi asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with 2 to 4 concrete options and a "type your own" final option, never a wall of prose.
+- **Execution modes (`--mode` / `--verify-mode`).** Pipeline agents and verifiers each run in one of three modes: `fast` (skip research; code-only quick checks), `thorough` (research every unit; full driver ladder), or `adaptive` (the default: the Conductor decides per unit). Override per-session with `--mode fast|thorough|adaptive` (pipeline) and `--verify-mode fast|thorough|adaptive` (verifiers), or persist under `modes` in `BGSD.md`.
+- **Two-band model routing and branded subagents.** Pipeline agents run at `opus/xhigh` for difficulty at or above 0.4 and `sonnet/xhigh` below it; the researcher runs one band below the executor; the verifier runs `haiku/low`. Every subagent is spawned with a consistent branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
+- **Headless UI (`--headless-ui`).** Runs Playwright headless, with no visible browser or server window popping up on your machine (discreet). Orthogonal to `--no-usage-verification`; persist as `verification.headless` in `BGSD.md`.
+- **Selector questions.** Every question Kiwi asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with a hard maximum of 4 concrete options plus an always-available "type your own", never a wall of prose.
 - **Per-subagent context management.** Each worktree Pipeline Agent runs in its own large (~1M-token) window. The Conductor watches each agent's usage and proactively compacts it (default at 0.70 of the window) or relaunches it from a handoff manifest (default 0.90) before it overflows. Tune it with the `context` block in `BGSD.md`.
 - **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell Kiwi ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
+- **Remember settings in plain language (`/bgsd-memory`).** Tell Kiwi what to remember for this repo ("always verify headless", "default the pipeline to thorough") and it writes the exact `BGSD.md` knob, or appends a free-form preference to the Notes section. A flag you type on a specific session always overrides a remembered setting: **flag > BGSD.md > default.**
 - **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
-- **The Kiwi pill.** Every conversational message the Conductor sends is prefixed with a small colored `kiwi · conductor` pill, so you always know it is Kiwi speaking. Structured outputs (verdict lines, report JSON) stay literal.
-- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and Kiwi opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress. It reads the run's control files, refreshes on its own, and Kiwi can open or close it at any point (the `/bgsd-gui` command).
+- **The Kiwi pill, splash, and terminal identity.** Every conversational message the Conductor sends is prefixed with a small `🥝 kiwi · conductor` pill, so you always know it is Kiwi speaking. A session opens with the splash banner and, right after it, a terminal `/rename` (an apt task name) plus a random `/color`, so parallel sessions are easy to tell apart. Structured outputs (verdict lines, report JSON) stay literal.
+- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and Kiwi opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress, with per-agent GSD-flow steppers, a pipeline-stage timeline, and a sessions tab. It reads the run's control files, refreshes on its own, and Kiwi can open or close it at any point (the `/bgsd-gui` command).
 
 ---
 
@@ -83,9 +89,15 @@ These pages document what the Conductor runs internally. You never call these co
 | I want to... | Go to |
 |---|---|
 | **Start using bgsd** | [Conductor Session](./conductor-session.mdx) |
+| **Look up any command or flag** | [Commands Reference](./commands-reference.mdx) |
 | Install and run the canary proof | [Quickstart](./quickstart.mdx) |
 | Understand the pipeline flowchart | [Conductor Session — pipeline diagram](./conductor-session.mdx#the-same-pipeline-scaled) |
 | Understand the flags (--quick / --feature / --project) | [Conductor Session — flags](./conductor-session.mdx#flags) |
+| Set execution mode (--mode / --verify-mode) | [/bgsd-sesh flags](./commands-reference.mdx#bgsd-sesh) |
+| Verify headless or code-only | [/bgsd-verify flags](./commands-reference.mdx#bgsd-verify) |
+| Open the live web dashboard | [/bgsd-gui](./commands-reference.mdx#bgsd-gui) |
+| Resume an interrupted session | [/bgsd-resume](./commands-reference.mdx#bgsd-resume) |
+| Remember a setting in plain language | [/bgsd-memory](./commands-reference.mdx#bgsd-memory) |
 | Understand the verdict contract | [/bgsd-verify — report schema](./bgsd-verify.mdx#the-report-schema) |
 | Understand Loop 1 mechanics | [/bgsd-queue — Loop 1 controller](./bgsd-queue.mdx) |
 | Understand the full orchestration state machine | [/bgsd-run](./bgsd-run.mdx) |
@@ -109,6 +121,7 @@ These pages render standalone without any nav config change. When a maintainer i
   "group": "bgsd",
   "pages": [
     "bgsd/docs/conductor-session",
+    "bgsd/docs/commands-reference",
     "bgsd/docs/quickstart",
     "bgsd/docs/bgsd-verify",
     "bgsd/docs/bgsd-queue",

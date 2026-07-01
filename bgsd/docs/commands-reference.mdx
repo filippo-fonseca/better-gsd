@@ -414,7 +414,7 @@ Idempotent via the queue's SHA-256 content-key dedup. Engine: `scripts/capture-c
 | `enrichOracleFromAnswers(...)` | Writes answered items back to `decisions.json` tagged `source: "escalation"`, so the next query auto-answers. Unanswered escalations are never written. |
 | `renderEscalationTelemetry(counter)` | Emits the "auto-answered N / escalated M" line for `/bgsd-status`. |
 
-Every escalation item is a selector with 2 to 4 options (the same hard `options[2–4]` limit that governs every AskUserQuestion Kiwi shows) plus `freeText.id: "other"`; a violation throws immediately (no silent green). Engine: `scripts/escalate.mjs`.
+Every escalation item is a selector with 2 to 4 options (the same hard 2-to-4 limit that governs every AskUserQuestion Kiwi shows) plus `freeText.id: "other"`; a violation throws immediately (no silent green). Engine: `scripts/escalate.mjs`.
 
 ---
 
