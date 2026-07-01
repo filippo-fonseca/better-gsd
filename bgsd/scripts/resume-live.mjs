@@ -60,7 +60,7 @@ export function readRuns(repoRoot) {
     const controlDir = join(runsDir, runId, "control");
     let controls = [];
     try {
-      controls = existsSync(controlDir) ? readAllControlFiles(controlDir) : [];
+      controls = existsSync(controlDir) ? readAllControlFiles(controlDir).files : [];
     } catch (_) {
       controls = [];
     }
