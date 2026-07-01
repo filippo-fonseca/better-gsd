@@ -349,6 +349,21 @@ emoji + role + model is the part bgsd controls, and it is what makes them
 recognizable.) Use the same emoji when you register the agent on the dashboard
 (`gui-live.mjs agent …`) so the terminal and the dashboard match.
 
+**Consistent agent TYPE, not just description (important).** Claude Code prefixes
+every agent tag with its **`subagent_type`** — e.g. an `Explore` agent reads
+`Explore`, a `general-purpose` agent reads the generic `Agent`. If you spawn two
+agents of the *same role* with *different* types (one `Explore`, one
+`general-purpose`), they show up as `Explore …` and `Agent …` — jarring and
+inconsistent. **Within a role, always use the SAME `subagent_type` for every
+agent**, so the type prefix matches across the whole wave:
+
+- **Researcher / explorer agents → always `Explore`** (every one reads `Explore · 🔎 Research · <unit> (<model>)`). Never spawn one researcher as `Explore` and its sibling as `general-purpose`.
+- **Pipeline / executor and other full-tool roles → one consistent type for the whole wave** (e.g. `general-purpose` for all, so each reads `Agent · 🔧 Pipeline · <unit> (<model>)`), never mixed.
+
+The rule: the **type prefix AND the branded description** are both uniform across
+a set of same-role agents. At every stage the agent's type is visible and matches
+its siblings.
+
 ---
 
 ## The always-on, non-blocking session
