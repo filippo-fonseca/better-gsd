@@ -4,9 +4,9 @@
 
 # better-gsd (bgsd)
 
-### Talk to the Conductor. It handles everything.
+### Talk to the Conductor. They will handle everything. Seriously.
 
-**bgsd** is an autonomous, self-verifying orchestration layer on top of [GSD](https://github.com/open-gsd/gsd-core), shipped as a single Claude Code plugin. Lightweight to install (markdown files and a handful of zero-dependency Node scripts), but ultra-potent in what it does: describe what you want in one prompt and the Conductor sizes the job, fans out parallel git-worktree agents that each run a tailored GSD flow, verifies every change for real, assembles the work on a safe branch, and hands you a reviewable result. No agent ever writes to your production branch.
+**bgsd** is an autonomous, self-verifying orchestration layer on top of [GSD](https://github.com/open-gsd/gsd-core), shipped as a single Claude Code plugin. Lightweight to install (markdown files and a handful of zero-dependency Node scripts), but ultra-potent in what it does: describe what you want in one prompt and the Conductor sizes the job, fans out parallel git-worktree agents that `each run a tailored GSD flow` (research / UI scoping extent is all managed at the Conductor's discretion, so tokens are not wasted), verifies every change for real on the browser through a built-in `Playwright MCP` connection loop, assembles the work on a safe staging branch, and hands you a reviewable result. No agent ever writes directly to your production branch.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
@@ -195,6 +195,8 @@ Full doc pages live in [`bgsd/docs/`](./bgsd/docs); start at [`docs/index.mdx`](
 ## Contributing
 
 Contributions are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for dev setup, the pure and seam and test conventions, the "no silent green" rule, the branch and release model, and commit and PR conventions. Please also read the [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) and report security issues per [`SECURITY.md`](./SECURITY.md).
+
+ I'd especially love to fan out from supporting just Claude Code to Codex, Cursor, the Gemini suite, and other AI systems as well. - Filippo
 
 ---
 
