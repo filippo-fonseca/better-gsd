@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>better-gsd (bgsd) · Talk to the Conductor. It handles everything.</title>
-  <meta name="description" content="bgsd's Conductor (Kiwi) is always on. One session, one command: /bgsd-sesh. It auto-scales from a quick fix to a full parallel pipeline — always verified, never silent green." />
+  <meta name="description" content="bgsd's Conductor is always on. One session, one command: /bgsd-sesh. It auto-scales from a quick fix to a full parallel pipeline — always verified, never silent green." />
 
   <!-- No-FOUC: apply theme before first paint -->
   <script>
@@ -866,7 +866,7 @@
         <span class="hero-eyebrow">
           <!-- lucide: git-fork -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-          Open-source · additive layer on GSD · MIT · v0.5.0
+          Open-source · additive layer on GSD · MIT · v0.5.1
         </span>
 
         <h1 class="hero-title">
@@ -874,8 +874,10 @@
         </h1>
 
         <p class="hero-lede">
-          One command, one session, always-on Kiwi. The Conductor auto-scales from a quick fix to
-          a full parallel pipeline and <strong>runs immediately by default.</strong> Pass <code>--plan-only</code> to preview. Real merges and PRs are human-gated. Never a silent green.
+          One command, one session, always-on Conductor (default name <strong>Kiwi</strong>, customizable in <code>BGSD.md</code>). Auto-scales from a quick fix to a full parallel pipeline and <strong>runs immediately by default.</strong> Pass <code>--plan-only</code> to preview. Real merges and PRs are human-gated. Never a silent green.
+        </p>
+        <p class="hero-lede" style="margin-top:0.75rem;font-size:0.93em;color:var(--fg-mid);">
+          Lightweight to install (markdown files and a handful of zero-dependency Node scripts) — ultra-potent in what it does.
         </p>
 
         <div class="hero-actions">
@@ -892,7 +894,7 @@
         </div>
 
         <div class="hero-meta">
-          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0.5.0 · pipeline runs end-to-end</span>
+          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0.5.1 · pipeline runs end-to-end</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Conductor codename Kiwi</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> No silent green, ever</span>
         </div>
@@ -969,9 +971,9 @@
         </span>
         <div class="card-title">The Conductor is always on</div>
         <p class="card-body">
-          Kiwi is the only interface. You describe what you need;
+          The Conductor is the only interface. You describe what you need;
           the Conductor detects scale, decides how many agents to run, and orchestrates the full
-          pipeline. You never call verify, queue, or run directly — those are stages Kiwi manages.
+          pipeline. You never call verify, queue, or run directly — those are stages the Conductor manages.
         </p>
         <span class="card-tag">Single entry: /bgsd-sesh</span>
       </div>
@@ -1057,8 +1059,8 @@
         </span>
         <div class="card-title">A backlog that drains across sessions</div>
         <p class="card-body">
-          Defer scope mid-session and Kiwi queues it instead of losing it. Start
-          <code>/bgsd-sesh</code> with no prompt, or finish a session, and Kiwi proposes
+          Defer scope mid-session and the Conductor queues it instead of losing it. Start
+          <code>/bgsd-sesh</code> with no prompt, or finish a session, and the Conductor proposes
           the next backlog item. Work carries over without you re-typing a thing.
         </p>
         <span class="card-tag">defer &rarr; backlog &rarr; next</span>
@@ -1071,7 +1073,7 @@
         </span>
         <div class="card-title">Every question is a selector</div>
         <p class="card-body">
-          When Kiwi needs an answer, it asks with a GSD-style arrow-key selector: a few
+          When the Conductor needs an answer, it asks with a GSD-style arrow-key selector: a few
           concrete options plus a type-your-own. A vague prompt, a gray-area call, the
           review gate, "which item next" all come as a pick, never a wall of prose.
         </p>
@@ -1087,7 +1089,7 @@
         <p class="card-body">
           The goal-backward code check always runs. The heavier Playwright UI testing is
           optional: pass <code>--no-usage-verification</code>, set it in <code>BGSD.md</code>,
-          or just tell Kiwi. Quick fixes and non-UI changes skip the browser, never the check.
+          or just tell the Conductor. Quick fixes and non-UI changes skip the browser, never the check.
         </p>
         <span class="card-tag">--no-usage-verification</span>
       </div>
@@ -1113,9 +1115,10 @@
         </span>
         <div class="card-title">Watch it all live with --gui</div>
         <p class="card-body">
-          Pass <code>--gui</code> and Kiwi opens a local dashboard: the parallel Loop 1
-          agents, verification, the Loop 2 integrator, and the review gate, each card
-          showing its GSD substage, status, and progress. Ask Kiwi to open or close it any time.
+          Pass <code>--gui</code> and the Conductor opens a local dashboard: every agent in the parallel Loop 1,
+          the Verification lane, the Loop 2 Integrator, and the Review Gate — each card showing its GSD substage, status, and progress.
+          Unparalleled visibility into what every agent is doing, without leaving your browser.
+          The Conductor already keeps the terminal legible; the dashboard makes it even better when the pipeline is busy.
         </p>
         <span class="card-tag">/bgsd-gui</span>
       </div>
@@ -1273,7 +1276,7 @@
   <div class="container">
     <div class="section-header center">
       <span class="kicker"><span class="num">04</span> · stages the conductor runs</span>
-      <h2 id="commands-heading" class="section-title">You talk. Kiwi orchestrates.</h2>
+      <h2 id="commands-heading" class="section-title">You talk. The Conductor orchestrates.</h2>
       <p class="section-sub">
         These are the internal stages the Conductor runs on your behalf inside a
         <code>/bgsd-sesh</code> session. You never call them directly.
@@ -1325,7 +1328,7 @@
           <span class="chip xray"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v2 built</span>
         </div>
         <p class="cmd-desc">
-          Kiwi's always-on dashboard. Color-coded per-worktree badges, Loop 1 iteration counts,
+          The Conductor's always-on status view. Color-coded per-worktree badges, Loop 1 iteration counts,
           merge history, budget and context telemetry, and a <code>main-protected</code>
           indicator (marking that <code>main</code> is never written by an agent). Zero model
           calls. The Conductor displays this automatically; you can also run it standalone with
@@ -1466,7 +1469,7 @@
       <h2 id="commands-ref-heading" class="section-title">One front door. Fifteen commands under it.</h2>
       <p class="section-sub">
         You only ever type <code>/bgsd-sesh</code> (and <code>/bgsd-init</code> once per repo).
-        Kiwi sequences the rest as internal stages. Here is the full list and its key flags;
+        The Conductor sequences the rest as internal stages. Here is the full list and its key flags;
         the <a href="../docs/commands-reference.mdx" style="color:var(--xray)">Commands Reference doc</a>
         has the exhaustive tables.
       </p>
@@ -1604,6 +1607,41 @@
 
 
 <!-- ============================================================
+     §04d-pre LIVE DASHBOARD CALLOUT
+     ============================================================ -->
+<section id="dashboard" class="section" style="padding-block:clamp(2rem,5vw,4rem);" aria-labelledby="dashboard-heading">
+  <div class="container">
+    <div class="panel" style="max-width:900px;margin-inline:auto;border-color:color-mix(in srgb,var(--xray) 32%,var(--line));">
+      <span class="panel-label" style="font-size:12px;letter-spacing:0.08em;">
+        <!-- lucide: layout-dashboard -->
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        /bgsd-gui &mdash; the live web dashboard
+      </span>
+      <h2 id="dashboard-heading" style="font-family:'Space Grotesk',sans-serif;font-size:clamp(1.25rem,2.5vw,1.6rem);font-weight:600;color:var(--fg);margin-bottom:0.6rem;">
+        Unparalleled visibility into every agent, live.
+      </h2>
+      <p style="font-size:0.96rem;color:var(--fg-mid);line-height:1.65;max-width:760px;">
+        When you are running many agents at once, it is easy to lose the thread in a busy terminal.
+        Pass <code>--gui</code> to any <code>/bgsd-sesh</code> command (or run <code>/bgsd-gui</code> at any point) and the Conductor opens a local web dashboard
+        showing the full pipeline in real time: the parallel Loop&nbsp;1 Pipeline Agents, the Verification lane, the Loop&nbsp;2 Integrator, and the Review Gate.
+        Each agent card shows its current GSD substage, status, and progress. You can watch the entire run move through the pipeline stages live.
+      </p>
+      <p style="font-size:0.9rem;color:var(--fg-dim);line-height:1.6;margin-top:0.75rem;">
+        The Conductor already keeps the terminal legible through per-message narration, so the dashboard is not required. But when the pipeline is busy, the animated full-pipeline view makes it even better.
+      </p>
+      <div class="code" style="margin-top:1.1rem;font-size:12.5px;">
+        <span class="cmd">/bgsd-sesh</span> <span class="path">"your task"</span> <span class="flag">--gui</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># open dashboard alongside the run</span><br>
+        <span class="cmd">/bgsd-gui</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># open or update dashboard at any time</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div class="divider"></div>
+
+
+<!-- ============================================================
      §04d HOW THE SESH WORKS
      ============================================================ -->
 <section id="sesh" class="section" aria-labelledby="sesh-heading">
@@ -1613,7 +1651,7 @@
       <h2 id="sesh-heading" class="section-title">One prompt in. One reviewable branch out.</h2>
       <p class="section-sub">
         Vanilla GSD runs one linear flow at a time. bgsd wraps GSD in a sesh: one intent in,
-        many things happening at once, all under one roof. The Conductor (Kiwi) handles the rest.
+        many things happening at once, all under one roof. The Conductor handles the rest.
       </p>
     </div>
 
@@ -1807,7 +1845,7 @@
       <div class="ms-item done">
         <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v0.5.0 <span class="chip pass">live</span></div>
+          <div class="ms-ver">v0.5.1 <span class="chip pass">live</span></div>
           <div class="ms-title">End-to-end pipeline runs + per-unit GSD tailoring + gradient banners</div>
           <p class="ms-desc">
             The full two-loop autonomous pipeline now runs end-to-end with zero friction. A plain
@@ -1858,7 +1896,7 @@
       <p class="intro">
         bgsd is an installable, standalone Claude Code plugin. Add the marketplace, install the plugin,
         and reload. It is <strong style="color:var(--fg)">gsd-agnostic</strong>: it does not vendor GSD.
-        It uses the user-installed <code>gsd-core</code> plugin, and the Conductor (Kiwi) sets up what it
+        It uses the user-installed <code>gsd-core</code> plugin, and the Conductor sets up what it
         needs (gsd-core, Playwright) at the start of every sesh. You just talk to it.
       </p>
 
@@ -1879,7 +1917,7 @@
         Step 2 — Talk to the Conductor; it provisions the rest
       </div>
       <div class="code">
-        <span class="c"># Kiwi ensures gsd-core is installed and up to date at sesh start</span><br>
+        <span class="c"># The Conductor ensures gsd-core is installed and up to date at sesh start</span><br>
         <span class="c"># (claude plugin install gsd-core --scope user; claude plugin update gsd-core)</span><br>
         <span class="c"># and ensures the Playwright browser tooling is available.</span><br>
         <span class="c"># You do not run these by hand.</span><br><br>
@@ -1919,7 +1957,7 @@
           <code>.bgsd/</code> master folder, and writes a user-editable <code>BGSD.md</code> settings
           file. The Conductor ensures <code>gsd-core</code> is installed and kept up to date for you
           (and runs <code>claude plugin update gsd-core</code> to refresh it); after any plugin update,
-          Claude Code needs <code>/reload-plugins</code> or a restart to apply, and Kiwi flags it.
+          Claude Code needs <code>/reload-plugins</code> or a restart to apply, and the Conductor flags it.
           Once installed, <code>/bgsd-sesh</code> is all you need.
         </span>
       </p>
@@ -2086,7 +2124,7 @@
         </span>
         <div class="link-title">live status view reference</div>
         <p class="link-body">
-          Kiwi's always-on dashboard: color-coded per-worktree badges, budget and context
+          The Conductor's always-on status view: color-coded per-worktree badges, budget and context
           telemetry, and the <code>--watch</code> live refresh mode. The Conductor surfaces this
           automatically during every session.
         </p>
@@ -2117,7 +2155,7 @@
     <div class="footer-brand">
       <!-- lucide: scan-eye -->
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="1"/><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"/></svg>
-      better-gsd (bgsd) · v0.5.0 · by Filippo Fonseca · MIT license
+      better-gsd (bgsd) · v0.5.1 · by Filippo Fonseca · MIT license
     </div>
     <nav class="footer-links" aria-label="Footer links">
       <a href="https://github.com/filippo-fonseca/better-gsd" class="footer-link" target="_blank" rel="noopener">GitHub</a>

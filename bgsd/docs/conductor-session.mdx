@@ -1,13 +1,13 @@
 ---
 title: "Conductor Session — /bgsd-sesh"
-description: "The single entry point for bgsd: talk to the Conductor (Kiwi) and it runs the full pipeline immediately — verify, fix, decompose, fan out, merge, and review — scaled to your task. Pass --plan-only to preview instead."
+description: "The single entry point for bgsd: talk to the Conductor and it runs the full pipeline immediately — verify, fix, decompose, fan out, merge, and review — scaled to your task. Pass --plan-only to preview instead."
 ---
 
 # Conductor Session
 
-`/bgsd-sesh "<prompt>"` is the only interface you ever use. The Conductor (codename Kiwi) is always on.
+`/bgsd-sesh "<prompt>"` is the only interface you ever use. The Conductor (default name **Kiwi**, customizable in `BGSD.md`) is always on.
 
-You describe what you need. Kiwi detects the scale, decides how many agents to run and how deep to go, and **runs the full pipeline immediately**. Pass `--plan-only` (or `--dry-run`) to preview the plan without executing anything. The pipeline integrates everything on the standing **`next`** branch; the `next` → `main` merge is a manual, human-only step. The one hard invariant is that **agents never write to `main`** (the production branch).
+You describe what you need. The Conductor detects the scale, decides how many agents to run and how deep to go, and **runs the full pipeline immediately**. Pass `--plan-only` (or `--dry-run`) to preview the plan without executing anything. The pipeline integrates everything on the standing **`next`** branch; the `next` → `main` merge is a manual, human-only step. The one hard invariant is that **agents never write to `main`** (the production branch).
 
 You never call `/bgsd-verify`, `/bgsd-queue`, `/bgsd-run`, or any stage command directly; those are internal stages the Conductor runs for you.
 
@@ -33,7 +33,7 @@ Only verified work converges onto the `next` branch. No agent ever writes to `ma
 
 ### Session banners
 
-Cool gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline Kiwi is at a glance.
+Gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline the Conductor is at a glance.
 
 ## Install
 
@@ -46,8 +46,8 @@ claude plugin install bgsd@better-gsd
 
 Run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. That is the only setup you do by hand. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor sets up what it needs at the start of every session, so you just talk to it:
 
-- **gsd-core.** Kiwi ensures `gsd-core` is installed and kept up to date (under the hood: `claude plugin marketplace add open-gsd/gsd-core`, `claude plugin install gsd-core --scope user`, and `claude plugin update gsd-core` to refresh). You never manage GSD by hand. After a plugin update, Claude Code needs `/reload-plugins` or a restart to apply, and Kiwi flags that when it happens.
-- **Playwright.** Kiwi ensures the Playwright browser tooling (used for the computer-use / vision verification that powers Loop 1 and Loop 2) is available.
+- **gsd-core.** The Conductor ensures `gsd-core` is installed and kept up to date (under the hood: `claude plugin marketplace add open-gsd/gsd-core`, `claude plugin install gsd-core --scope user`, and `claude plugin update gsd-core` to refresh). You never manage GSD by hand. After a plugin update, Claude Code needs `/reload-plugins` or a restart to apply, and the Conductor flags that when it happens.
+- **Playwright.** The Conductor ensures the Playwright browser tooling (used for the computer-use / vision verification that powers Loop 1 and Loop 2) is available.
 
 ## One-time setup: `/bgsd-init`
 
@@ -70,7 +70,7 @@ bgsd keeps one standing integration branch, **`next`** (the name is configurable
 
 ## Settings: `BGSD.md`
 
-`BGSD.md` is the user-editable settings file (like a CLAUDE.md). Kiwi reads it at the start of every sesh, and can self-edit it when you ask it to change a setting in chat. Every knob ships with a default: the integration branch name, the model and effort posture, which `.env*` files propagate into worktrees, GitHub issue/PR behavior, and Kiwi's narration. Because git worktrees do not carry gitignored files, the Conductor copies the configured `.env*` files from the repo root into each worktree so apps boot.
+`BGSD.md` is the user-editable settings file (like a CLAUDE.md). The Conductor reads it at the start of every sesh, and can self-edit it when you ask it to change a setting in chat. Every knob ships with a default: the integration branch name, the model and effort posture, which `.env*` files propagate into worktrees, GitHub issue/PR behavior, and the Conductor's narration verbosity. Because git worktrees do not carry gitignored files, the Conductor copies the configured `.env*` files from the repo root into each worktree so apps boot.
 
 ---
 
@@ -174,7 +174,7 @@ flowchart TD
 
 ## Stages the Conductor runs internally
 
-You never call these. Kiwi orchestrates all of them on your behalf as part of a `/bgsd-sesh`.
+You never call these. The Conductor orchestrates all of them on your behalf as part of a `/bgsd-sesh`.
 
 | Stage | Quick path | Feature path | Project path | Details |
 |-------|:-----------:|:------------:|:------------:|---------|
@@ -190,7 +190,11 @@ You never call these. Kiwi orchestrates all of them on your behalf as part of a 
 | Feedback ingestion | on request | on request | on request | Turns review findings into another fix pass |
 | CHANGELOG + PR | always | always | always | Aggregated changelog, atomic `gh pr create` into `next`; `next` → `main` stays human-only |
 
-Throughout the run, Kiwi narrates the pipeline conversationally with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The live status view (`/bgsd-status` machinery) runs alongside it. At any moment you can see active agents, the current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure. Gradient banners print at session start, between each stage, at finish, and on init.
+Throughout the run, the Conductor leads every message with a name pill — `🥝 Kiwi:` by default (customizable in `BGSD.md`) — narrating the pipeline with the exact stage and agent names, X/Y progress counts ("4/4 agents finished, 2/4 verified and merged into `next`"), an explanation of each PR and merge, and the exact command to type at every human gate. The live status view (`/bgsd-status` machinery) runs alongside it. At any moment you can see active agents, the current stage, Loop 1 iteration counts per worktree, merge history, budget, and context pressure. Gradient banners print at session start, between each stage, at finish, and on init.
+
+### Live dashboard (`/bgsd-gui`)
+
+For a real-time bird's-eye view of the whole pipeline, pass `--gui` to `/bgsd-sesh` or run `/bgsd-gui` at any point. The Conductor opens a local web dashboard showing every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate. Each card shows the agent's current GSD substage, status, and progress. You can watch the entire run move through the pipeline stages — unparalleled visibility into what every agent is actually doing. The per-message terminal narration already keeps things legible for most runs; the dashboard makes it even better when you are running many agents at once and want an animated full-pipeline view.
 
 ---
 
@@ -224,7 +228,7 @@ bgsd's four-rung verification ladder runs in every Loop 1 and Loop 2 cycle:
 
 ## Conductor personality
 
-Kiwi speaks in a refined British-butler voice: courteous, calm, conspicuously competent. It narrates progress, checkpoints, and merge decisions in plain English. Structured outputs — verdict lines, `verification-report.json`, YAML frontmatter, error signals — stay strictly literal and machine-parseable. The butler never softens a `FAIL` into something that sounds like a pass.
+The Conductor speaks in a refined British-butler voice: courteous, calm, conspicuously competent. It narrates progress, checkpoints, and merge decisions in plain English. Structured outputs — verdict lines, `verification-report.json`, YAML frontmatter, error signals — stay strictly literal and machine-parseable. The butler never softens a `FAIL` into something that sounds like a pass.
 
 See [`PERSONALITY.md`](../PERSONALITY.md) for the full voice contract.
 

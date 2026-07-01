@@ -6,11 +6,11 @@
 
 ### Talk to the Conductor. It handles everything.
 
-**bgsd** is an autonomous, self-verifying orchestration layer on top of [GSD](https://github.com/open-gsd/gsd-core), shipped as a single Claude Code plugin. Describe what you want in one prompt; the Conductor sizes the job, fans out parallel git-worktree agents that each run a tailored GSD flow, verifies every change for real, assembles the work on a safe branch, and hands you a reviewable result. No agent ever writes to your production branch.
+**bgsd** is an autonomous, self-verifying orchestration layer on top of [GSD](https://github.com/open-gsd/gsd-core), shipped as a single Claude Code plugin. It's lightweight to install (markdown files and a handful of zero-dependency Node scripts), yet it orchestrates a full parallel, self-verifying build pipeline: describe what you want in one prompt and the Conductor sizes the job, fans out parallel git-worktree agents that each run a tailored GSD flow, verifies every change for real, assembles the work on a safe branch, and hands you a reviewable result. No agent ever writes to your production branch.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.5.0-informational.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/.claude-plugin/plugin.json)
+[![version](https://img.shields.io/badge/version-0.5.1-informational.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/.claude-plugin/plugin.json)
 [![tests](https://img.shields.io/badge/tests-43%20passing-brightgreen.svg)](https://github.com/filippo-fonseca/better-gsd/tree/next/bgsd/scripts)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/CONTRIBUTING.md)
 
@@ -22,9 +22,9 @@
 
 ## What is bgsd
 
-You talk to one entity: the Conductor, codename **Kiwi**. You never juggle stage commands or babysit agents. You say what you need in plain English, and Kiwi runs the whole build for you: sizing, planning, parallel execution, real verification, integration, and a review gate.
+You talk to one entity: the Conductor (default name **Kiwi**, customizable in `BGSD.md`). You never juggle stage commands or babysit agents. You say what you need in plain English, and the Conductor runs the whole build for you: sizing, planning, parallel execution, real verification, integration, and a review gate.
 
-bgsd is **gsd-agnostic**: it does not vendor or bundle GSD. It uses the `gsd-core` plugin installed in your Claude Code and keeps it current for you, so you always ride the latest GSD without ever syncing this repo. Kiwi also provisions the Playwright browser tooling it needs at the start of every session.
+bgsd is **gsd-agnostic**: it does not vendor or bundle GSD. It uses the `gsd-core` plugin installed in your Claude Code and keeps it current for you, so you always ride the latest GSD without ever syncing this repo. The Conductor also provisions the Playwright browser tooling it needs at the start of every session.
 
 The one hard invariant, enforced in code and not just documented: **agents never write to your production branch.** All integration lands on a standing `next` branch, and the `next` to `main` merge is a manual, human-only step.
 
@@ -85,11 +85,11 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | Flag | What it does |
 |------|--------------|
 | *(none)* | Conductor auto-detects scale and executes immediately. |
-| *(no prompt)* | `/bgsd-sesh` with no prompt: Kiwi proposes the next item from your backlog. |
+| *(no prompt)* | `/bgsd-sesh` with no prompt: the Conductor proposes the next item from your backlog. |
 | `--quick` | Force small scale. No discussion, fast, still fully verified (Loop 1 is never skipped). |
 | `--feature` | Force feature scale. A few units, some parallelism, integration loop if more than one unit. |
-| `--project` | Force full pipeline. Kiwi discusses with you first (brainstorm, clarify, plan), then executes. |
-| `--mode fast\|thorough\|adaptive` | Pipeline-agent depth. `fast` skips research, `thorough` researches every unit, `adaptive` (default) lets Kiwi decide per unit. |
+| `--project` | Force full pipeline. The Conductor discusses with you first (brainstorm, clarify, plan), then executes. |
+| `--mode fast\|thorough\|adaptive` | Pipeline-agent depth. `fast` skips research, `thorough` researches every unit, `adaptive` (default) lets the Conductor decide per unit. |
 | `--verify-mode fast\|thorough\|adaptive` | Verifier depth, same three levels; `adaptive` is the default. |
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
@@ -98,23 +98,27 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
-You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. Kiwi orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/docs/commands-reference.mdx).**
+You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/docs/commands-reference.mdx).**
 
 ---
 
 ## How it works
 
-After your one prompt, Kiwi runs this pipeline (scaled up or down to fit the job):
+After your one prompt, the Conductor runs this pipeline (scaled up or down to fit the job):
 
-1. **Kiwi sizes the job:** a quick fix, a feature, or a full project. Bigger jobs get more machinery.
+1. **The Conductor sizes the job:** a quick fix, a feature, or a full project. Bigger jobs get more machinery.
 2. **It splits the work into units** and spins up **parallel worker agents**, each in its own isolated copy of the repo (a git worktree). Each worker runs a tailored slice of GSD: a trivial unit skips research and planning; a UI-heavy unit gets the full UI design phase. Each gets a model sized to its difficulty.
 3. **Everything gets verified, for real.** A Playwright Tester agent drives the actual app (clicking, screenshots, checking console, network, and DOM), and a goal-backward code verifier checks the change against its acceptance criteria. It loops fix-then-recheck until it genuinely passes. There is no "looks done, ship it." Never silent green.
-4. **Verified work merges into `next`**, and Kiwi resolves any conflicts.
+4. **Verified work merges into `next`**, and the Conductor resolves any conflicts.
 5. **The whole assembled app on `next` is integration-tested** (Loop 2), with more fix agents looping until clean.
-6. **The review gate:** Kiwi boots the app, hands you a localhost URL to click around, and shows a per-agent changelog of everything that changed. If something is off, you say so (`/bgsd-feedback "..."`) and it re-runs.
-7. **You ship.** When you are happy, **you** merge `next` into `main` by hand (Kiwi gives you the exact command). No agent ever writes to your production branch. That is the one hard rule.
+6. **The review gate:** the Conductor boots the app, hands you a localhost URL to click around, and shows a per-agent changelog of everything that changed. If something is off, you say so (`/bgsd-feedback "..."`) and it re-runs.
+7. **You ship.** When you are happy, **you** merge `next` into `main` by hand (the Conductor gives you the exact command). No agent ever writes to your production branch. That is the one hard rule.
 
-Throughout, Kiwi narrates live behind a colored `kiwi · conductor` pill ("4/4 agents finished, 2/4 verified and merged into next"), files a GitHub issue per unit that its pull request closes, and logs every session into `.bgsd/` so you can later ask "what did we change in the auth work last week?".
+Throughout, the Conductor leads every message with a name pill — `🥝 Kiwi:` by default (customizable in `BGSD.md`) — narrating the current stage and agent counts ("4/4 agents finished, 2/4 verified and merged into next"). It also files a GitHub issue per unit that its pull request closes and logs every session into `.bgsd/` so you can later ask "what did we change in the auth work last week?".
+
+### Live dashboard (`/bgsd-gui`)
+
+When you want a real-time bird's-eye view of the whole pipeline, pass `--gui` to `/bgsd-sesh` or run `/bgsd-gui` at any point. The Conductor opens a local web dashboard showing every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate — each card showing its GSD substage, status, and progress. The Conductor already keeps the terminal legible with per-message narration, so the GUI is not required. When you are running many agents at once, though, the animated full-pipeline view makes it even better: unparalleled visibility into what every agent is actually doing.
 
 ---
 
@@ -122,7 +126,7 @@ Throughout, Kiwi narrates live behind a colored `kiwi · conductor` pill ("4/4 a
 
 | Feature | What it gives you |
 |---------|-------------------|
-| One front door | `/bgsd-sesh "..."` is the entire interface; Kiwi runs every stage for you. |
+| One front door | `/bgsd-sesh "..."` is the entire interface; the Conductor runs every stage for you. |
 | Auto-scale | The same pipeline sized to the job (quick / feature / project), overridable by flag. |
 | Real verification | A Playwright Tester driving the app plus a goal-backward code verifier; a four-rung driver ladder (console, network, DOM, vision). |
 | No silent green | Insufficient evidence yields `INSUFFICIENT_EVIDENCE`; a missing MCP yields `BLOCKED`. Never a fabricated `PASS`. |
@@ -133,7 +137,7 @@ Throughout, Kiwi narrates live behind a colored `kiwi · conductor` pill ("4/4 a
 | Per-agent context management | Watches each roughly 1M-token agent, compacts at 0.70 and relaunches at 0.90 of its window. |
 | Resume | `/bgsd-resume` picks an interrupted session back up from `.bgsd/runs/`. |
 | Live dashboard | `--gui` opens a colorful web view of every agent by lane and GSD substage. |
-| Settings as a file | `BGSD.md` holds your knobs; tell Kiwi a preference in chat and it self-edits the file. |
+| Settings as a file | `BGSD.md` holds your knobs; tell the Conductor a preference in chat and it self-edits the file. |
 | Memory | Every session is recorded under `.bgsd/`; any Claude can read that history later. |
 
 ---

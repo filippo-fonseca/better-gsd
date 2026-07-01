@@ -5,7 +5,7 @@ description: "Table of contents for all bgsd doc pages — start with the Conduc
 
 # bgsd Documentation
 
-bgsd is an open-source, installable Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
+bgsd is an open-source, installable Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. Lightweight to install (markdown files and a handful of zero-dependency Node scripts), but ultra-potent in what it does. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
 
 ## Install
 
@@ -14,7 +14,7 @@ claude plugin marketplace add filippo-fonseca/better-gsd
 claude plugin install bgsd@better-gsd
 ```
 
-Then run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (Kiwi) keeps that dependency current and ensures the Playwright browser tooling is available, all at the start of every `/bgsd-sesh`. You just talk to the Conductor; it sets up what it needs. See the [Quickstart](./quickstart.mdx) for the full walkthrough.
+Then run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (default name **Kiwi**, customizable in `BGSD.md`) keeps that dependency current and ensures the Playwright browser tooling is available, all at the start of every `/bgsd-sesh`. You just talk to the Conductor; it sets up what it needs. See the [Quickstart](./quickstart.mdx) for the full walkthrough.
 
 A repo is set up once with the idempotent `/bgsd-init` command (also run automatically as a `/bgsd-sesh` preflight): it creates the standing **`next`** integration branch off the auto-detected base branch, scaffolds the persistent `.bgsd/` master folder (`seshs/`, `ledger.md`, `config.json`), and writes a user-editable `BGSD.md` settings file. The pipeline integrates everything on `next`; agents never write to `main`, and the `next` → `main` merge is always manual and human-only.
 
@@ -24,7 +24,7 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ## Start here
 
-- **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor (Kiwi). Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
+- **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor. Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
 
 - **[Commands Reference](./commands-reference.mdx):** **every command, every flag.** The canonical one-page reference: a section per `/bgsd-*` command (all 15) with a purpose line, a usage block, and a full flags/subcommands table. Start here when you want the exact flag for anything, including `/bgsd-gui`, `/bgsd-resume`, and `/bgsd-memory`.
 
@@ -34,30 +34,30 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ## New in this release
 
-Recent additions to how the Conductor runs and talks to you (bgsd 0.5.0). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
+Recent additions to how the Conductor runs and talks to you (bgsd 0.5.1). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
 
 - **The full pipeline now actually runs.** As of 0.5.0, a plain `/bgsd-sesh` fires the entire two-loop pipeline end-to-end with zero friction. The old `--live` human-gate on the execution path itself is gone; only the `main`/`master` branch guard remains. Nothing writes to `main`.
 - **Per-unit GSD tailoring.** Each Loop-1 Pipeline Agent now runs a per-unit-tailored GSD flow in its own git worktree. The Conductor decides which GSD phases each unit gets: research on harder units, `/gsd-ui-phase` for UI units, `/gsd-ai-integration-phase` for AI units, a code-review gate on harder work. Trivial/quick units skip GSD phases and apply a direct fix. This is driven by the new `/bgsd-run-agent` command and `phaseconfig.mjs` resolver.
 - **Decision oracle (proxy Q&A).** The Conductor answers GSD's discuss-phase questions as the user's proxy via the decision oracle (new `oracle.mjs --answer` CLI). Only true unknowns escalate, non-blockingly, per unit.
 - **Gradient session banners.** Oh-my-logo gradient banners now print at session start, between each stage, at finish, and on init.
 
-- **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), Kiwi enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
+- **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and the Conductor proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), the Conductor enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
 - **Execution modes (`--mode` / `--verify-mode`).** Pipeline agents and verifiers each run in one of three modes: `fast` (skip research; code-only quick checks), `thorough` (research every unit; full driver ladder), or `adaptive` (the default: the Conductor decides per unit). Override per-session with `--mode fast|thorough|adaptive` (pipeline) and `--verify-mode fast|thorough|adaptive` (verifiers), or persist under `modes` in `BGSD.md`.
 - **Two-band model routing and branded subagents.** Pipeline agents run at `opus/xhigh` for difficulty at or above 0.4 and `sonnet/xhigh` below it; the researcher runs one band below the executor; the verifier runs `haiku/low`. Every subagent is spawned with a consistent branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
 - **Headless UI (`--headless-ui`).** Runs Playwright headless, with no visible browser or server window popping up on your machine (discreet). Orthogonal to `--no-usage-verification`; persist as `verification.headless` in `BGSD.md`.
-- **Selector questions.** Every question Kiwi asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with a hard maximum of 4 concrete options plus an always-available "type your own", never a wall of prose.
+- **Selector questions.** Every question the Conductor asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with a hard maximum of 4 concrete options plus an always-available "type your own", never a wall of prose.
 - **Per-subagent context management.** Each worktree Pipeline Agent runs in its own large (~1M-token) window. The Conductor watches each agent's usage and proactively compacts it (default at 0.70 of the window) or relaunches it from a handoff manifest (default 0.90) before it overflows. Tune it with the `context` block in `BGSD.md`.
-- **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell Kiwi ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
-- **Remember settings in plain language (`/bgsd-memory`).** Tell Kiwi what to remember for this repo ("always verify headless", "default the pipeline to thorough") and it writes the exact `BGSD.md` knob, or appends a free-form preference to the Notes section. A flag you type on a specific session always overrides a remembered setting: **flag > BGSD.md > default.**
+- **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell the Conductor ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
+- **Remember settings in plain language (`/bgsd-memory`).** Tell the Conductor what to remember for this repo ("always verify headless", "default the pipeline to thorough") and it writes the exact `BGSD.md` knob, or appends a free-form preference to the Notes section. A flag you type on a specific session always overrides a remembered setting: **flag > BGSD.md > default.**
 - **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
-- **The Kiwi pill, splash, and terminal identity.** Every conversational message the Conductor sends is prefixed with a small `🥝 kiwi · conductor` pill, so you always know it is Kiwi speaking. A session opens with the splash banner and, right after it, a terminal `/rename` (an apt task name) plus a random `/color`, so parallel sessions are easy to tell apart. Structured outputs (verdict lines, report JSON) stay literal.
-- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and Kiwi opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress, with per-agent GSD-flow steppers, a pipeline-stage timeline, and a sessions tab. It reads the run's control files, refreshes on its own, and Kiwi can open or close it at any point (the `/bgsd-gui` command).
+- **The name pill, splash, and terminal identity.** Every conversational message the Conductor sends is prefixed with a name pill — `🥝 Kiwi:` by default (the name is customizable in `BGSD.md`) — a colored Markdown badge in front of each message, so you always know the Conductor is speaking. A session opens with the splash banner and, right after it, a terminal `/rename` (an apt task name) plus a random `/color`, so parallel sessions are easy to tell apart. Structured outputs (verdict lines, report JSON) stay literal.
+- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and the Conductor opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress, with per-agent GSD-flow steppers, a pipeline-stage timeline, and a sessions tab. It reads the run's control files, refreshes on its own, and the Conductor can open or close it at any point (the `/bgsd-gui` command). The terminal narration already keeps things legible for most runs; the dashboard gives you an animated full-pipeline view when you are running many agents at once and want unparalleled visibility into every agent's state at a glance.
 
 ---
 
 ## Internal stage references
 
-These pages document what the Conductor runs internally. You never call these commands directly from a `/bgsd-sesh` — Kiwi orchestrates all of them. They are reference material for contributors, advanced users, and anyone who wants to understand the mechanics.
+These pages document what the Conductor runs internally. You never call these commands directly from a `/bgsd-sesh` — the Conductor orchestrates all of them. They are reference material for contributors, advanced users, and anyone who wants to understand the mechanics.
 
 ### v0 — Verify engine
 
@@ -73,7 +73,7 @@ These pages document what the Conductor runs internally. You never call these co
 
 - **[/bgsd-run reference](./bgsd-run.mdx)** — The Conductor state machine: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and wave scheduler, conflict pre-check and merge-resolver, integration onto the standing `next` branch, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
 
-- **[/bgsd-status reference](./bgsd-status.mdx)** — The Kiwi live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `main-protected` indicator (marking that `main` is never written by an agent).
+- **[/bgsd-status reference](./bgsd-status.mdx)** — The Conductor's live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `main-protected` indicator (marking that `main` is never written by an agent).
 
 ### v3 — Integration loop + human handoff
 
