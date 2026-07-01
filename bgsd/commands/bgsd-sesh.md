@@ -238,8 +238,11 @@ Integrator, and the Review Gate, each card showing the agent's GSD substage,
 status, and progress. Above the lanes, a **pipeline timeline** (Discuss →
 Decompose → Loop 1 → Merge → Loop 2 → Review) shows where the run is **even
 before any agent spawns**, so intake, discussion, and decomposition are visible.
-As you move through the pipeline, advance the stage so the dashboard keeps up:
-`gui-live.mjs stage <name> --note "<what you're doing>"`. The dashboard refreshes
+As you move through the pipeline, advance the stage so the dashboard keeps up
+(`gui-live.mjs stage <name> --note "..."`) AND register each agent you spawn
+(`gui-live.mjs agent <id> --unit "<u>" --phase <p> --status running`), updating
+it as it advances. Without those calls the board shows "idle"; with them it
+reflects the real fan-out. The dashboard refreshes
 on its own (polls every 1.5s) and reads only run state (read-only; it never
 touches git or `main`).
 

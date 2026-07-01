@@ -44,6 +44,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" status
 # Advance the pipeline stage (so the dashboard reflects discuss/decompose/etc.):
 node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" stage <discuss|decompose|loop1|merge|loop2|review|done> --note "what you're doing"
 
+# Register / update an agent on the board (call this as you spawn + advance each one):
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" agent <agent-id> --unit "<unit>" --phase <discuss|ui|plan|execute|verify|fixing|done> --status <running|blocked|needs_input|done|failed> [--note "..."] [--iter N --max M]
+
 # Preview only (prints the plan, starts nothing):
 node "${CLAUDE_PLUGIN_ROOT}/scripts/gui-live.mjs" start --plan-only
 ```
@@ -68,6 +71,26 @@ the GSD flow, the iteration `x/max`, a live note, and a context-pressure warning
 if an agent's window is filling up. The header shows the run id, scale, state,
 and running / done / blocked counts, with a heartbeat that goes amber then red
 if the feed drops.
+
+## Keep the board live (or it shows "idle")
+
+The dashboard reflects the run's control files and run-state. If nothing writes
+them, every lane reads **idle**. So the Conductor must feed it as it works:
+
+1. **Advance the stage** at each pipeline transition: `gui-live.mjs stage
+   <stage> --note "..."` (discuss → decompose → loop1 → merge → loop2 → review).
+2. **Register every agent you spawn**, immediately, and **update it** as it moves
+   through its GSD flow: `gui-live.mjs agent <id> --unit "<unit>" --phase <phase>
+   --status running`. When a unit changes phase (plan → execute → verify) or
+   finishes, call `agent` again with the new `--phase` / `--status`. Mark it
+   `--status done` on a verified pass, `blocked` / `failed` on a stop.
+
+Do this for the Pipeline Agents, the verifier(s), and the integrator. The moment
+you register agents, the board stops showing idle and starts reflecting the real
+fan-out. Treat it like a live progress log: one `agent` call per meaningful state
+change, so the user watching the dashboard sees the truth.
+
+---
 
 **The pipeline timeline shows the pre-fan-out phases.** Above the lanes is a
 stepper for the whole pipeline: **Discuss → Decompose → Loop 1 → Merge → Loop 2

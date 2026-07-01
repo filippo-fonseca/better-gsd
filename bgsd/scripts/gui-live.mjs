@@ -31,7 +31,12 @@ import {
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readAllControlFiles } from "./control.mjs";
+import {
+  readAllControlFiles,
+  createControlFile,
+  updateControlFile,
+  readControlFile,
+} from "./control.mjs";
 import { buildDashboardModel, summarizeSessions } from "./gui.mjs";
 import { resolveRepoRoot } from "./init-live.mjs";
 
@@ -164,6 +169,52 @@ export function setStage(repoRoot, { runId, stage, note, scale, state } = {}) {
   return next;
 }
 
+/**
+ * Register or update an agent on the dashboard by writing/merging its control
+ * file (`.bgsd/runs/<run-id>/control/<agent-id>.json`). This is how the Conductor
+ * makes the board reflect the agents it actually spawns: without it the board
+ * has no control files to read and shows "idle". Creates the file on first call,
+ * merges on later calls.
+ *
+ * @param {string} repoRoot
+ * @param {object} fields { runId?, agentId, unit?, phase?, status?, note?, iter?, max? }
+ * @returns {object} the written control file
+ */
+export function upsertAgent(repoRoot, { runId, agentId, unit, phase, status, note, iter, max } = {}) {
+  if (!agentId) throw new Error("upsertAgent: an agent id is required");
+  const resolved = runId ?? latestRunId(repoRoot);
+  if (!resolved) throw new Error("upsertAgent: no run found (open a sesh or pass --run-id)");
+  const controlPath = join(runsDir(repoRoot), resolved, "control", `${agentId}.json`);
+
+  if (!existsSync(controlPath)) {
+    return createControlFile(controlPath, {
+      agent_id: agentId,
+      run_id: resolved,
+      worktree: "",
+      branch: "",
+      unit_id: unit ?? agentId,
+      phase: phase ?? "discuss",
+      status: status ?? "running",
+      progress: { iteration: iter ?? 0, max_iterations: max ?? 5, note: note ?? "" },
+    });
+  }
+
+  const updates = {};
+  if (unit !== undefined) updates.unit_id = unit;
+  if (phase !== undefined) updates.phase = phase;
+  if (status !== undefined) updates.status = status;
+  if (iter !== undefined || max !== undefined || note !== undefined) {
+    const cur = readControlFile(controlPath);
+    updates.progress = {
+      ...cur.progress,
+      ...(iter !== undefined ? { iteration: iter } : {}),
+      ...(max !== undefined ? { max_iterations: max } : {}),
+      ...(note !== undefined ? { note } : {}),
+    };
+  }
+  return updateControlFile(controlPath, updates);
+}
+
 function writePointer(repoRoot, data) {
   mkdirSync(dirname(pointerPath(repoRoot)), { recursive: true });
   writeFileSync(pointerPath(repoRoot), JSON.stringify(data, null, 2), "utf8");
@@ -277,6 +328,27 @@ export async function main() {
     const ptr = readPointer(repoRoot);
     if (!ptr) { out(`\nbgsd-gui: not running.\n\n`); return; }
     out(`\nbgsd-gui: running at ${ptr.url}  (pid ${ptr.pid}, run ${ptr.run_id ?? "—"}, since ${ptr.started_at}).\n\n`);
+    return;
+  }
+
+  if (sub === "agent") {
+    const agentId = argv[1] && !argv[1].startsWith("--") ? argv[1] : flags.id;
+    try {
+      const c = upsertAgent(repoRoot, {
+        runId: typeof flags["run-id"] === "string" ? flags["run-id"] : undefined,
+        agentId,
+        unit: typeof flags.unit === "string" ? flags.unit : undefined,
+        phase: typeof flags.phase === "string" ? flags.phase : undefined,
+        status: typeof flags.status === "string" ? flags.status : undefined,
+        note: typeof flags.note === "string" ? flags.note : undefined,
+        iter: flags.iter !== undefined ? Number(flags.iter) : undefined,
+        max: flags.max !== undefined ? Number(flags.max) : undefined,
+      });
+      out(`\nbgsd-gui: agent ${c.agent_id} → ${c.phase}/${c.status} (run ${c.run_id})\n\n`);
+    } catch (err) {
+      process.stderr.write(`agent: ${err.message}\n`);
+      process.exit(1);
+    }
     return;
   }
 
