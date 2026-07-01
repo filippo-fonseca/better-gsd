@@ -182,13 +182,21 @@ export function normalizeAgent(agent) {
 
 /**
  * Derive a single overall run status from the agent counts, for the header badge.
- * Priority: blocked wins, then needs_input, then running, then done; an empty run
- * (no agents at all) reads "idle".
+ * Priority: a PAUSED run wins outright (the whole session is held), then blocked,
+ * then needs_input, then running, then done; an empty run (no agents at all)
+ * reads "idle".
+ *
+ * "paused" is a distinct, warn/idle-style badge: the run is intentionally held,
+ * not broken (blocked) and not finished (done). It is surfaced from the run's
+ * lifecycle `state`, since a pause can be taken between waves when no agent is
+ * mid-flight (empty counts).
  *
  * @param {{ total: number, running: number, done: number, blocked: number, needs_input: number }} counts
- * @returns {"blocked"|"needs_input"|"running"|"done"|"idle"}
+ * @param {string} [runState]  run.json lifecycle state, e.g. "paused"
+ * @returns {"paused"|"blocked"|"needs_input"|"running"|"done"|"idle"}
  */
-export function overallStatus(counts) {
+export function overallStatus(counts, runState) {
+  if (runState === "paused") return "paused";
   if (!counts || counts.total === 0) return "idle";
   if (counts.blocked > 0) return "blocked";
   if (counts.needs_input > 0) return "needs_input";
@@ -236,7 +244,7 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
       generated_at: new Date(now).toISOString(),
     },
     counts,
-    overall: overallStatus(counts),
+    overall: overallStatus(counts, run.state ?? null),
     pipeline: buildPipeline(run.stage ?? null),
     lanes,
     agents: norm,
@@ -251,6 +259,8 @@ const TERMINAL_BAD = Object.freeze(new Set(["blocked", "failed", "aborted"]));
 const RUN_DONE_STATES = Object.freeze(new Set(["done", "completed", "complete", "finished"]));
 /** run.state values that mean the whole run ended badly. */
 const RUN_BAD_STATES = Object.freeze(new Set(["aborted", "failed", "cancelled", "canceled", "error"]));
+/** run.state values that mean the whole run is intentionally held (resumable). */
+const RUN_PAUSED_STATES = Object.freeze(new Set(["paused"]));
 
 /**
  * Roll a single agent's status/phase down to one of "done", "bad", or "active".
@@ -273,6 +283,9 @@ function agentDisposition(agent) {
 /**
  * Derive a session-level status from its run metadata and agents.
  *
+ * - "paused": run.state is "paused" — the session is intentionally held and is
+ *   resumable via /bgsd-resume. Checked FIRST so a pause reads as itself, not as
+ *   in-progress or aborted from stale agent state.
  * - "completed": run.state is a done state, or there are agents and all are
  *   terminal-done.
  * - "aborted": run.state is a bad state, or some agent failed/blocked while none
@@ -281,10 +294,11 @@ function agentDisposition(agent) {
  *
  * @param {object|null} run       parsed run.json (or null)
  * @param {object[]} controls     raw control-file objects
- * @returns {"completed"|"aborted"|"in-progress"}
+ * @returns {"paused"|"completed"|"aborted"|"in-progress"}
  */
 export function sessionStatus(run, controls = []) {
   const state = String(run?.state ?? "").toLowerCase();
+  if (RUN_PAUSED_STATES.has(state)) return "paused";
   if (RUN_BAD_STATES.has(state)) return "aborted";
   if (RUN_DONE_STATES.has(state)) return "completed";
 

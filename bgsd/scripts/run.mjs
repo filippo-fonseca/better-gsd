@@ -76,6 +76,13 @@ const REPO_ROOT = resolve(__dir, "../../");
 /**
  * Valid lifecycle states, in order of progression.
  * "aborted", "blocked", "needs_input", and "done" are terminal.
+ *
+ * "paused" is a NON-terminal holding state: /bgsd-pause parks a run here from
+ * any in-flight state, recording the pre-pause state as `resume_state` on
+ * run.json so /bgsd-resume can restore the run to exactly where it stood and
+ * continue from that same stage. Because "paused" is non-terminal, advanceState
+ * both enters it (from any non-terminal state) and leaves it (back to the
+ * recorded resume_state) without hitting the terminal-state guard.
  */
 export const RUN_STATES = Object.freeze([
   "created",
@@ -88,13 +95,19 @@ export const RUN_STATES = Object.freeze([
   // v3 Loop 2 + Review Gate states (REVIEW-01..04, LOOP2-01)
   "integrating",
   "review",
+  // Non-terminal holding state for /bgsd-pause ↔ /bgsd-resume (PAUSE-01)
+  "paused",
   "done",
   "aborted",
   "blocked",
   "needs_input",
 ]);
 
-/** Terminal states — a run in one of these states will not transition further. */
+/**
+ * Terminal states — a run in one of these states will not transition further.
+ * "paused" is deliberately NOT here: a paused run is resumable, and advanceState
+ * must be free to move it back to its recorded resume_state.
+ */
 export const TERMINAL_STATES = new Set(["done", "aborted", "blocked", "needs_input"]);
 
 // ---------------------------------------------------------------------------
@@ -175,10 +188,14 @@ export function runJsonPath(bgsdDir, runId) {
 /**
  * Write run.json atomically (write temp + rename — POSIX atomic on same fs).
  *
+ * Exported so sibling lifecycle modules (e.g. pause.mjs) can persist run.json
+ * mutations through the SAME atomic writer instead of duplicating the
+ * temp-file+rename logic.
+ *
  * @param {string} runPath   Absolute path to run.json
  * @param {object} data      The run state object to write
  */
-function writeRunAtomic(runPath, data) {
+export function writeRunAtomic(runPath, data) {
   const tmpPath = runPath + ".tmp";
   const dir = dirname(runPath);
   mkdirSync(dir, { recursive: true });

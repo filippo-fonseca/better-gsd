@@ -565,6 +565,7 @@ The old commands still work and map to internal session stages:
 | `/bgsd-feedback` | feedback ingestion when you report an issue mid-session |
 | `/bgsd-changelog` | CHANGELOG → PR assembly |
 | `/bgsd-status` | the always-on live view, shown continuously |
-| `/bgsd-resume` | pick up an interrupted session from `.bgsd/runs/` (auto-selects the latest in-flight run) |
+| `/bgsd-pause` | park the running session cleanly and snapshot it (`PAUSE.md` + `paused` state) so `/bgsd-resume` continues at exactly the same stage |
+| `/bgsd-resume` | pick up an interrupted or paused session from `.bgsd/runs/` (auto-selects the latest in-flight or paused run) |
 | `/bgsd-gui` | open/close the live web dashboard tracking every agent by lane + GSD substage |
 | `/bgsd-memory` | save a setting or preference to `BGSD.md` in natural language (flags still override) |

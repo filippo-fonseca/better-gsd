@@ -13,6 +13,9 @@
  * R06 — findRun: locates a run by id; null when absent
  * R07 — buildResumeSummary: shape + per-unit glyphs; null -> "no resumable"
  * R08 — isTerminalAgent: done/failed terminal; others not
+ * R09 — summarizeRun: a paused run is resumable + surfaces resume_state (PAUSE-01)
+ * R10 — pickLatestResumable: a paused all-terminal run still wins over finished
+ * R11 — buildResumeSummary: paused run renders the paused header + resume step
  */
 
 import assert from "node:assert/strict";
@@ -128,6 +131,56 @@ test("R08 — isTerminalAgent: done/failed terminal; others not", () => {
   for (const s of ["running", "stalled", "blocked", "needs_input"]) {
     assert.equal(isTerminalAgent({ status: s }), false, `${s} must be non-terminal`);
   }
+});
+
+test("R09 — summarizeRun: a paused run is resumable + surfaces resume_state (PAUSE-01)", () => {
+  // Every agent terminal, but the run is PAUSED → still resumable.
+  const s = summarizeRun({
+    runId: "paused-run",
+    controls: [ctl("u1", "done"), ctl("u2", "failed")],
+    mtime: 42,
+    runState: "paused",
+    resumeState: "merging",
+    pausedAt: "2026-06-30T12:00:00.000Z",
+    pauseReason: "manual_pause",
+  });
+  assert.equal(s.paused, true);
+  assert.equal(s.resumable, true, "paused runs are resumable regardless of agent state");
+  assert.equal(s.resume_state, "merging");
+  assert.equal(s.paused_at, "2026-06-30T12:00:00.000Z");
+
+  // A NON-paused all-terminal run is unchanged: not resumable, no pause fields.
+  const s2 = summarizeRun({ runId: "done-run", controls: [ctl("u1", "done")], mtime: 1 });
+  assert.equal(s2.paused, false);
+  assert.equal(s2.resumable, false);
+  assert.equal(s2.resume_state, null);
+});
+
+test("R10 — pickLatestResumable: a paused all-terminal run still wins over finished", () => {
+  const runs = [
+    { runId: "finished", controls: [ctl("u1", "done")], mtime: 1000 },
+    { runId: "paused", controls: [ctl("u1", "done")], mtime: 5, runState: "paused", resumeState: "executing" },
+  ];
+  const pick = pickLatestResumable(runs);
+  assert.equal(pick.run_id, "paused", "the paused run is the only resumable one");
+  assert.equal(pick.paused, true);
+});
+
+test("R11 — buildResumeSummary: paused run renders the paused header + resume step", () => {
+  const run = summarizeRun({
+    runId: "paused-run",
+    controls: [ctl("u1", "running", { unit_id: "search-bar", phase: "execute" })],
+    mtime: 1,
+    runState: "paused",
+    resumeState: "executing",
+    pausedAt: "2026-06-30T12:00:00.000Z",
+  });
+  const out = buildResumeSummary(run);
+  assert.equal(out.paused, true);
+  assert.equal(out.resume_state, "executing");
+  assert.ok(/PAUSED run paused-run/.test(out.lines[0]), "header calls out the paused run");
+  assert.ok(out.lines.some((l) => /restoring to state "executing"/.test(l)));
+  assert.ok(out.lines.some((l) => /PAUSE\.md/.test(l)), "next-step line points at the snapshot");
 });
 
 process.stdout.write(`\nresume.mjs: ${passed} passed, ${failed} failed\n`);

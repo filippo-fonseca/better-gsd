@@ -13,6 +13,14 @@
  * A run is "resumable" when at least one of its agents is in a non-terminal
  * status (running / stalled / blocked / needs_input). A run whose every agent
  * is done or failed is finished, not resumable.
+ *
+ * PAUSED runs (PAUSE-01): a run explicitly paused via /bgsd-pause carries
+ * `state: "paused"` and a `resume_state` on its run.json (see pause.mjs). Such a
+ * run is ALWAYS resumable regardless of its control files — even if every agent
+ * looks terminal (a pause taken between waves, or before fan-out, has no
+ * in-flight control file). The live seam passes the run.json `state` +
+ * `resume_state` + `paused_at` through so this module can surface the pause
+ * snapshot and resume to the exact recorded state.
  */
 
 // Terminal agent statuses (mirror control.mjs STATUSES). Everything else
@@ -29,7 +37,7 @@ export function isTerminalAgent(control) {
 }
 
 /**
- * Summarize one run from its control files.
+ * Summarize one run from its control files (and, optionally, its run.json).
  *
  * @param {object} run
  * @param {string} run.runId        The run id (the .bgsd/runs/<run-id> dir name).
@@ -37,14 +45,31 @@ export function isTerminalAgent(control) {
  * @param {number} [run.mtime]      Sort key — most recent activity (ms epoch).
  *                                   The live seam derives it from the newest
  *                                   `updated_at`/`heartbeat_at` across controls.
+ * @param {string} [run.runState]   run.json `state` (e.g. "paused"). When
+ *                                   "paused", the run is resumable regardless of
+ *                                   its control files.
+ * @param {string} [run.resumeState] run.json `resume_state` — the exact state a
+ *                                   paused run returns to on resume.
+ * @param {string} [run.pausedAt]   run.json `paused_at` (ISO), when paused.
+ * @param {string} [run.pauseReason] run.json `pause_reason`, when paused.
  * @returns {{
  *   run_id: string, mtime: number, resumable: boolean,
  *   total: number, pending: number,
+ *   paused: boolean, resume_state: string|null,
+ *   paused_at: string|null, pause_reason: string|null,
  *   agents: { agent_id: string, unit_id: string|null, status: string,
  *             phase: string|null, heartbeat_at: string|null }[]
  * }}
  */
-export function summarizeRun({ runId, controls = [], mtime = 0 }) {
+export function summarizeRun({
+  runId,
+  controls = [],
+  mtime = 0,
+  runState = null,
+  resumeState = null,
+  pausedAt = null,
+  pauseReason = null,
+}) {
   const agents = controls.map((c) => ({
     agent_id: c.agent_id ?? "unknown",
     unit_id: c.unit_id ?? null,
@@ -53,12 +78,18 @@ export function summarizeRun({ runId, controls = [], mtime = 0 }) {
     heartbeat_at: c.heartbeat_at ?? null,
   }));
   const pending = agents.filter((a) => !TERMINAL_AGENT_STATUSES.includes(a.status));
+  const paused = runState === "paused";
   return {
     run_id: runId,
     mtime,
-    resumable: pending.length > 0,
+    // A paused run is always resumable; otherwise it needs an in-flight agent.
+    resumable: paused || pending.length > 0,
     total: agents.length,
     pending: pending.length,
+    paused,
+    resume_state: paused ? resumeState ?? null : null,
+    paused_at: paused ? pausedAt ?? null : null,
+    pause_reason: paused ? pauseReason ?? null : null,
     agents,
   };
 }
@@ -100,28 +131,55 @@ export function findRun(runs, runId) {
  * Build a compact, human-readable resume plan from a run summary. Lists each
  * unit with a glyph (✓ terminal, … in-flight) and ends with the next step.
  *
+ * For a PAUSED run (PAUSE-01) the header calls out the pause and the exact
+ * `resume_state` the run returns to, and the next-step line points at restoring
+ * that state (see PAUSE.md for the full snapshot).
+ *
  * @param {object|null} run  A summary from summarizeRun/pickLatestResumable.
- * @returns {{ run_id: string|null, pending: number, lines: string[] }}
+ * @returns {{ run_id: string|null, pending: number, paused: boolean,
+ *             resume_state: string|null, lines: string[] }}
  */
 export function buildResumeSummary(run) {
   if (!run) {
     return {
       run_id: null,
       pending: 0,
+      paused: false,
+      resume_state: null,
       lines: ["No resumable session found — every recorded run is finished."],
     };
   }
   const lines = [];
-  lines.push(
-    `Resuming run ${run.run_id} — ${run.pending}/${run.total} unit(s) still in flight:`
-  );
+  if (run.paused) {
+    lines.push(
+      `Resuming PAUSED run ${run.run_id} — restoring to state "${run.resume_state ?? "?"}"` +
+      `${run.paused_at ? ` (paused ${run.paused_at})` : ""}:`
+    );
+  } else {
+    lines.push(
+      `Resuming run ${run.run_id} — ${run.pending}/${run.total} unit(s) still in flight:`
+    );
+  }
   for (const a of run.agents) {
     const mark = TERMINAL_AGENT_STATUSES.includes(a.status) ? "✓" : "…";
     const label = a.unit_id && a.unit_id !== a.agent_id ? `${a.agent_id} (${a.unit_id})` : a.agent_id;
     lines.push(`  ${mark} ${label}  [${a.status}]${a.phase ? ` @ ${a.phase}` : ""}`);
   }
-  lines.push(
-    `Next: re-enter Loop 1 for the in-flight unit(s) from their last recorded phase.`
-  );
-  return { run_id: run.run_id, pending: run.pending, lines };
+  if (run.paused) {
+    lines.push(
+      `Next: restore the run to "${run.resume_state ?? "its recorded state"}" (clear the ` +
+      `paused marker) and continue from that exact stage — see PAUSE.md for the full snapshot.`
+    );
+  } else {
+    lines.push(
+      `Next: re-enter Loop 1 for the in-flight unit(s) from their last recorded phase.`
+    );
+  }
+  return {
+    run_id: run.run_id,
+    pending: run.pending,
+    paused: !!run.paused,
+    resume_state: run.paused ? run.resume_state ?? null : null,
+    lines,
+  };
 }

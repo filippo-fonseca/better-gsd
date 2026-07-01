@@ -380,6 +380,29 @@ test("G20 — sessionStatus: run.state overrides agent-derived status", () => {
   assert.equal(sessionStatus(null, [agent("a", "discuss", "needs_input")]), "aborted");
 });
 
+test("G23 — paused: overallStatus + sessionStatus surface a distinct paused badge (PAUSE-01)", () => {
+  // A paused run wins the overall badge even when an agent still reads running,
+  // and even when there are no agents at all (pause taken between waves).
+  assert.equal(
+    overallStatus({ total: 1, running: 1, done: 0, blocked: 0, needs_input: 0 }, "paused"),
+    "paused"
+  );
+  assert.equal(overallStatus({ total: 0, running: 0, done: 0, blocked: 0, needs_input: 0 }, "paused"), "paused");
+  // Without the paused state it behaves exactly as before.
+  assert.equal(overallStatus({ total: 1, running: 1, done: 0, blocked: 0, needs_input: 0 }), "running");
+
+  // sessionStatus reports "paused" regardless of agent dispositions.
+  assert.equal(sessionStatus({ state: "paused" }, [agent("a", "execute", "running")]), "paused");
+  assert.equal(sessionStatus({ state: "paused" }, []), "paused");
+
+  // It flows through buildDashboardModel's overall field.
+  const model = buildDashboardModel({
+    run: { run_id: "r", state: "paused" },
+    agents: [agent("unit-a", "execute", "running")],
+  });
+  assert.equal(model.overall, "paused");
+});
+
 test("G21 — summarizeSessions: title present, null when the run has none", () => {
   const sessions = summarizeSessions([
     { runId: "titled",   run: { title: "Add User Auth", state: "done" }, controls: [], mtime: 200 },
