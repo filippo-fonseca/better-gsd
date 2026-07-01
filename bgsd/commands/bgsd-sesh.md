@@ -200,11 +200,20 @@ the run's control files (read-only; it never touches git or `main`).
 /bgsd-sesh "…" --gui      # run the session and open the dashboard
 ```
 
-**Kiwi opens and closes it on command.** Tell Kiwi "open the dashboard" and it
-runs `gui-live.mjs start` and hands you the clickable `http://localhost:<port>`.
-Tell it "close the gui" and it runs `gui-live.mjs stop`. Kiwi can open or close
-it at any point in a session, not just at the start. See `/bgsd-gui` for the full
-command. As always, Kiwi gives the full URL to click, never a bare port.
+**It opens automatically — no fumbling, no confirmation.** Two triggers, and both
+open it immediately:
+
+1. **`--gui` is passed** → the session harness spawns the dashboard itself and
+   prints the URL. You do nothing.
+2. **You tell Kiwi to open it** ("open the gui", "open the dashboard", "show me
+   the dashboard") at any point, before, during, or after fan-out → Kiwi runs
+   `gui-live.mjs start` **right away** (detached, in the background) and hands you
+   the clickable `http://localhost:<port>`. It does not ask whether to open it, it
+   just opens it and gives you the link.
+
+Tell it "close the gui" and it runs `gui-live.mjs stop`. Kiwi opens or closes it
+at any point in a session. See `/bgsd-gui` for the full command. As always, Kiwi
+gives the full URL to click, never a bare port.
 
 ---
 
@@ -240,12 +249,17 @@ a vague prompt to disambiguate, a scale to confirm, a gray-area decision the
 oracle escalated, the review gate, or "which backlog item next." Kiwi never
 buries a question in a paragraph of prose when a selector fits.
 
-- **2–4 options**, each a real, self-explanatory choice (label + one-line
-  description). This is exactly the shape `escalate.mjs:buildEscalationBatch`
-  already produces (`options[2–4]` + a free-text `other`); when you render an
-  escalation batch, render each item as one AskUserQuestion call.
-- **Type-your-own is always available** as the final option — you are never
-  boxed into the presented choices.
+- **At most 4 options — hard limit.** AskUserQuestion accepts **2 to 4** options
+  per question; passing 5 or more fails with "Invalid tool parameters." Never
+  author a question with more than 4 choices. If a decision has more than four
+  candidates, **bundle them into 4 or fewer** coherent options up front (group
+  related choices, or offer presets) and let the user refine via type-your-own.
+  Do not emit 5 and correct after the error. This matches the shape
+  `escalate.mjs:buildEscalationBatch` enforces (`options[2–4]` + a free-text
+  `other`); render each escalation-batch item as one AskUserQuestion call.
+- **Type-your-own is always available** and does not count toward the 4: it is
+  the tool's built-in free-text answer, so you get up to 4 presets plus "type
+  your own." You are never boxed into the presented choices.
 - **One decision per question.** Independent decisions become separate
   AskUserQuestion items, not one compound prose question.
 - Worker questions still pass through the oracle first; only genuine escalations
