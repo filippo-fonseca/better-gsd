@@ -340,62 +340,59 @@ await test("(t) ingestFeedback (full): max_iterations bounded (NFR-08)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (u) executeFeedbackPlan — refuses without --live flag (NFR-10)
+// (u) executeFeedbackPlan — gate REMOVED; runs without --live; still guards
+//     on missing injected functions (NFR-06 / mirror of test-run.mjs R26)
 // ---------------------------------------------------------------------------
 
-await test("(u) executeFeedbackPlan: refuses without --live flag (NFR-10)", async () => {
-  // Guard: process.argv will NOT contain --live in this test run
-  assert.equal(isLiveFlagSet(), false, "test must run without --live");
+await test("(u) executeFeedbackPlan: runs without --live (gate removed); guards on missing loop1Fn", async () => {
+  // Gate removed: executeFeedbackPlan no longer calls requireLiveFlag().
+  // Verify --live is NOT in argv — the function should proceed anyway.
+  assert.equal(isLiveFlagSet(), false, "test must run without --live to confirm gate is gone");
 
   const plan = ingestFeedback({ source: "A bug", mode: "full", runId: "run-006" });
 
+  // Without loop1Fn injected, full-mode must throw on the injected-fn guard, NOT
+  // on a --live refusal. The error message must mention loop1Fn, not HUMAN-GATED.
   let threw = false;
+  let errMsg = "";
   try {
-    await executeFeedbackPlan({ plan, runId: "run-006" });
+    await executeFeedbackPlan({ plan, runId: "run-006" }); // no loop1Fn — should throw
   } catch (err) {
     threw = true;
-    assert.ok(
-      err.message.includes("HUMAN-GATED"),
-      `error must mention HUMAN-GATED; got: ${err.message.slice(0, 100)}`
-    );
+    errMsg = err.message;
   }
-  assert.ok(threw, "executeFeedbackPlan must throw without --live");
+  assert.ok(threw, "executeFeedbackPlan must throw when loop1Fn is missing in full mode");
+  assert.ok(
+    errMsg.includes("loop1Fn"),
+    `error must mention loop1Fn (injected-fn guard), not HUMAN-GATED; got: ${errMsg.slice(0, 120)}`
+  );
+  assert.ok(
+    !errMsg.includes("HUMAN-GATED"),
+    `error must NOT mention HUMAN-GATED (gate was removed); got: ${errMsg.slice(0, 120)}`
+  );
 });
 
 // ---------------------------------------------------------------------------
-// (v) executeFeedbackPlan (fast mode, with injected --live + fixFn) — UNVERIFIED
+// (v) executeFeedbackPlan (fast mode, with injected fixFn) — UNVERIFIED
 // ---------------------------------------------------------------------------
 
 await test("(v) executeFeedbackPlan (fast): injected fixFn returns UNVERIFIED result (NFR-06)", async () => {
-  // We must temporarily inject --live into argv for this test.
-  // Use a patched requireLiveFlag by bypassing it via the loop: inject loop via
-  // module-level functions. The cleanest way without rewriting the module is to
-  // pass a mock that exercises the fast-mode branch directly (without calling
-  // requireLiveFlag), which we achieve by stubbing the argv.
+  // Gate removed: no --live needed. Call directly with injected fixFn.
+  const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "fast", runId: "run-007" });
 
-  const originalArgv = process.argv.slice();
-  process.argv.push("--live");
+  const mockFixFn = async ({ items }) => items.map((item) => ({ id: item.id, status: "fixed" }));
 
-  try {
-    const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "fast", runId: "run-007" });
+  const result = await executeFeedbackPlan({
+    plan,
+    runId: "run-007",
+    fixFn: mockFixFn,
+  });
 
-    const mockFixFn = async ({ items }) => items.map((item) => ({ id: item.id, status: "fixed" }));
-
-    const result = await executeFeedbackPlan({
-      plan,
-      runId:  "run-007",
-      fixFn:  mockFixFn,
-    });
-
-    assert.equal(result.verified,             false,        "fast result must NOT be verified (NFR-06)");
-    assert.equal(result.verification_skipped, true,         "fast result must mark verification_skipped");
-    assert.equal(result.result_status,        "UNVERIFIED", "fast result must be UNVERIFIED");
-    assert.notEqual(result.result_status,     "PASS",       "fast result must NEVER be PASS (NFR-06)");
-    assert.equal(result.mode,                 "fast");
-  } finally {
-    process.argv.length = 0;
-    for (const a of originalArgv) process.argv.push(a);
-  }
+  assert.equal(result.verified,             false,        "fast result must NOT be verified (NFR-06)");
+  assert.equal(result.verification_skipped, true,         "fast result must mark verification_skipped");
+  assert.equal(result.result_status,        "UNVERIFIED", "fast result must be UNVERIFIED");
+  assert.notEqual(result.result_status,     "PASS",       "fast result must NEVER be PASS (NFR-06)");
+  assert.equal(result.mode,                 "fast");
 });
 
 // ---------------------------------------------------------------------------
@@ -403,35 +400,28 @@ await test("(v) executeFeedbackPlan (fast): injected fixFn returns UNVERIFIED re
 // ---------------------------------------------------------------------------
 
 await test("(w) executeFeedbackPlan (full): injected loop1Fn+loop2Fn called, returns result", async () => {
-  const originalArgv = process.argv.slice();
-  process.argv.push("--live");
+  // Gate removed: no --live needed. Call directly with injected loop fns.
+  const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "full", runId: "run-008" });
 
-  try {
-    const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "full", runId: "run-008" });
+  let loop1Called = false;
+  let loop2Called = false;
 
-    let loop1Called = false;
-    let loop2Called = false;
+  const mockLoop1Fn = async () => { loop1Called = true; return { status: "ok" }; };
+  const mockLoop2Fn = async () => { loop2Called = true; return { verdict: "PASS" }; };
 
-    const mockLoop1Fn = async () => { loop1Called = true; return { status: "ok" }; };
-    const mockLoop2Fn = async () => { loop2Called = true; return { verdict: "PASS" }; };
+  const result = await executeFeedbackPlan({
+    plan,
+    runId:   "run-008",
+    loop1Fn: mockLoop1Fn,
+    loop2Fn: mockLoop2Fn,
+  });
 
-    const result = await executeFeedbackPlan({
-      plan,
-      runId:    "run-008",
-      loop1Fn:  mockLoop1Fn,
-      loop2Fn:  mockLoop2Fn,
-    });
-
-    assert.ok(loop1Called, "loop1Fn must be called in full mode");
-    assert.ok(loop2Called, "loop2Fn must be called in full mode");
-    assert.equal(result.mode,                 "full");
-    assert.equal(result.verified,             true);
-    assert.equal(result.verification_skipped, false);
-    assert.equal(result.result_status,        "PASS");
-  } finally {
-    process.argv.length = 0;
-    for (const a of originalArgv) process.argv.push(a);
-  }
+  assert.ok(loop1Called, "loop1Fn must be called in full mode");
+  assert.ok(loop2Called, "loop2Fn must be called in full mode");
+  assert.equal(result.mode,                 "full");
+  assert.equal(result.verified,             true);
+  assert.equal(result.verification_skipped, false);
+  assert.equal(result.result_status,        "PASS");
 });
 
 // ---------------------------------------------------------------------------
@@ -439,24 +429,17 @@ await test("(w) executeFeedbackPlan (full): injected loop1Fn+loop2Fn called, ret
 // ---------------------------------------------------------------------------
 
 await test("(x) executeFeedbackPlan (fast): missing fixFn throws guard error", async () => {
-  const originalArgv = process.argv.slice();
-  process.argv.push("--live");
+  // Gate removed: no --live needed. Missing fixFn still throws.
+  const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "fast", runId: "run-009" });
 
+  let threw = false;
   try {
-    const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "fast", runId: "run-009" });
-
-    let threw = false;
-    try {
-      await executeFeedbackPlan({ plan, runId: "run-009" }); // no fixFn
-    } catch (err) {
-      threw = true;
-      assert.ok(err.message.includes("fixFn"), `error must mention fixFn; got: ${err.message}`);
-    }
-    assert.ok(threw, "must throw when fixFn is missing in fast mode");
-  } finally {
-    process.argv.length = 0;
-    for (const a of originalArgv) process.argv.push(a);
+    await executeFeedbackPlan({ plan, runId: "run-009" }); // no fixFn
+  } catch (err) {
+    threw = true;
+    assert.ok(err.message.includes("fixFn"), `error must mention fixFn; got: ${err.message}`);
   }
+  assert.ok(threw, "must throw when fixFn is missing in fast mode");
 });
 
 // ---------------------------------------------------------------------------
@@ -464,24 +447,17 @@ await test("(x) executeFeedbackPlan (fast): missing fixFn throws guard error", a
 // ---------------------------------------------------------------------------
 
 await test("(y) executeFeedbackPlan (full): missing loop1Fn throws guard error", async () => {
-  const originalArgv = process.argv.slice();
-  process.argv.push("--live");
+  // Gate removed: no --live needed. Missing loop1Fn still throws.
+  const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "full", runId: "run-010" });
 
+  let threw = false;
   try {
-    const plan = ingestFeedback({ source: SAMPLE_CHANGE_ITEMS, mode: "full", runId: "run-010" });
-
-    let threw = false;
-    try {
-      await executeFeedbackPlan({ plan, runId: "run-010" }); // no loop1Fn
-    } catch (err) {
-      threw = true;
-      assert.ok(err.message.includes("loop1Fn"), `error must mention loop1Fn; got: ${err.message}`);
-    }
-    assert.ok(threw, "must throw when loop1Fn is missing in full mode");
-  } finally {
-    process.argv.length = 0;
-    for (const a of originalArgv) process.argv.push(a);
+    await executeFeedbackPlan({ plan, runId: "run-010" }); // no loop1Fn
+  } catch (err) {
+    threw = true;
+    assert.ok(err.message.includes("loop1Fn"), `error must mention loop1Fn; got: ${err.message}`);
   }
+  assert.ok(threw, "must throw when loop1Fn is missing in full mode");
 });
 
 // ---------------------------------------------------------------------------

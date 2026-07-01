@@ -28,11 +28,12 @@
  *     - The parsed fix items (each tagged, id-stable, file/feature-tagged where possible)
  *     - The re-run plan (mode, loop spec, UNVERIFIED flag for --fast)
  *
- * LIVE RE-RUN GUARD (FEEDBACK-04 / NFR-10)
+ * LIVE RE-RUN (FEEDBACK-04)
  * ==========================================
  * executeFeedbackPlan({ plan, runId, bgsdDir, loop1Fn?, loop2Fn?, fixFn? })
- *   Refuses without --live. Default dry-run reports the plan without spawning
- *   anything (mirrors requireLiveFlag() from loop1-live.mjs / loop2-live.mjs).
+ *   Executes the feedback plan without requiring --live. Branch-safety (NFR-01)
+ *   is enforced upstream by the Conductor. requireLiveFlag() and isLiveFlagSet()
+ *   remain exported for consumers that need them.
  *
  * NO SILENT GREEN (NFR-06)
  * ========================
@@ -455,9 +456,10 @@ export function ingestFeedback({
 /**
  * Execute a FeedbackPlan — spawn fix agents and/or re-run Loop 1 + Loop 2.
  *
- * HUMAN-GATED: refuses without --live (mirrors requireLiveFlag() across the
- * codebase). Default dry-run prints the plan and exits without spawning
- * anything.
+ * The --live gate has been removed so that a plain /bgsd-sesh run can execute
+ * the feedback pipeline without an explicit --live flag. Branch-safety (NFR-01)
+ * is enforced upstream by the Conductor. requireLiveFlag() and isLiveFlagSet()
+ * are still exported for consumers that need them.
  *
  * In full mode: calls loop1Fn (per worktree) then loop2Fn (integration),
  *   reusing the existing controllers UNCHANGED (FEEDBACK-02, NFR-04).
@@ -466,8 +468,7 @@ export function ingestFeedback({
  *   Result is always UNVERIFIED (NFR-06).
  *
  * All live seam functions (loop1Fn, loop2Fn, fixFn) are DEPENDENCY-INJECTED
- * so this function is unit-testable with mocks; the guard prevents live
- * execution without --live (NFR-10).
+ * so this function is unit-testable with mocks (NFR-05).
  *
  * @param {object} opts
  * @param {FeedbackPlan} opts.plan          The plan from ingestFeedback()
@@ -486,8 +487,11 @@ export async function executeFeedbackPlan({
   loop2Fn,
   fixFn,
 }) {
-  // HARD GUARD: refuse without --live (NFR-10)
-  requireLiveFlag();
+  // NOTE: the --live gate was intentionally removed so that a plain /bgsd-sesh
+  // run can execute the feedback pipeline without --live. The branch-safety guard
+  // (requireNotProductionBranch / NFR-01) lives upstream in the Conductor.
+  // requireLiveFlag() and isLiveFlagSet() are still exported for consumers that
+  // need them, but executeFeedbackPlan no longer calls requireLiveFlag().
 
   const { mode, items, re_run: reRun } = plan;
 

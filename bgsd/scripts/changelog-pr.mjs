@@ -23,13 +23,12 @@
  *      Returns a string; never performs I/O to GitHub. Unit-testable without
  *      touching git or GitHub.
  *
- *   3. GUARDED LIVE PR CREATION (CHANGELOG-03)
+ *   3. LIVE PR CREATION (CHANGELOG-03)
  *      liveCreatePr({ base, head, title, body, dryRun? })
- *      HUMAN-GATED. Calls requireLiveFlag() first. Then refuses if base is
- *      next/main/master (NFR-01). Without --live: prints the assembled PR
- *      body and the gh pr create command it WOULD run, then exits — no
- *      silent green, no real PR created. With --live + non-default base:
- *      runs `gh pr create`.
+ *      The --live gate was removed so a plain /bgsd-sesh can open a PR.
+ *      Always refuses if base is main/master (NFR-01). With dryRun=true:
+ *      prints the assembled PR body and the gh pr create command it WOULD
+ *      run, then exits without creating anything. Default: runs `gh pr create`.
  *
  * AgentEntry shape:
  *   {
@@ -475,20 +474,23 @@ export function assemblePrBody({
 // ---------------------------------------------------------------------------
 
 /**
- * Guarded live PR creation (CHANGELOG-03).
+ * Live PR creation (CHANGELOG-03).
  *
- * BEHAVIOR WITHOUT --live (default / dry-run):
+ * The --live gate has been removed so that a plain /bgsd-sesh run can open a
+ * PR without an explicit --live flag. The only safety guard remaining for PR
+ * base validation is requireNotDefaultBranch() (NFR-01), which always refuses
+ * main/master as a PR base.
+ *
+ * BEHAVIOR (default — dryRun=false):
+ *   1. requireNotDefaultBranch() — refuses if base is main/master (NFR-01)
+ *   2. Executes `gh pr create --base <base> --head <head> --title <title> --body <body>`
+ *
+ * BEHAVIOR WITH dryRun=true:
  *   Prints the assembled PR body and the `gh pr create` command it WOULD run,
- *   then exits cleanly. No PR is created, no GitHub I/O occurs. "No silent green."
- *
- * BEHAVIOR WITH --live + non-default base:
- *   1. requireLiveFlag()         — refuses without --live
- *   2. requireNotDefaultBranch() — refuses if base is next/main/master (NFR-01)
- *   3. Executes `gh pr create --base <base> --head <head> --title <title> --body <body>`
+ *   then returns without creating anything.
  *
  * GUARDS (always enforced):
- *   - requireLiveFlag()          — off by default; `--live` is an explicit human opt-in
- *   - requireNotDefaultBranch()  — ALWAYS rejects next/main/master as base (NFR-01)
+ *   - requireNotDefaultBranch()  — ALWAYS rejects main/master as base (NFR-01)
  *
  * @param {object} opts
  * @param {string}   opts.base    Target branch for the PR (must NOT be next/main/master).
@@ -535,10 +537,14 @@ export function liveCreatePr({
     `gh ${ghArgs.map((a) => (a.includes(" ") || a.includes("\n") ? `"${a.replace(/"/g, '\\"')}"` : a)).join(" ")}`;
 
   // ---------------------------------------------------------------------------
-  // Dry-run path (default — no --live, or dryRun=true):
+  // Dry-run path (explicit dryRun=true override only):
   //   Print the would-be PR body and the gh command; exit without creating.
+  //   NOTE: the --live gate was intentionally removed so that a plain /bgsd-sesh
+  //   run can open a PR without --live. The only remaining safety guard is
+  //   requireNotDefaultBranch() above (NFR-01), which always refuses main/master.
+  //   Pass dryRun=true explicitly to preview the PR without creating it.
   // ---------------------------------------------------------------------------
-  if (!isLiveFlagSet() || dryRun) {
+  if (dryRun) {
     printFn(
       "\n" +
       "======================================================================\n" +
@@ -557,21 +563,18 @@ export function liveCreatePr({
       "\n" +
       `  ${commandStr}\n` +
       "\n" +
-      "  To create the real PR, re-run with --live:\n" +
-      "    node bgsd/scripts/changelog-pr.mjs --live [...args]\n" +
-      "\n" +
       "  NFR-01: The PR ALWAYS targets a non-default branch.\n" +
-      "  next/main/master are NEVER the PR base — this guard is always on.\n" +
+      "  main/master are NEVER the PR base — this guard is always on.\n" +
       "======================================================================\n\n"
     );
     return { dryRun: true };
   }
 
   // ---------------------------------------------------------------------------
-  // Live path (--live is set + dryRun is false + base is not a default branch):
-  //   requireLiveFlag() is the final gate before any GitHub I/O.
+  // Live path (dryRun is false + base is not a default branch):
+  //   Runs gh pr create. The --live gate was removed; branch-safety (NFR-01)
+  //   is enforced by requireNotDefaultBranch() above.
   // ---------------------------------------------------------------------------
-  requireLiveFlag();
 
   printFn(
     "\n" +

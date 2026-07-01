@@ -365,17 +365,22 @@ await test("requireNotDefaultBranch: passes for a feature branch", () => {
   requireNotDefaultBranch("feat/bgsd-v0");
 });
 
-await test("liveCreatePr: accepts 'next' as base (dry preview, no throw)", () => {
-  // next is now the integration target: the branch guard passes, and without
-  // --live liveCreatePr returns a dry preview rather than throwing.
-  assert.doesNotThrow(() =>
-    liveCreatePr({
-      base:  "next",
-      head:  "feat/some-unit",
-      title: "test PR",
-      body:  "test body",
-    })
-  );
+await test("liveCreatePr: accepts 'next' as base (gate removed, runs live with injected spawnFn)", () => {
+  // Gate removed: liveCreatePr no longer requires --live.
+  // next is a valid PR base (not in DEFAULT_BRANCHES). With an injected spawnFn
+  // returning success it should return { dryRun: false, url: "..." }.
+  const mockSpawn = () => ({ status: 0, stdout: "https://github.com/org/repo/pull/1", stderr: "", error: null });
+  let printed = "";
+  const result = liveCreatePr({
+    base:    "next",
+    head:    "feat/some-unit",
+    title:   "test PR",
+    body:    "test body",
+    spawnFn: mockSpawn,
+    printFn: (msg) => { printed += msg; },
+  });
+  assert.equal(result.dryRun, false, "gate removed: should go live (dryRun: false)");
+  assert.ok(result.url, "should return the PR url from gh output");
 });
 
 await test("liveCreatePr: refuses 'main' as base", () => {
@@ -402,32 +407,36 @@ await test("liveCreatePr: refuses 'master' as base", () => {
   );
 });
 
-await test("liveCreatePr: dry-run returns { dryRun: true } without --live", () => {
+await test("liveCreatePr: dry-run returns { dryRun: true } when dryRun=true is passed explicitly", () => {
+  // Gate removed: without --live, liveCreatePr now goes live. To force a preview,
+  // pass dryRun=true explicitly.
   let printed = "";
   const result = liveCreatePr({
     base:    "rehearsal/run-2026",
     head:    "run-2026/unit-auth",
     title:   "bgsd run: run-2026",
     body:    "## Test body",
+    dryRun:  true,
     printFn: (msg) => { printed += msg; },
   });
-  assert.equal(result.dryRun, true, "should return { dryRun: true }");
+  assert.equal(result.dryRun, true, "dryRun:true should return { dryRun: true }");
   assert.ok(result.url === undefined, "url should be absent in dry-run");
 });
 
-await test("liveCreatePr: dry-run prints would-be gh command", () => {
+await test("liveCreatePr: dry-run (dryRun=true) prints would-be gh command", () => {
   let printed = "";
   liveCreatePr({
     base:    "rehearsal/run-2026",
     head:    "run-2026/unit-auth",
     title:   "bgsd run: run-2026",
     body:    "## Test body",
+    dryRun:  true,
     printFn: (msg) => { printed += msg; },
   });
   assert.ok(printed.includes("gh pr create"), `printed output missing 'gh pr create': ${printed.slice(0, 400)}`);
 });
 
-await test("liveCreatePr: dry-run prints the assembled PR body", () => {
+await test("liveCreatePr: dry-run (dryRun=true) prints the assembled PR body", () => {
   let printed = "";
   const bodyText = "## Summary\n\n- **Run ID:** `run-2026`";
   liveCreatePr({
@@ -435,6 +444,7 @@ await test("liveCreatePr: dry-run prints the assembled PR body", () => {
     head:    "run-2026/unit-auth",
     title:   "bgsd run: run-2026",
     body:    bodyText,
+    dryRun:  true,
     printFn: (msg) => { printed += msg; },
   });
   assert.ok(printed.includes("Run ID"), `printed output missing PR body content: ${printed.slice(0, 500)}`);
@@ -471,12 +481,12 @@ await test("liveCreatePr: throws on missing head", () => {
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end integration: assemble changelog → PR body → dry-run guard
+// End-to-end integration: assemble changelog → PR body → live PR (gate removed)
 // ---------------------------------------------------------------------------
 
-process.stdout.write("\n--- End-to-End: aggregation → assembly → guard ---\n");
+process.stdout.write("\n--- End-to-End: aggregation → assembly → live PR (gate removed) ---\n");
 
-await test("E2E: full aggregation + PR body + dry-run guard", () => {
+await test("E2E: full aggregation + PR body + live PR creation (gate removed)", () => {
   const worktrees = makeWorktrees();
 
   // CHANGELOG-01: aggregate
@@ -504,17 +514,39 @@ await test("E2E: full aggregation + PR body + dry-run guard", () => {
   assert.ok(body.includes("Test Plan"),    "body missing test plan");
   assert.ok(body.includes("Closes #99"),  "body missing closing keyword");
 
-  // CHANGELOG-03: dry-run guard
+  // CHANGELOG-03: live PR creation (gate removed) — use injected spawnFn to avoid
+  // real gh call; main/master base is still refused (NFR-01 guard retained).
+  const mockSpawn = () => ({
+    status: 0,
+    stdout: "https://github.com/org/repo/pull/99",
+    stderr: "",
+    error:  null,
+  });
   let printed = "";
   const result = liveCreatePr({
     base:    "rehearsal/run-e2e",
     head:    "run-e2e/main",
     title,
     body,
+    spawnFn: mockSpawn,
     printFn: (msg) => { printed += msg; },
   });
-  assert.equal(result.dryRun, true, "E2E dry-run should return { dryRun: true }");
-  assert.ok(printed.includes("gh pr create"), "E2E dry-run missing gh command");
+  assert.equal(result.dryRun, false, "E2E: gate removed — should return { dryRun: false }");
+  assert.ok(result.url, "E2E: should return the PR url");
+  assert.ok(printed.includes("creating PR"), "E2E: should print live creation message");
+});
+
+await test("E2E: liveCreatePr still refuses main as base (NFR-01 guard retained)", () => {
+  // The --live gate is gone but main/master guard is always on.
+  assert.throws(
+    () => liveCreatePr({
+      base:  "main",
+      head:  "rehearsal/run-e2e",
+      title: "test",
+      body:  "test body",
+    }),
+    /NFR-01 VIOLATION/
+  );
 });
 
 // ---------------------------------------------------------------------------
