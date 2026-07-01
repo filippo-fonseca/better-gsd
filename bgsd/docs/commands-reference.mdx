@@ -1,0 +1,439 @@
+---
+title: "bgsd Commands Reference"
+description: "Every bgsd slash command, every flag: purpose, usage, and a complete flags/subcommands table for the one front door (/bgsd-sesh) and every internal stage."
+---
+
+# bgsd Commands Reference
+
+The canonical, exhaustive reference for every bgsd `/` command and every flag it accepts. bgsd is version **0.4.3**, MIT-licensed, by Filippo Fonseca.
+
+In day-to-day use you only ever type one command, `/bgsd-sesh` (plus `/bgsd-init` once per repo). The Conductor, Kiwi, sequences all the other commands internally as pipeline stages. They remain available for advanced direct access, and every one is documented in full below so nothing is hidden.
+
+> **Precedence is absolute:** a flag you type on a command always wins over a `BGSD.md` setting, which wins over the built-in default (**flag > BGSD.md > default**). A remembered setting never overrides a flag you passed for that run.
+
+## Command index
+
+| Command | Role | One line |
+|---|---|---|
+| [`/bgsd-sesh`](#bgsd-sesh) | front door | The one entry point. Classifies scale, plans, and executes. |
+| [`/bgsd-init`](#bgsd-init) | setup | One-time, idempotent repo setup (also a `/bgsd-sesh` preflight). |
+| [`/bgsd-gui`](#bgsd-gui) | observability | Open, close, or update the live web dashboard. |
+| [`/bgsd-resume`](#bgsd-resume) | recovery | Pick up an interrupted session from `.bgsd/runs/`. |
+| [`/bgsd-memory`](#bgsd-memory) | settings | Save a preference or knob to `BGSD.md` in natural language. |
+| [`/bgsd-status`](#bgsd-status) | observability | The always-on, read-only live status view. |
+| [`/bgsd-queue`](#bgsd-queue) | backlog | Manage the fix-stream queue and the cross-session backlog. |
+| [`/bgsd-verify`](#bgsd-verify) | internal stage | Verify a running app against acceptance criteria. |
+| [`/bgsd-run`](#bgsd-run) | internal stage | Project-mode orchestrator (decompose, fan out, merge). |
+| [`/bgsd-integrate`](#bgsd-integrate) | internal stage | Loop 2 integration verify→fix on `next`. |
+| [`/bgsd-user-eval`](#bgsd-user-eval) | internal stage | The one mandatory human Review Gate. |
+| [`/bgsd-feedback`](#bgsd-feedback) | internal stage | Feed review findings back into a fix pass. |
+| [`/bgsd-changelog`](#bgsd-changelog) | internal stage | Aggregate per-agent CHANGELOG into a PR into `next`. |
+| [`/bgsd-capture`](#bgsd-capture) | integration | Turn Hyperpolymath items into queue entries (cron seam). |
+| [`/bgsd-escalate`](#bgsd-escalate) | internal seam | Batch low-confidence oracle questions into one selector. |
+
+A `--live` gate protects every irreversible boundary. Real merges and `gh pr create` require an explicit `--live` opt-in on the underlying `*-live.mjs` module. bgsd never writes to `main`; all work lands on the standing `next` integration branch, and the `next → main` merge is always yours, by hand.
+
+---
+
+## /bgsd-sesh {#bgsd-sesh}
+
+**The single front door.** Classify the request's scale (quick / feature / project), plan it, and execute the same conceptual pipeline scaled to that depth. Runs immediately by default; `--plan-only` (or `--dry-run`) previews without running. With no prompt, Kiwi proposes the next backlog item.
+
+### Usage
+
+```
+/bgsd-sesh "<whatever I need>"  [--quick | --feature | --project]
+/bgsd-sesh                        # no prompt → Kiwi proposes the next backlog item
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--quick` | none | **Forces** the quick path: one or a few small things, no discussion, no pre-prepare, still verified (Loop 1 verify→fix is never skipped). Executes immediately. |
+| `--feature` | none | **Forces** feature depth: decompose into 1 to 3 units, parallel execution, Loop 1 per worktree, merge, Loop 2, review, PR. No discussion, still verified. |
+| `--project` | none | **Forces** the full pipeline and discussion first: intake, brainstorm, oracle, then decompose, parallel pipeline, Loop 2, review, PR. |
+| `--mode` | `fast \| thorough \| adaptive` | Sets the **pipeline agents'** execution mode. `fast` skips research; `thorough` researches every unit; `adaptive` (default) decides per unit. Persist as `modes.pipeline` in `BGSD.md`. |
+| `--verify-mode` | `fast \| thorough \| adaptive` | Sets the **verifiers'** mode. `fast` is code-only quick checks; `thorough` runs the full driver ladder every time; `adaptive` (default) decides per unit. Persist as `modes.verifier`. |
+| `--no-usage-verification` | none | Code-only verification: still runs the goal-backward gsd-verifier, but skips the Playwright UI usage testing. Sets `BGSD_USAGE_TESTING=0`. Persist as `verification.usage_testing`. |
+| `--headless-ui` | none | Runs Playwright headless (no visible browser or server window, discreet). Sets `BGSD_HEADLESS_UI=1`. Persist as `verification.headless`. |
+| `--gui` | none | Opens the live web dashboard for the run and prints the URL. See [`/bgsd-gui`](#bgsd-gui). |
+| `--plan-only` | none | **Preview only.** Classify and print the depth plan; invoke zero boundaries. Nothing spawns or runs. |
+| `--dry-run` | none | Alias for `--plan-only`. Same preview behavior. |
+
+Notes:
+
+- `--quick`, `--feature`, `--project` are **mutually exclusive** and **unconditional**: the flag is the contract and bypasses auto-scale thresholds. Passing any two together is a usage error.
+- `--no-usage-verification` and `--headless-ui` are **orthogonal** to scale and to each other (`--no-usage-verification` decides *whether* the Playwright rung runs; `--headless-ui` decides *how* it runs), and combine freely.
+- No flag ever disables verification and no flag ever lets bgsd write `main` or any production branch.
+
+Under the hood, the engine is `scripts/session.mjs`, invoked as `node "${CLAUDE_PLUGIN_ROOT}/scripts/session.mjs" --prompt "..." [flags]`.
+
+---
+
+## /bgsd-init {#bgsd-init}
+
+**One-time repo setup.** Creates the standing `next` integration branch off your base branch, scaffolds the persistent `.bgsd/` master folder (`seshs/`, `ledger.md`, `config.json`), writes a user-editable `BGSD.md` settings file, patches GSD config to be bgsd-compatible, and appends a `.gitignore` allowlist block. Idempotent: safe to run any time, it only fills in what is missing. Every `/bgsd-sesh` re-runs the safe parts as a preflight, so a fresh repo self-heals.
+
+### Usage
+
+```
+/bgsd-init               # set this repo up (runs by default, applies the setup)
+/bgsd-init --plan-only   # preview without applying
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--plan-only` | none | Preview only. Read-only; nothing written, no branch created. The plan is printed for review. (`--dry-run` is accepted as the alias.) |
+
+`/bgsd-init` applies by default because it is idempotent and never touches `main`; it only creates and fast-forwards `next`. Engine: `scripts/init-live.mjs`.
+
+---
+
+## /bgsd-gui {#bgsd-gui}
+
+**The live web dashboard.** A local, read-only web view that tracks the whole pipeline: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress. A pipeline-stage timeline above the lanes shows where the run is even before any agent spawns. The page polls `/api/state` every 1.5s and binds `127.0.0.1` only.
+
+### Usage
+
+```
+/bgsd-gui                 # open the dashboard for the latest run, print the URL
+/bgsd-gui open            # same as above
+/bgsd-gui close           # stop the running dashboard
+/bgsd-gui status          # is it up, and where?
+```
+
+### Subcommands
+
+| Subcommand | Argument | What it does |
+|---|---|---|
+| `open` (default) | none | Start the dashboard for the latest run (an OS-assigned free port) and print the clickable URL. |
+| `close` | none | Stop the running dashboard and clear the pointer file. |
+| `status` | none | Report whether the dashboard is up and where. |
+| `stage` | `<name>` | Advance the pipeline stage so the timeline keeps up. Names: `discuss`, `decompose`, `loop1`, `merge`, `loop2`, `review`, `done`. |
+| `agent` | `<id>` | Register or update one agent on the board as it moves through its GSD flow. |
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--run-id` | `<id>` | Target a specific run instead of the auto-picked latest one. |
+| `--port` | `<n>` | Bind a specific port instead of an OS-assigned free one. |
+| `--note` | `"..."` | A one-line note of what the Conductor is doing (used with `stage` and `agent`). |
+| `--unit` | `"<unit>"` | The unit an agent owns (used with `agent`). |
+| `--phase` | `<phase>` | The agent's GSD substage: `discuss`, `ui`, `plan`, `execute`, `verify`, `fixing`, `done` (used with `agent`). |
+| `--status` | `<status>` | The agent's status: `running`, `blocked`, `needs_input`, `done`, `failed` (used with `agent`). |
+| `--iter` / `--max` | `<n>` / `<m>` | The verify→fix iteration count `x/max` for an agent (used with `agent`). |
+| `--plan-only` | none | Preview only. Prints the plan and starts nothing. |
+
+The dashboard is never `--live` gated because it only reads control files. Engine: `scripts/gui-live.mjs`.
+
+---
+
+## /bgsd-resume {#bgsd-resume}
+
+**Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost, the terminal is closed, the machine sleeps), `/bgsd-resume` scans every run's control files, finds the most recently active run that is still in flight, and re-enters Loop 1 for the in-flight unit(s) from each unit's last recorded phase. Finished units are not redone; verification is never skipped on resume.
+
+### Usage
+
+```
+/bgsd-resume               # resume the latest interrupted session (auto-pick)
+/bgsd-resume <run-id>      # resume a specific run
+/bgsd-resume --plan-only   # preview the recovered state without re-entering
+```
+
+### Arguments and flags
+
+| Argument / flag | Argument | What it does |
+|---|---|---|
+| `<run-id>` | optional | Target a specific run. Omit to auto-select the most recently active resumable run. |
+| `--plan-only` | none | Read-only preview of the recovered state; re-enters nothing. |
+
+If no resumable session exists, `/bgsd-resume` is not blocked: it reports "no interrupted session found" and suggests `/bgsd-sesh` or `/bgsd-status`. Engine: `scripts/resume-live.mjs`.
+
+---
+
+## /bgsd-memory {#bgsd-memory}
+
+**Persist a preference or setting.** Tell Kiwi in plain language what to remember for this repo and it writes the exact `BGSD.md` knob (for a known setting) or appends a bullet to the Notes section (for a free-form preference). Reads back at the start of every session.
+
+### Usage
+
+```
+/bgsd-memory "always verify headless"
+/bgsd-memory "default the pipeline mode to thorough"
+/bgsd-memory                       # no argument: show what's currently remembered
+```
+
+### Argument
+
+| Argument | What it does |
+|---|---|
+| `"<natural-language string>"` | A concrete setting maps to a dotted-path knob (e.g. "always verify headless" → `verification.headless` → `true`; "default the pipeline to thorough" → `modes.pipeline` → `"thorough"`). A free-form preference is appended to the `BGSD.md` Notes section. |
+| *(no argument)* | Show what is currently remembered. |
+
+**The one hard rule:** anything saved here is a default. A flag you type on a specific `/bgsd-sesh` always overrides the `BGSD.md` value for that session. Precedence is absolute: **flag > BGSD.md > built-in default.** Engine: `scripts/bgsdmd.mjs` (`set <dot.path> <value>` / `remember "<note>"`).
+
+---
+
+## /bgsd-status {#bgsd-status}
+
+**The always-on live view.** A read-only snapshot of every active run, worker, and merge boundary: the Kiwi banner with the permanent `main-protected` indicator, one-line butler narration, the run overview, a color-coded worker table (workers that need input are sorted to the top), merge history, and budget/context telemetry. Zero model calls; `NO_COLOR` and non-TTY safe.
+
+### Usage
+
+```
+/bgsd-status                       # one-shot snapshot of the latest run
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--run-id` | `<id>` | Target a specific run instead of the latest one. |
+| `--watch` | `<seconds>` (optional) | Live watch mode: re-render on an interval (default 3 seconds; pass a number to change it, e.g. `--watch 5`). Exits cleanly on `Ctrl-C`. |
+
+The watch loop never spawns a process and never calls a model. Engine: `scripts/status.mjs`.
+
+---
+
+## /bgsd-queue {#bgsd-queue}
+
+**The fix-stream queue and cross-session backlog.** Items flow through an explicit per-item state machine (`queued → classified → routed → executing → verifying → looping → done | failed | blocked | needs_input`) with every transition timestamped in an append-only trail. The queue is durable (atomic JSON writes), resumable, and single-stream (exactly one item active at a time). It also backs the backlog the Conductor proposes on a no-prompt `/bgsd-sesh` and at session end.
+
+### Usage
+
+```
+/bgsd-queue add --title "<title>" [--body "<desc>"] [--source <manual|hyperpolymath>]
+/bgsd-queue status
+/bgsd-queue peek
+/bgsd-queue done <id> [--note "..."] [--failed | --blocked]
+/bgsd-queue start [--dry-run]
+```
+
+### Subcommands and flags
+
+| Subcommand | Flag / argument | What it does |
+|---|---|---|
+| `add` | `--title "<title>"` | Enqueue a fix or feature item; returns the item's stable id. Deduplicates by content key (SHA-256 of title + body). |
+| `add` | `--body "<desc>"` | Optional longer description (may be empty). |
+| `add` | `--source <manual\|hyperpolymath>` | Provenance of the item. `manual` is the default; `hyperpolymath` marks a captured item. |
+| `status` | none | Print a compact, read-only view: per-state counts, the current item, and the last verdict. Zero model calls. |
+| `peek` | none | Print the next queued backlog item (read-only), or an empty marker. What the Conductor proposes on a no-prompt sesh and at sesh end. |
+| `done` | `<id>` | Mark a Conductor-pulled backlog item resolved (`done` by default), out-of-band of the drainer. Idempotent on already-terminal items. |
+| `done` | `--note "..."` | Attach a note to the resolution trail entry (e.g. `--note "ran sesh <id>"`). |
+| `done` | `--failed` | Leave the item `failed` instead of `done`. |
+| `done` | `--blocked` | Leave the item `blocked` instead of `done`. |
+| `start` | none | Drain the queue through the pipeline. Resumes in-flight items; skips terminal items. |
+| `start` | `--dry-run` | Print what draining would do without mutating any state. |
+
+An item is NEVER marked `done` without a verified Tester PASS. Store: `.bgsd/queue/queue.json` (gitignored). Engine: `scripts/queue.mjs`.
+
+---
+
+## /bgsd-verify {#bgsd-verify}
+
+**Verify a running app against acceptance criteria.** Checks every criterion 1:1 against the four-rung driver ladder (console → network → DOM → vision) and writes a structured `verification-report.json`. Output is exactly one verdict line on stdout: `PASS | FAIL | ERROR  <report-path>`. This is the verify step inside Loop 1 and Loop 2.
+
+### Usage
+
+```
+/bgsd-verify <url> [--criteria <file> | --inline "..."]
+/bgsd-verify --boot <app-dir> [--criteria <file> | --inline "..."]
+```
+
+### Arguments and flags
+
+| Argument / flag | Argument | What it does |
+|---|---|---|
+| `<url>` | a URL | Verify an already-running app at this URL. One of `<url>` or `--boot` is required. |
+| `--boot` | `<app-dir>` | Boot one isolated instance first via `runtime-isolate.sh`, then verify it. One of `<url>` or `--boot` is required. |
+| `--criteria` | `<file>` | Acceptance criteria from a GSD `UI-SPEC.md` or acceptance file. One of `--criteria` or `--inline` supplies criteria. |
+| `--inline` | `"..."` | Acceptance criteria given inline (quote the string; separate criteria with `;` or newlines). |
+| `--no-usage-verification` | none | Code-only mode: run the goal-backward gsd-verifier against the criteria but skip the Playwright usage-testing ladder (no browser). Equivalent to `BGSD_USAGE_TESTING=0`. A missing Playwright MCP is not BLOCKED in this mode. |
+| `--headless-ui` | none | Run Playwright headless (no visible browser or server window). Equivalent to `BGSD_HEADLESS_UI=1`. Orthogonal to usage-testing. |
+
+No silent green: if the MCP pre-flight probe fails (in full mode), the verdict is `ERROR`, never a fabricated `PASS`. Engine: `scripts/parse-criteria.mjs` + tester agent + `scripts/build-report.mjs`.
+
+---
+
+## /bgsd-run {#bgsd-run}
+
+**The project-mode orchestrator.** Takes one large prompt, decomposes it into a dependency graph of whole-GSD-pipeline units, spawns them in parallel across isolated git worktrees, runs Loop 1 per worktree, conflict-checks and merges verified branches into `next` in dependency order, and checkpoints to you at every merge boundary. Defaults to `--dry-run`; the live path is human-gated.
+
+### Usage
+
+```
+/bgsd-run "<prompt>"                  # dry-run: prints the spawn plan (default)
+```
+
+### Arguments and flags
+
+| Argument / flag | Argument | Required | What it does |
+|---|---|---|---|
+| `--prompt` | `"<text>"` | Yes | The prompt to decompose into units. |
+| `--dry-run` | none | No (default) | Resolve the graph and print the spawn plan without launching anything. Always safe. |
+| `--live` | none | Human-gated | Engage real multi-process orchestration (real `claude -p` agents, real worktree commits). Off by default; requires the pre-run checklist. |
+| `--max-concurrency` | `<n>` | No (default 4) | Maximum concurrent worktrees in a wave. |
+| `--budget-cap` | `<$>` | Recommended with `--live` | Per-run token/cost cap. Also settable via `BGSD_BUDGET_CAP`. |
+| `--abort` | `<run-id>` | No | Cleanly stop an in-flight run, preserving all branches and control files. |
+
+Engine: `scripts/run.mjs` (dry-run) and `scripts/run-live.mjs` (`--live`).
+
+---
+
+## /bgsd-integrate {#bgsd-integrate}
+
+**Loop 2 live integration.** Takes the assembled `next` integration branch, boots the whole integrated app, runs the Integration Tester end-to-end across feature boundaries, dispatches parallel fix agents on any integration defects, re-merges, and re-verifies in a bounded loop until clean or a stop condition fires. Defaults to `--dry-run`; the live path is human-gated.
+
+### Usage
+
+```
+/bgsd-integrate                       # dry-run refusal + checklist (default)
+```
+
+### Flags
+
+| Flag | Argument | Required | What it does |
+|---|---|---|---|
+| `--run-id` | `<id>` | Yes | The run identifier (e.g. `bgsd-0001-my-feature`). |
+| `--rehearsal-branch` | `<branch>` | No (default `next`) | The standing integration branch to run against. |
+| `--max-iterations` | `<n>` | No (default 5) | Hard cap on fix → re-merge → re-verify cycles. |
+| `--dry-run` | none | No (default) | Print the integration plan without booting or fixing anything. |
+| `--live` | none | Human-gated | Engage the real live integration path. Off by default; requires the checklist. |
+| `--budget-cap` | `<$>` | Recommended with `--live` | Per-run token/cost cap. Also `BGSD_BUDGET_CAP`. |
+
+A `BLOCKED` or `ERROR` verdict parks the run immediately (fix is never called). Engine: `scripts/loop2.mjs` (controller) and `scripts/loop2-live.mjs` (`--live`).
+
+---
+
+## /bgsd-user-eval {#bgsd-user-eval}
+
+**The one mandatory human Review Gate.** When Loop 2 returns a clean integration pass, this auto-boots the integrated `next` servers, prints the clickable localhost URL, displays a per-criterion checklist, and captures your verdict via a GSD-style selector (approve / request-changes / abort / type-your-own). On `approve`, Kiwi files the per-unit issues and opens the `next → main` landing PR automatically, but never merges it. The gate never auto-passes: an unanswered gate parks the run in `needs_input`.
+
+### Usage
+
+```
+/bgsd-user-eval                       # dry-run: boot plan + checklist (default)
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--run-id` | `<id>` | The run identifier to review. |
+| `--dry-run` | none | Default. Print the boot plan and checklist; start no process. |
+| `--live` | none | Human-gated. Boot the real integrated `next` app for hands-on review. Never in CI. |
+
+Engine: `scripts/review.mjs`.
+
+---
+
+## /bgsd-feedback {#bgsd-feedback}
+
+**Feedback mode.** Ingests your review findings (structured `review.json` change_items or a free-text string) after a Review Gate returns request-changes, parses them into discrete id-tagged fix items, and re-runs the fix pipeline. Full mode (default) re-runs both loops; `--fast` skips the loops and spawns fix agents directly. The run always returns to the Review Gate.
+
+### Usage
+
+```
+/bgsd-feedback "<what's wrong>"
+/bgsd-feedback --fast "<what's wrong>"
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `"<feedback>"` | a string | Free-text findings; multi-line, semicolon, or numbered-list delimiters are split into discrete items. |
+| `--run-id` | `<id>` | The run to apply feedback to. |
+| `--fast` | none | Skip the loops and spawn parallel fix agents with no computer-use verification: a single trivial item uses one Sonnet/low agent, multiple or non-trivial items use parallel Opus/medium agents. Fixes land on `next`. Results are always marked `UNVERIFIED` (never a clean `PASS` without a real Tester pass); the human is the only verification path for `--fast`. |
+| `--live` | none | Human-gated. Execute the planned re-run (spawn fix agents or loops). Without `--live`, the plan is printed and nothing spawns. |
+
+Engine: `scripts/feedback.mjs`.
+
+---
+
+## /bgsd-changelog {#bgsd-changelog}
+
+**Per-agent CHANGELOG into the PR.** Aggregates every subagent's changes across Loop 1, Loop 2, and feedback rounds into a single human-readable CHANGELOG (one section per agent), assembles it into a PR body (surfaced at the Review Gate first), and, under an explicit `--live` opt-in, runs `gh pr create` against `next`.
+
+### Usage
+
+```
+/bgsd-changelog                       # dry-run: prints the would-be PR body + command (default)
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--dry-run` | none | Default. Print the assembled PR body and the exact `gh pr create` command that would run; create nothing. |
+| `--live` | none | Human-gated. Run `gh pr create` (base `next`). Refuses without `--live`. |
+
+The `requireNotDefaultBranch()` guard always fires (even in dry-run): a PR against the production branch `main`/`master` is refused unconditionally; `next` is the canonical, allowed target. Engine: `scripts/changelog-pr.mjs`.
+
+---
+
+## /bgsd-capture {#bgsd-capture}
+
+**Hyperpolymath capture → queue cron.** Turns external Hyperpolymath items into `/bgsd-queue` entries via a documented capture seam. Ships with a safe deterministic mock source and a mandatory dry-run default. The live external hookup (real credentials, real enqueue) is human-gated and never run by CI.
+
+### Usage
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs"                        # dry-run vs mock (default)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --no-dry-run           # enqueue vs mock
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live                 # dry-run vs live source
+node "${CLAUDE_PLUGIN_ROOT}/scripts/capture-cron.mjs" --live --no-dry-run    # real enqueue vs live source
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| *(none)* | | Dry-run against the deterministic mock source. Safe: no writes, no external calls. |
+| `--no-dry-run` | none | Actually enqueue (writes to `.bgsd/queue/queue.json`). Against the mock unless `--live` is also set. |
+| `--live` | none | Human-gated. Use the real Hyperpolymath source instead of the mock. Never automate this flag. |
+
+Idempotent via the queue's SHA-256 content-key dedup. Engine: `scripts/capture-cron.mjs` (with `scripts/capture.mjs` and `scripts/capture-live.mjs`).
+
+---
+
+## /bgsd-escalate {#bgsd-escalate}
+
+**Confidence-gated human escalation.** When the decision oracle scores a question below the confidence threshold, this seam consolidates all pending escalations into ONE batched selector, collects your answers, writes them back into the oracle so the same question never re-escalates, and surfaces auto-answered vs escalated telemetry in `/bgsd-status`. It is a library seam the Conductor invokes; it is not typed by hand in normal use.
+
+### Behavior
+
+| Piece | What it does |
+|---|---|
+| `buildEscalationBatch(escalations)` | Consolidates N oracle escalations into one deduplicated batch; each item is a GSD-style selector with 2 to 4 options plus a "type your own" free-text entry. |
+| `runEscalation({ batch, promptFn })` | Presents each batch item and collects the human's answers (chosen option id or free text; `null` if unanswered). |
+| `enrichOracleFromAnswers(...)` | Writes answered items back to `decisions.json` tagged `source: "escalation"`, so the next query auto-answers. Unanswered escalations are never written. |
+| `renderEscalationTelemetry(counter)` | Emits the "auto-answered N / escalated M" line for `/bgsd-status`. |
+
+Every escalation item is a selector with 2 to 4 options (the same hard 2-to-4 limit that governs every AskUserQuestion Kiwi shows) plus `freeText.id: "other"`; a violation throws immediately (no silent green). Engine: `scripts/escalate.mjs`.
+
+---
+
+## The newest capabilities (0.4.3)
+
+A quick tour of what the Conductor now does, all reflected in the commands above:
+
+- **Two-band model routing.** Pipeline agents run at `opus/xhigh` for difficulty at or above 0.4 and `sonnet/xhigh` below it; the researcher runs one band below the executor; the verifier runs `haiku/low`. Every subagent is spawned with a branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
+- **Execution modes.** `fast`, `thorough`, and `adaptive` (the default) for both pipeline agents (`--mode`) and verifiers (`--verify-mode`). Adaptive sizes each unit and gives the hard ones research while trivial ones skip it.
+- **Headless UI.** `--headless-ui` runs Playwright discreetly, with no visible browser or server window.
+- **The backlog loop.** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next queued item; deferred scope is enqueued rather than dropped, and drains across sessions.
+- **Selector questions.** Every question Kiwi asks is a GSD-style arrow-key selector with a hard maximum of 4 options, plus an always-available "type your own".
+- **Per-subagent context management.** Each worktree agent runs in its own roughly 1M-token window; the Conductor compacts it at 0.70 of the window and relaunches from a handoff manifest at 0.90 before it overflows.
+- **Resume.** `/bgsd-resume` picks up an interrupted run from each unit's last recorded phase.
+- **The live dashboard.** `--gui` (or "open the dashboard") opens a per-agent, GSD-flow view with steppers, a pipeline-stage timeline, and a sessions tab.
+- **The Kiwi pill and splash.** Conversational messages carry the Markdown `🥝 kiwi · conductor` pill; a session opens with the splash banner and, at the start, a terminal `/rename` plus a random `/color`.
+
+---
+
+## Adding this page to the docs site nav
+
+This page is valid standalone Mintlify MDX. To surface it in the docs site nav, add `bgsd/docs/commands-reference` to the bgsd group in the Mintlify nav config (`mint.json` or `docs.json`). That is the only change needed; it does not touch any vendored GSD files.

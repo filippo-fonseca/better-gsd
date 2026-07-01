@@ -763,6 +763,55 @@
       .scale-table { font-size: 0.8rem; }
       .scale-table td:first-child { white-space: normal; }
     }
+
+    /* ---- COMMANDS TABLE (every command, every flag) ------------ */
+    .cmd-ref-wrap {
+      max-width: 1000px; margin-inline: auto;
+      border: 1px solid var(--line); border-radius: var(--radius-lg);
+      background: var(--bg-1); overflow: hidden;
+    }
+    .cmd-ref-table {
+      width: 100%; border-collapse: collapse; font-size: 0.88rem;
+    }
+    .cmd-ref-table thead tr { background: var(--bg-2); }
+    .cmd-ref-table th {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--fg-dim); text-align: left;
+      padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line);
+    }
+    .cmd-ref-table td {
+      padding: 0.78rem 1.1rem; border-bottom: 1px solid var(--line);
+      vertical-align: top; line-height: 1.55; color: var(--fg-mid);
+    }
+    .cmd-ref-table tr:last-child td { border-bottom: none; }
+    .cmd-ref-table td.cmd-ref-name {
+      font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.02em;
+      color: var(--xray); white-space: nowrap; border-right: 1px solid var(--line);
+      background: var(--bg-2); font-weight: 600;
+    }
+    .cmd-ref-table td.cmd-ref-flags {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--fg-dim);
+      white-space: normal;
+    }
+    .cmd-ref-table td.cmd-ref-flags code {
+      color: var(--warn); background: var(--warn-soft);
+      border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+      border-radius: 4px; padding: 0.04em 0.34em; font-size: 10.5px; white-space: nowrap;
+    }
+    .cmd-ref-table td.cmd-ref-flags .none { color: var(--fg-faint); font-style: italic; }
+    .cmd-ref-desc { font-size: 0.86rem; color: var(--fg-mid); }
+    .cmd-ref-note {
+      margin-top: 1.2rem; max-width: 1000px; margin-inline: auto;
+      font-size: 0.86rem; color: var(--fg-dim); line-height: 1.6;
+      padding: 0.85rem 1.1rem;
+      border: 1px solid color-mix(in srgb, var(--xray) 22%, var(--line));
+      border-radius: var(--radius); background: var(--xray-soft);
+    }
+    .cmd-ref-note code { font-size: 0.92em; }
+    @media (max-width: 720px) {
+      .cmd-ref-table { font-size: 0.8rem; }
+      .cmd-ref-table td:first-child { white-space: normal; }
+    }
   </style>
 </head>
 
@@ -784,6 +833,7 @@
     <div class="nav-links">
       <a href="#how-it-works" class="nav-link">how-it-works</a>
       <a href="#pipeline"     class="nav-link">pipeline</a>
+      <a href="#commands"     class="nav-link">commands</a>
       <a href="#milestones"   class="nav-link">milestones</a>
       <a href="#install"      class="nav-link">install</a>
       <!-- Theme toggle -->
@@ -815,7 +865,7 @@
         <span class="hero-eyebrow">
           <!-- lucide: git-fork -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-          Open-source · additive layer on GSD · MIT
+          Open-source · additive layer on GSD · MIT · v0.4.3
         </span>
 
         <h1 class="hero-title">
@@ -1406,6 +1456,153 @@
 
 
 <!-- ============================================================
+     §04c COMMANDS REFERENCE (every command, every flag)
+     ============================================================ -->
+<section id="commands" class="section" aria-labelledby="commands-ref-heading">
+  <div class="container">
+    <div class="section-header center">
+      <span class="kicker"><span class="num">04c</span> · every command, every flag</span>
+      <h2 id="commands-ref-heading" class="section-title">One front door. Fifteen commands under it.</h2>
+      <p class="section-sub">
+        You only ever type <code>/bgsd-sesh</code> (and <code>/bgsd-init</code> once per repo).
+        Kiwi sequences the rest as internal stages. Here is the full list and its key flags;
+        the <a href="../docs/commands-reference.mdx" style="color:var(--xray)">Commands Reference doc</a>
+        has the exhaustive tables.
+      </p>
+    </div>
+
+    <div class="cmd-ref-wrap">
+      <table class="cmd-ref-table">
+        <thead>
+          <tr>
+            <th style="width:15rem">Command</th>
+            <th>What it does · key flags</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-sesh</td>
+            <td>
+              <span class="cmd-ref-desc">The one front door: classify scale, plan, execute (runs by default).</span><br>
+              <span class="cmd-ref-flags"><code>--quick</code> <code>--feature</code> <code>--project</code> <code>--mode fast|thorough|adaptive</code> <code>--verify-mode fast|thorough|adaptive</code> <code>--no-usage-verification</code> <code>--headless-ui</code> <code>--gui</code> <code>--plan-only</code> <code>--dry-run</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-init</td>
+            <td>
+              <span class="cmd-ref-desc">One-time, idempotent repo setup (creates <code>next</code>, scaffolds <code>.bgsd/</code>, writes <code>BGSD.md</code>). Also a sesh preflight.</span><br>
+              <span class="cmd-ref-flags"><code>--plan-only</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-gui</td>
+            <td>
+              <span class="cmd-ref-desc">Open, close, or update the read-only live web dashboard.</span><br>
+              <span class="cmd-ref-flags">subcommands <code>open</code> <code>close</code> <code>status</code> <code>stage &lt;name&gt;</code> <code>agent &lt;id&gt;</code> · <code>--run-id</code> <code>--port</code> <code>--note</code> <code>--unit</code> <code>--phase</code> <code>--status</code> <code>--plan-only</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-resume</td>
+            <td>
+              <span class="cmd-ref-desc">Pick up an interrupted session from each unit's last recorded phase.</span><br>
+              <span class="cmd-ref-flags">optional <code>&lt;run-id&gt;</code> · <code>--plan-only</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-memory</td>
+            <td>
+              <span class="cmd-ref-desc">Save a preference or knob to <code>BGSD.md</code> in plain language. A typed flag always overrides it.</span><br>
+              <span class="cmd-ref-flags"><code>"&lt;natural-language string&gt;"</code> · no argument shows what is remembered</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-status</td>
+            <td>
+              <span class="cmd-ref-desc">Always-on, read-only live view of every run, worker, and merge boundary.</span><br>
+              <span class="cmd-ref-flags"><code>--watch [seconds]</code> · <code>--run-id</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-queue</td>
+            <td>
+              <span class="cmd-ref-desc">The fix-stream queue and cross-session backlog.</span><br>
+              <span class="cmd-ref-flags"><code>add --title --body --source</code> · <code>status</code> · <code>peek</code> · <code>done &lt;id&gt; --note --failed --blocked</code> · <code>start --dry-run</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-verify</td>
+            <td>
+              <span class="cmd-ref-desc">Verify a running app against acceptance criteria (console → network → DOM → vision).</span><br>
+              <span class="cmd-ref-flags"><code>&lt;url&gt;</code> <code>--boot &lt;dir&gt;</code> <code>--criteria &lt;file&gt;</code> <code>--inline "..."</code> <code>--no-usage-verification</code> <code>--headless-ui</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-run</td>
+            <td>
+              <span class="cmd-ref-desc">Project-mode orchestrator: decompose, fan out across worktrees, merge into <code>next</code>. Dry-run by default.</span><br>
+              <span class="cmd-ref-flags"><code>--prompt</code> <code>--dry-run</code> <code>--live</code> <code>--max-concurrency &lt;n&gt;</code> <code>--budget-cap &lt;$&gt;</code> <code>--abort &lt;run-id&gt;</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-integrate</td>
+            <td>
+              <span class="cmd-ref-desc">Loop 2 integration verify→fix on <code>next</code>. Dry-run by default.</span><br>
+              <span class="cmd-ref-flags"><code>--run-id</code> <code>--rehearsal-branch &lt;branch&gt;</code> <code>--max-iterations &lt;n&gt;</code> <code>--dry-run</code> <code>--live</code> <code>--budget-cap &lt;$&gt;</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-user-eval</td>
+            <td>
+              <span class="cmd-ref-desc">The one mandatory human Review Gate. Never auto-passes; opens the <code>next → main</code> PR on approve, never merges it.</span><br>
+              <span class="cmd-ref-flags"><code>--run-id</code> <code>--dry-run</code> <code>--live</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-feedback</td>
+            <td>
+              <span class="cmd-ref-desc">Feed review findings back into a fix pass. Full mode re-runs both loops.</span><br>
+              <span class="cmd-ref-flags"><code>"&lt;feedback&gt;"</code> <code>--run-id</code> <code>--fast</code> (parallel fix agents, no Playwright, always UNVERIFIED) <code>--live</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-changelog</td>
+            <td>
+              <span class="cmd-ref-desc">Aggregate per-agent CHANGELOG into a PR into <code>next</code>. Refuses <code>main</code>/<code>master</code> as base.</span><br>
+              <span class="cmd-ref-flags"><code>--dry-run</code> <code>--live</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-capture</td>
+            <td>
+              <span class="cmd-ref-desc">Turn Hyperpolymath items into queue entries (cron seam). Dry-run vs mock by default.</span><br>
+              <span class="cmd-ref-flags"><code>--no-dry-run</code> <code>--live</code></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">/bgsd-escalate</td>
+            <td>
+              <span class="cmd-ref-desc">Batch low-confidence oracle questions into one selector (2 to 4 options + type-your-own), then write answers back so they never re-escalate.</span><br>
+              <span class="cmd-ref-flags"><span class="none">internal seam; the Conductor invokes it</span></span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="cmd-ref-note">
+      <strong style="color:var(--fg)">Precedence is absolute: flag &gt; <code>BGSD.md</code> &gt; default.</strong>
+      A <code>--live</code> gate protects every irreversible boundary (real merges, <code>gh pr create</code>).
+      bgsd never writes to <code>main</code>; all work lands on the standing <code>next</code> branch, and the
+      <code>next → main</code> merge is always yours, by hand.
+    </p>
+  </div>
+</section>
+
+
+<div class="divider"></div>
+
+
+<!-- ============================================================
      §05 MILESTONES
      ============================================================ -->
 <section id="milestones" class="section" aria-labelledby="milestones-heading">
@@ -1748,6 +1945,19 @@
           automatically during every session.
         </p>
       </a>
+
+      <a href="../docs/commands-reference.mdx" class="link-card">
+        <span class="link-ico">
+          <!-- lucide: book-open -->
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+        </span>
+        <div class="link-title">commands reference</div>
+        <p class="link-body">
+          Every command, every flag: a section per <code>/bgsd-*</code> command (all 15) with a
+          purpose line, a usage block, and a full flags/subcommands table. The canonical place to
+          look up the exact flag for anything.
+        </p>
+      </a>
     </div>
   </div>
 </section>
@@ -1761,11 +1971,12 @@
     <div class="footer-brand">
       <!-- lucide: scan-eye -->
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="1"/><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"/></svg>
-      better-gsd (bgsd) · by Filippo Fonseca · MIT license
+      better-gsd (bgsd) · v0.4.3 · by Filippo Fonseca · MIT license
     </div>
     <nav class="footer-links" aria-label="Footer links">
       <a href="https://github.com/filippo-fonseca/better-gsd" class="footer-link" target="_blank" rel="noopener">GitHub</a>
       <a href="../docs/quickstart.mdx" class="footer-link">Quickstart</a>
+      <a href="../docs/commands-reference.mdx" class="footer-link">Commands</a>
       <a href="https://filippofonseca.com" class="footer-link" target="_blank" rel="noopener">filippofonseca.com</a>
     </nav>
   </div>
