@@ -605,7 +605,7 @@
   function renderSessions(list) {
     var wrap = document.getElementById("sessions");
     wrap.innerHTML = "";
-    if (!list || !list.length) { wrap.appendChild(el("div", "empty", "no runs found under .bgsd/runs")); return; }
+    if (!list || !list.length) { wrap.appendChild(el("div", "empty", "No sessions yet — run /bgsd-sesh \"…\" to start one.")); return; }
     list.forEach(function (s) {
       var row = el("button", "sess st-" + s.status);
       if (viewingRun && s.run_id === viewingRun) row.className += " viewing";
@@ -680,7 +680,19 @@
   ]);
 
   setViewingNote();
-  tick();
+  // First load: if there is no active/current run, land on the All-sessions view.
+  // Opening the dashboard without a running sesh shows the session list (or a
+  // friendly empty state), never an empty pipeline. A ?run deep-link pins Current.
+  (function firstLoad() {
+    if (viewingRun) { tick(); return; }
+    fetch("/api/state", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (model) {
+        if (!model || !model.run || !model.run.run_id) { showTab("sessions"); }
+        else { setLive("", "live"); render(model); }
+      })
+      .catch(function () { tick(); });
+  })();
   setInterval(function () {
     if (activeTab === "current") tick();
     else loadSessions();
