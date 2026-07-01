@@ -25,14 +25,17 @@
  *   L13 — escalation: model tier is bumped after escalateModelAfterIters (LOOP-05)
  *   L14 — fix() throwing -> item lands in failed (not blocked), no re-try
  *   L15 — verify() throwing -> item lands in blocked, no re-try
- *   L16 — live seam: loop1-live.mjs refuses without --live flag
+ *   L16 — live seam: loop1-live.mjs RUNS without --live (gate removed); the
+ *         injected spawnImpl fires and liveVerify reads the report to a verdict
  *   L17 — isLiveFlagSet() returns false when --live is absent
  *   L18 — drainItem: wires runLoop1 and returns result for a PASS scenario
  */
 
 import assert from "node:assert/strict";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -589,30 +592,46 @@ await test("L15: verify() throwing -> item=blocked (reason=error_verdict), no re
 });
 
 // ---------------------------------------------------------------------------
-// L16 — live seam: loop1-live.mjs refuses without --live flag
+// L16 — live seam: loop1-live.mjs RUNS without --live (the gate was removed)
 // ---------------------------------------------------------------------------
-await test("L16: live seam (loop1-live.mjs) refuses without --live flag", async () => {
-  // Import the live functions; since --live is not in process.argv during
-  // test execution, calling them must throw the human-gated refusal.
-  const { liveVerify, liveFix, runLiveLoop1 } = await import("./loop1-live.mjs");
+await test("L16: live seam (loop1-live.mjs) runs WITHOUT --live (gate removed)", async () => {
+  // The --live gate is gone: a plain /bgsd-sesh fires the live path with zero
+  // friction. Prove the seam runs without --live in process.argv by injecting a
+  // mock spawnImpl (never spawns a real claude) and a mock report on disk, and
+  // confirming liveVerify reads it to a verdict instead of throwing HUMAN-GATED.
+  const { liveVerify, liveFix } = await import("./loop1-live.mjs");
 
-  await assert.rejects(
-    () => liveVerify({ worktreePath: "/fake", runId: "r1" }),
-    /HUMAN-GATED/,
-    "liveVerify must refuse without --live"
-  );
+  const wt = mkdtempSync(join(tmpdir(), "bgsd-loop1-live-l16-"));
+  try {
+    const runId = "r-l16";
+    const runsDir = join(wt, ".bgsd", "runs", runId);
+    mkdirSync(runsDir, { recursive: true });
+    writeFileSync(
+      join(runsDir, "verification-report.json"),
+      JSON.stringify({ verdict: "PASS", defects: [] }),
+      "utf8"
+    );
 
-  await assert.rejects(
-    () => liveFix([], {}, { worktreePath: "/fake", item: makeItem() }),
-    /HUMAN-GATED/,
-    "liveFix must refuse without --live"
-  );
+    const verifyCalls = [];
+    const verifySpawn = (cmd, args, opts) => { verifyCalls.push({ cmd, args }); return { status: 0 }; };
+    const report = await liveVerify({ worktreePath: wt, runId, spawnImpl: verifySpawn });
+    assert.equal(report.verdict, "PASS", "liveVerify runs without --live and returns PASS");
+    assert.equal(verifyCalls[0].cmd, "claude", "liveVerify spawned claude (no gate)");
+    assert.equal(verifyCalls[0].args[1], "/bgsd-verify", "liveVerify invoked /bgsd-verify");
 
-  await assert.rejects(
-    () => runLiveLoop1({ item: makeItem(), transitionFn: makeTransition(), worktreePath: "/fake", runId: "r2" }),
-    /HUMAN-GATED/,
-    "runLiveLoop1 must refuse without --live"
-  );
+    const fixCalls = [];
+    const fixSpawn = (cmd, args, opts) => { fixCalls.push({ cmd, args }); return { status: 0 }; };
+    await liveFix([], {}, {
+      worktreePath: wt,
+      item: makeItem({ gsd_command: "/gsd-quick" }),
+      runId,
+      spawnImpl: fixSpawn,
+    });
+    assert.equal(fixCalls[0].cmd, "claude", "liveFix spawned claude (no gate)");
+    assert.equal(fixCalls[0].args[1], "/gsd-quick", "liveFix invoked the gsd command");
+  } finally {
+    rmSync(wt, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------
