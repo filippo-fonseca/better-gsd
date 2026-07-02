@@ -275,6 +275,8 @@ Test coverage:
 
 ---
 
+When a `needs_input` state is recorded, a macOS notification is delivered immediately via `notify-live.mjs` so the user is alerted even if they have stepped away. Disable with `notifications: { os: false }` in `.bgsd/config.json`.
+
 *Phase E5 — implemented 2026-06-29*
 *Requirements: ESCALATE-01..04, SC#1..4*
 *NFRs enforced: NFR-05, NFR-06, NFR-10, NFR-11*

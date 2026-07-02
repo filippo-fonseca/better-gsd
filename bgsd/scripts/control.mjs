@@ -546,9 +546,15 @@ export function resolveBlocker(controlPath, blockerId, resolution) {
  *
  * @param {string} controlPath  Absolute path to <agent-id>.json
  * @param {object} escalation   { question: string, severity: "high", context?: string }
+ * @param {object} [opts]
+ * @param {Function} [opts.notifyFn]  Optional out-of-band notifier called after write.
+ *   Signature: (event: { type: "needs_input", agentId: string, question: string }) => void
+ *   Never injected in tests (keeps existing tests unchanged). In live runs, pass
+ *   the notifyEscalation function from notify-live.mjs so the user is pinged
+ *   immediately when input is needed. Failures in notifyFn are silently swallowed.
  * @returns {object}  The updated control-file object
  */
-export function addEscalation(controlPath, escalation) {
+export function addEscalation(controlPath, escalation, { notifyFn } = {}) {
   if (!escalation || typeof escalation.question !== "string" || !escalation.question.trim()) {
     throw new Error("addEscalation: escalation.question is required");
   }
@@ -571,6 +577,19 @@ export function addEscalation(controlPath, escalation) {
   };
   validateControlFile(merged);
   writeAtomic(controlPath, merged);
+
+  if (typeof notifyFn === "function") {
+    try {
+      notifyFn({
+        type:     "needs_input",
+        agentId:  current.agent_id,
+        question: entry.question,
+      });
+    } catch (_) {
+      // Notification failures must never break the pipeline.
+    }
+  }
+
   return merged;
 }
 
@@ -882,6 +901,18 @@ if (
       if (flags.commit) updates.commits = [...(current.commits ?? []), String(flags.commit)];
       const data = updateControlFile(controlPath, updates);
       process.stdout.write(`updated ${controlPath} (status=${data.status}, phase=${data.phase})\n`);
+      // Walk-away ping: the live needs_input transition is exactly this CLI call
+      // (see bgsd-run-agent.md). Fail-silent; gated by notifications.os.
+      if (updates.status === "needs_input" && current.status !== "needs_input") {
+        try {
+          const { notifyEscalation } = await import("./notify-live.mjs");
+          notifyEscalation({
+            type: "needs_input",
+            agentId: data.agent_id,
+            question: data.progress?.note ?? "a pipeline agent needs your input",
+          });
+        } catch (_) { /* notification is best-effort */ }
+      }
     } else {
       process.stderr.write(`error: unknown verb "${verb}"\n`);
       usage(1);
