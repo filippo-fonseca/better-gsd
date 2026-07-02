@@ -1,7 +1,7 @@
 {
   "name": "bgsd",
   "displayName": "better-gsd",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Autonomous, self-verifying orchestration layer on top of GSD: talk to the Conductor, it handles everything.",
   "author": {
     "name": "Filippo Fonseca",

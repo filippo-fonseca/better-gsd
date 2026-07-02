@@ -110,6 +110,7 @@ bgsd keeps one standing integration branch, **`next`** (the name is configurable
 | `--quick` | You know it's small (a bug fix, a copy change, a minor tweak) | No pre-discussion, no brainstorm phase. Fast. Still fully verified — Loop 1 always runs. Executes immediately. |
 | `--feature` | You know it's feature-sized (one coherent feature, a few units) | No pre-discussion, some parallelism, integration loop if >1 unit, formal review gate. Executes immediately. |
 | `--project` | You know it's large (many features, broad scope) | Conductor **discusses with you first**: brainstorm, clarify ambiguity, confirm scope. Then full parallel pipeline. Real merges/PRs are human-gated at checkpoints. |
+| `--fable` | You want Fable 5 on the toughest units | Arm **Claude Fable 5** for high-difficulty pipeline agents (difficulty ≥ 0.4 / Opus-tier). The Conductor asks your permission per candidate before running that agent on Fable — never silently. Declining keeps **Opus**. Drop Fable or override any agent conversationally; no restart needed. Persist with `models.fable: on` in `BGSD.md`. Researchers, verifiers, and Testers are never Fable candidates. |
 | `--plan-only` | You want to see the plan before committing | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing runs. |
 | `--dry-run` | Same as `--plan-only` | Alias. Identical preview behavior. |
 

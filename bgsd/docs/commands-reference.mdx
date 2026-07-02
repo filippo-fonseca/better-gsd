@@ -58,6 +58,7 @@ A `--live` gate protects every irreversible boundary. Real merges and `gh pr cre
 | `--no-usage-verification` | none | Code-only verification: still runs the goal-backward gsd-verifier, but skips the Playwright UI usage testing. Sets `BGSD_USAGE_TESTING=0`. Persist as `verification.usage_testing`. |
 | `--headless-ui` | none | Runs Playwright headless (no visible browser or server window, discreet). Sets `BGSD_HEADLESS_UI=1`. Persist as `verification.headless`. |
 | `--gui` | none | Opens the live web dashboard for the run and prints the URL. See [`/bgsd-gui`](#bgsd-gui). |
+| `--fable` | none | Arm **Claude Fable 5** for the toughest pipeline (executor) agents — high-difficulty / Opus-tier units (`difficulty >= 0.4`). Armed by passing `--fable` OR by the Conductor judging a unit tough enough at any time. Permission-gated and never silent: for each candidate the Conductor asks you (an AskUserQuestion selector — **Fable / Opus**) before that agent runs on Fable. Declining keeps **Opus** (token-heavy, so the pricier path for a genuinely tough unit). You can override any agent back to Opus, or drop Fable entirely, conversationally — no restart. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Researchers, verifiers, and Testers are never Fable candidates. |
 | `--plan-only` | none | **Preview only.** Classify and print the depth plan; invoke zero boundaries. Nothing spawns or runs. |
 | `--dry-run` | none | Alias for `--plan-only`. Same preview behavior. |
 

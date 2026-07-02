@@ -70,6 +70,7 @@ The scale threshold is decided by the Conductor, not by you. You can always over
 | `--quick`     | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Executes immediately.                                        |
 | `--feature`   | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Executes immediately.                                                      |
 | `--project`   | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan), then executes. Real merges/PRs are human-gated at checkpoints. |
+| `--fable`     | Arm **Claude Fable 5** for the toughest pipeline agents (difficulty ≥ 0.4 / Opus-tier units). The Conductor asks permission per candidate before putting any agent on Fable; you can keep it on Opus (token-heavy) for any agent, or drop Fable entirely, any time. Never used silently. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Researchers, verifiers, and testers are never Fable candidates. |
 | `--plan-only` | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing executes.                                                               |
 | `--dry-run`   | Alias for `--plan-only`. Same preview behavior.                                                                                                            |
 
