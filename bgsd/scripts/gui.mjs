@@ -196,11 +196,15 @@ export function normalizeAgent(agent) {
  * @returns {"paused"|"blocked"|"needs_input"|"running"|"done"|"idle"}
  */
 export function overallStatus(counts, runState) {
-  if (runState === "paused") return "paused";
+  const state = String(runState ?? "").toLowerCase();
+  if (RUN_PAUSED_STATES.has(state)) return "paused";
   if (!counts || counts.total === 0) return "idle";
   if (counts.blocked > 0) return "blocked";
   if (counts.needs_input > 0) return "needs_input";
   if (counts.running > 0) return "running";
+  // No agents running right now. Only declare the whole run "done" when run.state
+  // actually says so; a live in-flight state (e.g. between waves) stays "running".
+  if (state && !RUN_DONE_STATES.has(state) && !RUN_BAD_STATES.has(state)) return "running";
   return "done";
 }
 
@@ -306,7 +310,12 @@ export function sessionStatus(run, controls = []) {
   const anyRunning = dispositions.includes("active");
   const anyBad = dispositions.includes("bad");
   if (anyBad && !anyRunning) return "aborted";
-  if (dispositions.length > 0 && dispositions.every((d) => d === "done")) return "completed";
+  // A known, live run.state (created/spawning/executing/verifying/merging/…)
+  // means the session is IN PROGRESS — even if every agent spawned so far reports
+  // done (e.g. between waves, or before execution has spawned its agents). Only
+  // fall back to the "all control files done -> completed" heuristic when there is
+  // no run.state to trust, so an in-flight session is never mislabelled complete.
+  if (!state && dispositions.length > 0 && dispositions.every((d) => d === "done")) return "completed";
   return "in-progress";
 }
 

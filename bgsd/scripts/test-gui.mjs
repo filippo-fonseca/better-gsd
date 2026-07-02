@@ -304,6 +304,20 @@ test("G16 — overallStatus: blocked > needs_input > running > done, empty is id
   assert.equal(model.overall, "running");
 });
 
+test("G16b — a live run.state stays in-progress even when all spawned agents are done (between waves)", () => {
+  // The reported bug: mid-run, every agent spawned SO FAR is done (e.g. between
+  // waves), which must NOT mark the session complete while run.state is live.
+  const doneControls = [agent("u1", "execute", "done"), agent("u2", "execute", "done")];
+  assert.equal(sessionStatus({ state: "executing" }, doneControls), "in-progress");
+  assert.equal(sessionStatus({ state: "spawning" }, doneControls), "in-progress");
+  // overallStatus: no running agents + a live state -> running, not done.
+  assert.equal(overallStatus({ total: 2, running: 0, done: 2, blocked: 0, needs_input: 0 }, "executing"), "running");
+  // Only a real done state (or no state at all) reports completed/done.
+  assert.equal(sessionStatus({ state: "done" }, doneControls), "completed");
+  assert.equal(sessionStatus({ state: "" }, doneControls), "completed");
+  assert.equal(overallStatus({ total: 2, running: 0, done: 2, blocked: 0, needs_input: 0 }, "done"), "done");
+});
+
 test("G17 — summarizeSessions orders newest-first by mtime", () => {
   const sessions = summarizeSessions([
     { runId: "old", run: { scale: "quick", state: "done" }, controls: [], mtime: 100 },
