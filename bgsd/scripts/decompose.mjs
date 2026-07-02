@@ -156,21 +156,35 @@ export function tierForScore(score) {
 }
 
 /**
+ * The PLANNER tier for a difficulty score. Planning is quality-first: Opus is the
+ * default planner for anything the Conductor deems non-trivial; Sonnet is used
+ * only for REALLY easy units. So the Opus band reaches much lower for planning
+ * (>= 0.2) than for the executor (>= 0.4).
+ *   score >= 0.2  -> high (opus/xhigh)   — the default planner
+ *   score <  0.2  -> base (sonnet/xhigh) — really easy units only
+ */
+export function plannerTierForScore(score) {
+  return score >= 0.2 ? "high" : "base";
+}
+
+/**
  * Derive the per-unit model posture from a difficulty score.
  * Returns the would-be .planning/config.json `bgsd_unit_posture` structure.
  *
- * Executor tier (see tierForScore): opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4).
+ * Planner:    opus/xhigh by default; sonnet/xhigh only for really easy (< 0.2).
+ * Executor:   opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4).
  * Researcher: one band below executor (floored at sonnet/xhigh).
- * Verifier: always haiku/low — cheap, deterministic verification.
+ * Verifier:   always haiku/low — cheap, deterministic verification.
  *
  * @param {number} score   difficulty score in [0, 1]
- * @returns {{ executor: object, researcher: object, verifier: object }}
+ * @returns {{ planner: object, executor: object, researcher: object, verifier: object }}
  */
 export function deriveModelPosture(score) {
   const tier = tierForScore(score);
   const researcherTier = DEMOTION_MAP[tier];
 
   return {
+    planner:    { ...POSTURE_TIERS[plannerTierForScore(score)] },
     executor:   { ...POSTURE_TIERS[tier] },
     researcher: { ...POSTURE_TIERS[researcherTier] },
     verifier:   { model: "haiku", effort: "low" }, // always haiku/low (Plan Part 11)

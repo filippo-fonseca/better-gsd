@@ -309,6 +309,17 @@ await test("D16b: deriveModelPosture(very low) -> still sonnet/xhigh", () => {
   assert.equal(posture.executor.effort, "xhigh");
 });
 
+await test("D16c: planner defaults to opus; sonnet only for really easy (< 0.2)", () => {
+  // Opus is the default planner for anything non-trivial (>= 0.2), reaching lower
+  // than the executor's opus band (>= 0.4).
+  assert.equal(deriveModelPosture(0.8).planner.model, "opus");
+  assert.equal(deriveModelPosture(0.4).planner.model, "opus");
+  assert.equal(deriveModelPosture(0.25).planner.model, "opus"); // opus planner, sonnet executor
+  assert.equal(deriveModelPosture(0.25).executor.model, "sonnet");
+  assert.equal(deriveModelPosture(0.1).planner.model, "sonnet"); // really easy -> sonnet planner
+  assert.equal(deriveModelPosture(0.8).planner.effort, "xhigh");
+});
+
 await test("D17: deriveModelPosture always yields verifier=haiku/low regardless of score", () => {
   for (const score of [0.0, 0.4, 0.7, 1.0]) {
     const posture = deriveModelPosture(score);
