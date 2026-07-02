@@ -92,6 +92,18 @@ export function defaultBgsdConfig() {
       usage_testing: true,
       headless: false,
     },
+    // Live web dashboard. auto=true starts + opens it for feature- and
+    // project-scale seshs (quick stays terminal-only). Opt out per-session
+    // with --no-gui, or persist false here.
+    gui: {
+      auto: true,
+    },
+    // Out-of-band pings when the pipeline parks on a human. os=true fires a
+    // native macOS notification the moment a unit needs your input, so you
+    // can walk away from long seshs. Fail-silent; no-op off macOS.
+    notifications: {
+      os: true,
+    },
     // Execution "modes" — how much work each role does. Three levels each:
     //   fast     — pipeline: skip research; verifier: code-only, quick checks.
     //   thorough — pipeline: research every unit; verifier: full driver ladder.
@@ -103,7 +115,7 @@ export function defaultBgsdConfig() {
     },
     conductor: {
       // Display identity on every human-facing message (the name pill). Chosen
-      // at /bgsd-init; change any time by editing these, via /bgsd-memory
+      // at /bgsd-init; change any time by editing these, via /bgsd-modify-memory
       // ("rename yourself to Jarvis"), or by just asking the Conductor.
       name: "Kiwi",
       emoji: "🥝",
@@ -219,6 +231,14 @@ Notes section and Kiwi will respect them.
   browser or server window pops up on your machine (discreet). \`false\` lets it
   run headed. Toggle per-session with \`--headless-ui\`, or tell Kiwi ("always
   verify headless").
+- **gui.auto** — start and open the live web dashboard automatically for
+  feature- and project-scale seshs; quick seshs stay terminal-only. Opt out for
+  one session with \`--no-gui\`, or set \`false\` here to keep it manual
+  (\`/bgsd-gui\` still opens it on demand).
+- **notifications.os** — fire a native macOS notification the moment the
+  pipeline needs your input (an escalated question, a human gate), so you can
+  walk away from long seshs and still get pinged. Fail-silent, and a no-op off
+  macOS.
 - **modes.pipeline / modes.verifier** — how much work each role does, three
   levels: \`fast\` (pipeline skips research; verifier code-only), \`thorough\`
   (pipeline researches every unit; verifier full driver ladder), or \`adaptive\`
@@ -227,8 +247,9 @@ Notes section and Kiwi will respect them.
   persist here. A manually-passed flag always wins over this file.
 - **conductor** — the Conductor's identity + behavior. \`name\` and \`emoji\`
   are the name pill on every message it sends (default \`🥝\` \`Kiwi\`); you pick
-  them at \`/bgsd-init\`, and can change them any time here, via \`/bgsd-memory\`
-  ("rename yourself to Jarvis", "change your emoji to 🤖"), or by just asking the
+  them at \`/bgsd-init\`, and can change them any time here, via
+  \`/bgsd-modify-memory\` ("rename yourself to Jarvis", "change your emoji to
+  🤖"), or by just asking the
   Conductor. \`narrate\` streams stage-aware live updates; \`suggest_gate_commands\`
   makes it hand you the exact command at every human gate. \`self_compact_at\` is
   the context fraction (0–1) at which the Conductor — the one human-facing

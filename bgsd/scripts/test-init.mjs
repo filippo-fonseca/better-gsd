@@ -134,6 +134,9 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.conductor.name, "Kiwi");
   assert.equal(c.conductor.emoji, "🥝");
   assert.equal(c.conductor.self_compact_at, 0.9);
+  // Dashboard + walk-away notification defaults.
+  assert.equal(c.gui.auto, true);
+  assert.equal(c.notifications.os, true);
 });
 
 test("I02 — defaultBgsdConfig: fresh deep copy", () => {

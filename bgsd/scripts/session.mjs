@@ -291,6 +291,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
       action: "clarify",
       mode,
       signals,
+      rule: 1,
       unitCountEstimate,
       depthBreadth,
       confidence: "heuristic",
@@ -302,26 +303,27 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
 
   // Rules 2–7 (evaluated in order — §3.2).
   let scale;
+  let rule;
   if (routeClass === "trivial-fix" && unitCountEstimate === 1 && depthBreadth <= 1) {
-    scale = "quick"; // rule 2
+    scale = "quick"; rule = 2;
   } else if (routeClass === "scoped-fix" && unitCountEstimate <= 2 && depthBreadth <= 1) {
-    scale = "quick"; // rule 3
+    scale = "quick"; rule = 3;
   } else if (
     unitCountEstimate >= 4 ||
     depthBreadth >= 3 ||
     (routeClass === "feature" && band === "≥600")
   ) {
-    scale = "project"; // rule 4
+    scale = "project"; rule = 4;
   } else if (
     routeClass === "feature" &&
     unitCountEstimate >= 1 && unitCountEstimate <= 3 &&
     depthBreadth >= 1 && depthBreadth <= 2
   ) {
-    scale = "feature"; // rule 5
+    scale = "feature"; rule = 5;
   } else if (unitCountEstimate >= 2 && unitCountEstimate <= 3 && depthBreadth === 2) {
-    scale = "feature"; // rule 6
+    scale = "feature"; rule = 6;
   } else {
-    scale = "feature"; // rule 7 — the safe default
+    scale = "feature"; rule = 7; // the safe default
   }
 
   const result = {
@@ -329,6 +331,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
     action: "route",
     mode,
     signals,
+    rule,
     unitCountEstimate,
     depthBreadth,
     confidence: "heuristic",
@@ -373,10 +376,42 @@ function forcedResult(scale, mode, prompt) {
       scopeVerbs: distinctScopeVerbs(prompt),
       lengthBand: lengthBand(prompt),
     },
+    rule: "forced",
     unitCountEstimate: clauseCount(prompt),
     depthBreadth: distinctSurfaces(prompt),
     confidence: "forced",
   };
+}
+
+/**
+ * One-line, human-readable explanation of a classifyScale result. The Conductor
+ * narrates this at session start so the user can immediately tell whether the
+ * auto-scale got it right, and override (--quick/--feature/--project) or
+ * rephrase when it didn't.
+ *
+ * @param {object} result  a classifyScale result
+ * @returns {string}
+ */
+export function explainScale(result) {
+  if (!result || typeof result !== "object" || !result.signals) {
+    throw new Error("explainScale: a classifyScale result is required");
+  }
+  const s = result.signals;
+  const units = `~${result.unitCountEstimate} unit${result.unitCountEstimate === 1 ? "" : "s"}`;
+  const surfaces = `${result.depthBreadth} surface${result.depthBreadth === 1 ? "" : "s"}`;
+  if (result.confidence === "forced") {
+    return `scale forced to ${result.scale} by the --${result.scale} flag (signals read ${units}, ${surfaces}).`;
+  }
+  if (result.action === "clarify") {
+    return `couldn't size this (route "${s.routeClass}") — asking one clarifying question instead of guessing.`;
+  }
+  const seam = result.confidence === "model" && result.modelSeam
+    ? `; model seam nudged ${result.modelSeam.heuristicScale} → ${result.modelSeam.modelScale}`
+    : "";
+  return (
+    `auto-scaled to ${result.scale} — route "${s.routeClass}", ${units}, ${surfaces}, ` +
+    `length band ${s.lengthBand} (rule ${result.rule}${seam}).`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,7 +1102,7 @@ if (
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
-        '        [--no-usage-verification] [--headless-ui] [--gui] [--plan-only | --dry-run]\n' +
+        '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
       );
       process.exit(1);
@@ -1081,7 +1116,8 @@ if (
     // plan-only is ONLY when explicitly requested; default (no flag) = run the session.
     const planOnly = flags["plan-only"] === true || flags["dry-run"] === true;
     const noUsageVerification = flags["no-usage-verification"] === true;
-    const gui = flags.gui === true;
+    const guiFlag = flags.gui === true;
+    const noGuiFlag = flags["no-gui"] === true;
     const headlessFlag = flags["headless-ui"] === true;
     const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
     const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
@@ -1113,10 +1149,21 @@ if (
     }
     const plan = buildDepthPlan(classification.scale, { prompt });
 
+    // GUI resolution: --no-gui always wins, --gui always opens; otherwise the
+    // gui.auto knob opens the dashboard for feature/project scale (quick stays
+    // terminal-only, and --plan-only never spawns a server).
+    const guiAuto = bgsdConfig?.gui?.auto !== false;
+    const gui = noGuiFlag
+      ? false
+      : guiFlag
+        ? true
+        : !planOnly && guiAuto && classification.scale !== "quick";
+
     try { const { splash } = await import("./ui.mjs"); splash({ name: conductorName }); } catch (_) { /* splash is cosmetic */ }
     process.stdout.write(`\n${conductorName} · bgsd Conductor   [lock] main-protected\n`);
     process.stdout.write(`  prompt:  ${prompt}\n`);
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
+    process.stdout.write(`  why:     ${explainScale(classification)}\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);
     process.stdout.write(`  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`);
     process.stdout.write(

@@ -23,6 +23,7 @@ import {
   resolveMode,
   resolveHeadless,
   EXECUTION_MODES,
+  explainScale,
 } from "./session.mjs";
 
 let passed = 0;
@@ -574,6 +575,24 @@ await test("PF: startSession does NOT run preflightFn in plan-only", async () =>
   });
   assert.equal(called, 0, "plan-only invokes zero boundaries, including preflight");
   assert.equal(res.planOnly, true);
+});
+
+await test("EXPLAIN: classifyScale exposes the fired rule", async () => {
+  const quick = await classifyScale({ prompt: "fix the typo on the pricing page" });
+  assert.equal(typeof quick.rule, "number");
+  const forced = await classifyScale({ prompt: "anything", mode: "project" });
+  assert.equal(forced.rule, "forced");
+});
+
+await test("EXPLAIN: explainScale narrates scale, signals, and rule", async () => {
+  const r = await classifyScale({ prompt: "build a billing dashboard with stripe and an admin ui" });
+  const line = explainScale(r);
+  assert.ok(line.includes(`auto-scaled to ${r.scale}`), line);
+  assert.ok(line.includes(`rule ${r.rule}`), line);
+  assert.ok(line.includes("surface"), line);
+  const forced = explainScale(await classifyScale({ prompt: "x y z", mode: "quick" }));
+  assert.ok(forced.includes("forced to quick"), forced);
+  assert.throws(() => explainScale(null));
 });
 
 // ---------------------------------------------------------------------------
