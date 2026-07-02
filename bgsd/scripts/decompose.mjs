@@ -43,13 +43,15 @@
  *                    + 0.2 * title_word_factor
  *                    + 0.1 * scope_len_factor
  *
- * Resulting posture tiers (two bands, quality-first):
- *   >= 0.4: executor = { model: "opus",   effort: "xhigh" }
- *   <  0.4: executor = { model: "sonnet", effort: "xhigh" }
- *
- * Researcher and verifier are demoted relative to executor (Plan Part 11):
- *   researcher: one band below executor (floored at sonnet/xhigh)
+ * Resulting per-unit posture (DEFAULTS — the Conductor and the human can
+ * override any of these on the fly). The principle: spend the priciest model
+ * (Fable) only on high-leverage, low-volume reasoning (the plan); keep the
+ * high-volume build and the file-reading scout cheap:
+ *   planner:    >= 0.4 -> fable/high ; < 0.4 -> opus/high   (reasoning; gates the unit)
+ *   executor:   >= 0.4 -> opus/xhigh ; < 0.4 -> sonnet/xhigh (building; high volume)
+ *   researcher: < 0.2  -> haiku/low  ; else  -> sonnet/low   (reads files, distills)
  *   verifier:   always haiku/low
+ * (Fable is never a default executor — it is armed per-agent via `--fable`.)
  *
  * Usage (library):
  *   import { buildUnits, deriveModelPosture, parseDecompositionResponse,
@@ -133,21 +135,21 @@ export function difficultyScore({ touched = [], deps = [], title = "", scope = "
 // ---------------------------------------------------------------------------
 
 /**
- * The per-role × per-effort routing matrix tiers.
- * Executor is promoted on hard units; researcher/verifier are always demoted.
+ * The executor tier matrix. Executor is the highest-VOLUME role (N parallel
+ * agents, long fix loops) and the plan already did the hard reasoning, so it is
+ * the cheapest-capable model per band, NOT the priciest:
+ *   high (>= 0.4) -> opus/xhigh   — genuinely hard units
+ *   base (<  0.4) -> sonnet/xhigh — everyday building
+ * (Fable is never a default executor; it is armed only via the per-agent
+ * `--fable` gate — see bgsd-sesh.md.)
  */
 const POSTURE_TIERS = {
   high: { model: "opus",   effort: "xhigh" },
   base: { model: "sonnet", effort: "xhigh" },
 };
 
-const DEMOTION_MAP = {
-  high: "base",  // executor=opus -> researcher=sonnet
-  base: "base",  // executor=sonnet -> researcher=sonnet (already at floor)
-};
-
 /**
- * The executor tier for a difficulty score. Two bands, quality-first (GRAPH-04):
+ * The executor tier for a difficulty score. Two bands (GRAPH-04):
  *   score >= 0.4  -> high (opus/xhigh)
  *   score <  0.4  -> base (sonnet/xhigh)
  */
@@ -156,37 +158,53 @@ export function tierForScore(score) {
 }
 
 /**
- * The PLANNER tier for a difficulty score. Planning is quality-first: Opus is the
- * default planner for anything the Conductor deems non-trivial; Sonnet is used
- * only for REALLY easy units. So the Opus band reaches much lower for planning
- * (>= 0.2) than for the executor (>= 0.4).
- *   score >= 0.2  -> high (opus/xhigh)   — the default planner
- *   score <  0.2  -> base (sonnet/xhigh) — really easy units only
+ * The PLANNER posture for a difficulty score. Planning is the highest-leverage,
+ * lowest-volume reasoning per unit (its output gates the whole unit), so it
+ * DEFAULTS to Fable. Easy-but-still-planned units drop to Opus to save Fable
+ * tokens — the Conductor (or a flag) makes that call; the band split here just
+ * encodes the sensible default at the executor's hard threshold:
+ *   score >= 0.4  -> fable/high  — worth Fable's reasoning
+ *   score <  0.4  -> opus/high   — easy-but-planned: Opus is plenty
+ * DEFAULT ONLY: the Conductor, and ultimately the human, can override any unit's
+ * planner at any time (flag, BGSD.md, or just asking).
  */
-export function plannerTierForScore(score) {
-  return score >= 0.2 ? "high" : "base";
+export function plannerPostureForScore(score) {
+  return score >= 0.4
+    ? { model: "fable", effort: "high" }
+    : { model: "opus",  effort: "high" };
 }
 
 /**
- * Derive the per-unit model posture from a difficulty score.
- * Returns the would-be .planning/config.json `bgsd_unit_posture` structure.
+ * The SCOUT / researcher posture. It reads raw source and distills a brief, so
+ * it is deliberately cheap — keeping raw-file tokens off the pricey models is
+ * the whole point (Fable/Opus reason over the brief, never the raw files):
+ *   trivial (< 0.2) -> haiku/low
+ *   otherwise       -> sonnet/low
+ */
+export function scoutPostureForScore(score) {
+  return score < 0.2
+    ? { model: "haiku",  effort: "low" }
+    : { model: "sonnet", effort: "low" };
+}
+
+/**
+ * Derive the per-unit model posture from a difficulty score. These are DEFAULTS;
+ * the Conductor decides per unit and adapts, and the human has the final say and
+ * can override any of them on the fly.
  *
- * Planner:    opus/xhigh by default; sonnet/xhigh only for really easy (< 0.2).
- * Executor:   opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4).
- * Researcher: one band below executor (floored at sonnet/xhigh).
+ * Planner:    fable/high (>= 0.4) or opus/high (< 0.4) — reasoning, gates the unit.
+ * Executor:   opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4) — building, high volume.
+ * Researcher: sonnet/low (haiku/low if trivial) — reads files, distills a brief.
  * Verifier:   always haiku/low — cheap, deterministic verification.
  *
  * @param {number} score   difficulty score in [0, 1]
  * @returns {{ planner: object, executor: object, researcher: object, verifier: object }}
  */
 export function deriveModelPosture(score) {
-  const tier = tierForScore(score);
-  const researcherTier = DEMOTION_MAP[tier];
-
   return {
-    planner:    { ...POSTURE_TIERS[plannerTierForScore(score)] },
-    executor:   { ...POSTURE_TIERS[tier] },
-    researcher: { ...POSTURE_TIERS[researcherTier] },
+    planner:    plannerPostureForScore(score),
+    executor:   { ...POSTURE_TIERS[tierForScore(score)] },
+    researcher: scoutPostureForScore(score),
     verifier:   { model: "haiku", effort: "low" }, // always haiku/low (Plan Part 11)
   };
 }

@@ -309,15 +309,24 @@ await test("D16b: deriveModelPosture(very low) -> still sonnet/xhigh", () => {
   assert.equal(posture.executor.effort, "xhigh");
 });
 
-await test("D16c: planner defaults to opus; sonnet only for really easy (< 0.2)", () => {
-  // Opus is the default planner for anything non-trivial (>= 0.2), reaching lower
-  // than the executor's opus band (>= 0.4).
-  assert.equal(deriveModelPosture(0.8).planner.model, "opus");
-  assert.equal(deriveModelPosture(0.4).planner.model, "opus");
-  assert.equal(deriveModelPosture(0.25).planner.model, "opus"); // opus planner, sonnet executor
+await test("D16c: planner defaults to fable (hard) and opus (easy-but-planned)", () => {
+  // Planning is the highest-leverage/lowest-volume reasoning per unit, so it
+  // defaults to Fable on hard units (>= 0.4) and drops to Opus below that to
+  // save Fable tokens (still a strong planner). DEFAULTS; overridable per unit.
+  assert.equal(deriveModelPosture(0.8).planner.model, "fable");
+  assert.equal(deriveModelPosture(0.4).planner.model, "fable");
+  assert.equal(deriveModelPosture(0.25).planner.model, "opus"); // easy-but-planned -> opus
   assert.equal(deriveModelPosture(0.25).executor.model, "sonnet");
-  assert.equal(deriveModelPosture(0.1).planner.model, "sonnet"); // really easy -> sonnet planner
-  assert.equal(deriveModelPosture(0.8).planner.effort, "xhigh");
+  assert.equal(deriveModelPosture(0.1).planner.model, "opus");  // still opus, not fable
+  assert.equal(deriveModelPosture(0.8).planner.effort, "high");
+});
+
+await test("D16d: scout/researcher is cheap — sonnet/low, haiku/low when trivial", () => {
+  assert.equal(deriveModelPosture(0.8).researcher.model, "sonnet");
+  assert.equal(deriveModelPosture(0.8).researcher.effort, "low");
+  assert.equal(deriveModelPosture(0.3).researcher.model, "sonnet");
+  assert.equal(deriveModelPosture(0.1).researcher.model, "haiku"); // trivial -> haiku
+  assert.equal(deriveModelPosture(0.1).researcher.effort, "low");
 });
 
 await test("D17: deriveModelPosture always yields verifier=haiku/low regardless of score", () => {
