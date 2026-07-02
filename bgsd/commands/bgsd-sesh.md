@@ -194,6 +194,19 @@ get the user's explicit go before any agent runs on it.
   with options **Fable** / **Opus** (and a "type your own"). Batch the candidates
   into one selector when several qualify. Never put an agent on fable without an
   explicit yes.
+- **When `--fable` is passed, always ask about planning too (once, up front).**
+  In addition to the per-executor question above, ask a dedicated selector before
+  fan-out: *"Fable is armed — should **Fable also do the planning** (the plan
+  phase) for the tough units, or keep planning on Opus?"* with options **Fable
+  plans** / **Opus plans** (+ type your own). If yes, the fable-approved tough
+  agents run their **plan phase** on `claude-fable-5` too (they `/model` to it for
+  planning); if no, planning stays on the default planner even for fable-approved
+  units. Ask this every time `--fable` is passed.
+- **Planning defaults to Opus (independent of fable).** The **planner** tier is
+  Opus by default for anything non-trivial (`decompose.mjs` planner band,
+  `difficulty >= 0.2`) and Sonnet only for really-easy units — so even a
+  Sonnet-executor unit is planned by Opus unless it is genuinely trivial. Fable, if
+  approved for planning, replaces that Opus planner on the tough units.
 - **On approval → fable; on decline → Opus.** An approved agent is spawned on
   `claude-fable-5`, and its **branded label shows the real model** (e.g.
   `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`). A declined agent runs
