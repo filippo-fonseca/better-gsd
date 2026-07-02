@@ -223,7 +223,7 @@ export function overallStatus(counts, runState) {
  *   agents: object[]
  * }}
  */
-export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } = {}) {
+export function buildDashboardModel({ run = {}, agents = [], conductor = {}, now = Date.now() } = {}) {
   const norm = agents.map(normalizeAgent);
   const lanes = LANES.map((l) => ({
     ...l,
@@ -246,6 +246,10 @@ export function buildDashboardModel({ run = {}, agents = [], now = Date.now() } 
       stage: run.stage ?? null,
       note: run.note ?? null,
       generated_at: new Date(now).toISOString(),
+    },
+    conductor: {
+      name: conductor.name || "Kiwi",
+      emoji: conductor.emoji || "🥝",
     },
     counts,
     overall: overallStatus(counts, run.state ?? null),

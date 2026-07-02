@@ -102,11 +102,20 @@ export function defaultBgsdConfig() {
       verifier: "adaptive",
     },
     conductor: {
+      // Display identity on every human-facing message (the name pill). Chosen
+      // at /bgsd-init; change any time by editing these, via /bgsd-memory
+      // ("rename yourself to Jarvis"), or by just asking the Conductor.
+      name: "Kiwi",
+      emoji: "🥝",
       persona: "kiwi",
       // Live, stage-aware narration using the canonical pipeline names.
       narrate: true,
       // At every human gate, suggest the exact command to run next.
       suggest_gate_commands: true,
+      // The Conductor is the ONLY human-facing session. When its own context
+      // window crosses this fraction it self-compacts (after writing a handoff
+      // note) and keeps going, so a long sesh never dies of context exhaustion.
+      self_compact_at: 0.9,
     },
     // Per-subagent context-window management. Each Pipeline Agent runs in its
     // own large window; the Conductor watches each agent's recorded usage and
@@ -216,9 +225,15 @@ Notes section and Kiwi will respect them.
   (the Conductor decides per unit and adapts). \`adaptive\` is the default and
   recommended. Override per-session with \`--mode\` / \`--verify-mode\`, or
   persist here. A manually-passed flag always wins over this file.
-- **conductor** — persona + narration. \`narrate\` streams stage-aware live
-  updates; \`suggest_gate_commands\` makes Kiwi hand you the exact command at
-  every human gate.
+- **conductor** — the Conductor's identity + behavior. \`name\` and \`emoji\`
+  are the name pill on every message it sends (default \`🥝\` \`Kiwi\`); you pick
+  them at \`/bgsd-init\`, and can change them any time here, via \`/bgsd-memory\`
+  ("rename yourself to Jarvis", "change your emoji to 🤖"), or by just asking the
+  Conductor. \`narrate\` streams stage-aware live updates; \`suggest_gate_commands\`
+  makes it hand you the exact command at every human gate. \`self_compact_at\` is
+  the context fraction (0–1) at which the Conductor — the one human-facing
+  session — auto-compacts itself and continues, so a long sesh never runs out of
+  room.
 - **context** — per-subagent context-window management. \`max_window_tokens\`
   is the model's full window (Pipeline Agents run on ~1M tokens). When an
   agent's usage crosses \`compact_at\` (fraction of the window) Kiwi compacts it

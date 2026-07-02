@@ -1101,19 +1101,20 @@ if (
     const headless = resolveHeadless({ config: bgsdConfig, headlessFlag });
     const pipelineMode = resolveMode({ flagMode: modeFlag, configMode: bgsdConfig?.modes?.pipeline });
     const verifierMode = resolveMode({ flagMode: verifyModeFlag, configMode: bgsdConfig?.modes?.verifier });
+    const conductorName = bgsdConfig?.conductor?.name || "Kiwi";
 
     // CLI: classify + build the depth plan always; then either preview (--plan-only / --dry-run)
     // or execute (the default). Real irreversible actions (git merge, gh pr create) remain
     // human-gated at merge-boundary checkpoints behind the existing *-live.mjs requireLiveFlag guards.
     const classification = await classifyScale({ prompt, mode });
     if (classification.action === "clarify") {
-      process.stdout.write(`\nKiwi needs one clarification:\n  ${classification.clarification_question}\n\n`);
+      process.stdout.write(`\n${conductorName} needs one clarification:\n  ${classification.clarification_question}\n\n`);
       process.exit(0);
     }
     const plan = buildDepthPlan(classification.scale, { prompt });
 
-    try { const { splash } = await import("./ui.mjs"); splash(); } catch (_) { /* splash is cosmetic */ }
-    process.stdout.write(`\nKiwi · bgsd Conductor   [lock] main-protected\n`);
+    try { const { splash } = await import("./ui.mjs"); splash({ name: conductorName }); } catch (_) { /* splash is cosmetic */ }
+    process.stdout.write(`\n${conductorName} · bgsd Conductor   [lock] main-protected\n`);
     process.stdout.write(`  prompt:  ${prompt}\n`);
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);

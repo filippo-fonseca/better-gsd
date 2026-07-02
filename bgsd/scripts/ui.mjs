@@ -104,21 +104,27 @@ const PILL_RIGHT_CAP = "";
  * set or output is not a TTY, it degrades to a plain `[kiwi · conductor]`
  * bracket form with no ANSI.
  *
- * @param {string} [label="kiwi · conductor"] - Text inside the pill.
+ * @param {string} [label] - Text inside the pill. When omitted, it is built
+ *   from `opts.name` / `opts.emoji` ("<emoji> <name> · conductor"), else falls
+ *   back to the default "kiwi · conductor".
  * @param {object} [opts]
  * @param {object} [opts.env=process.env] - Env source (for NO_COLOR / CI).
  * @param {boolean} [opts.isTTY] - TTY override; defaults to process.stdout.isTTY.
+ * @param {string} [opts.name] - Conductor name (used when no label is given).
+ * @param {string} [opts.emoji] - Conductor emoji (prefixes the built label).
  * @returns {string}
  */
-export function kiwiPill(label = "kiwi · conductor", { env = process.env, isTTY } = {}) {
+export function kiwiPill(label, { env = process.env, isTTY, name, emoji } = {}) {
+  const resolved =
+    label ?? (name ? `${emoji ? emoji + " " : ""}${name} · conductor` : "kiwi · conductor");
   const tty = isTTY ?? Boolean(process.stdout.isTTY);
   const colorOk = !env["NO_COLOR"] && !env["CI"]?.match?.(/^(true|1)$/i) && tty;
 
-  if (!colorOk) return `[${label}]`;
+  if (!colorOk) return `[${resolved}]`;
 
   // Bold white text (1;97) on a kiwi-green 256-color background (48;5;35),
   // padded with a leading and trailing space.
-  const body = `\x1b[1;97;48;5;${KIWI_GREEN_256}m ${label} \x1b[0m`;
+  const body = `\x1b[1;97;48;5;${KIWI_GREEN_256}m ${resolved} \x1b[0m`;
   // End-caps: green foreground (38;5;35) on default background so the half
   // circles colour-match the body and read as rounded ends.
   const leftCap = `\x1b[38;5;${KIWI_GREEN_256}m${PILL_LEFT_CAP}\x1b[0m`;
@@ -224,12 +230,14 @@ export function pluginVersion() {
  *
  * @param {object} [opts]
  * @param {string} [opts.subtitle]   Tagline line under the logo.
- * @param {string} [opts.ready]      Ready line (e.g. "Kiwi online").
+ * @param {string} [opts.ready]      Ready line; defaults to "<name> online, at your service."
+ * @param {string} [opts.name]       Conductor name for the default ready line.
  * @param {string} [opts.version]    Version string; defaults to pluginVersion().
  * @param {string} [opts.palette]    oh-my-logo palette; defaults to "sunset".
  * @param {Function} [opts.spawnImpl] Injectable spawnSync for tests.
  */
-export function splash({ subtitle, ready = 'Kiwi online, at your service.', version, palette = 'sunset', spawnImpl } = {}) {
+export function splash({ subtitle, ready, name = 'Kiwi', version, palette = 'sunset', spawnImpl } = {}) {
+  const readyLine = ready ?? `${name} online, at your service.`;
   const ver = version ?? pluginVersion();
   const tag = subtitle
     ?? 'Autonomous, self-verifying orchestration on top of GSD. Talk to the Conductor; it handles everything.';
@@ -241,7 +249,7 @@ export function splash({ subtitle, ready = 'Kiwi online, at your service.', vers
   process.stdout.write('\n');
   process.stdout.write('  ' + bold('better-gsd') + (ver ? '  ' + dim(ver) : '') + '\n');
   process.stdout.write('  ' + dim(tag) + '\n');
-  if (ready) process.stdout.write('\n  ' + kiwiGreen('✓') + ' ' + ready + '\n');
+  if (readyLine) process.stdout.write('\n  ' + kiwiGreen('✓') + ' ' + readyLine + '\n');
   process.stdout.write('\n');
 }
 

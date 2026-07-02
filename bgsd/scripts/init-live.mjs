@@ -32,7 +32,37 @@ import {
   detectInitState,
   planInit,
   executeInit,
+  defaultBgsdConfig,
+  parseBgsdMd,
 } from "./init.mjs";
+
+// ---------------------------------------------------------------------------
+// Conductor identity flags (--conductor-name / --conductor-emoji)
+// ---------------------------------------------------------------------------
+
+function flagValue(argv, flag) {
+  const i = argv.indexOf(flag);
+  return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
+}
+
+/**
+ * Layer chosen conductor identity (name/emoji) onto a base config. Returns null
+ * when neither flag is present, so callers can skip overriding entirely. Pure.
+ *
+ * @param {string[]} argv    process.argv (or a slice)
+ * @param {object}   baseConfig  the config to clone + override
+ * @returns {object|null} a new config with conductor.name/emoji set, or null
+ */
+export function conductorOverride(argv, baseConfig) {
+  const name = flagValue(argv, "--conductor-name");
+  const emoji = flagValue(argv, "--conductor-emoji");
+  if ((name == null || name === "") && (emoji == null || emoji === "")) return null;
+  const cfg = structuredClone(baseConfig);
+  cfg.conductor = cfg.conductor || {};
+  if (name != null && name !== "") cfg.conductor.name = name;
+  if (emoji != null && emoji !== "") cfg.conductor.emoji = emoji;
+  return cfg;
+}
 
 // ---------------------------------------------------------------------------
 // Live-flag guard (mirrors run-live.mjs / loop1-live.mjs)
@@ -255,7 +285,16 @@ export async function main() {
 
   // Runs by default (no flag): apply the setup. `main` is never written; the
   // integration branch is only created and fast-forwarded. Idempotent + safe.
-  const res = executeInit(liveDeps(repoRoot, (m) => out(`  ${m}\n`)));
+  const deps = liveDeps(repoRoot, (m) => out(`  ${m}\n`));
+  // Conductor identity: layer chosen name/emoji onto the existing config (or the
+  // defaults on a fresh repo) so both config.json and BGSD.md get it on write.
+  const bgsdMdPath = `${repoRoot}/BGSD.md`;
+  const baseConfig = existsSync(bgsdMdPath)
+    ? parseBgsdMd(readFileSync(bgsdMdPath, "utf8"))
+    : defaultBgsdConfig();
+  const override = conductorOverride(process.argv, baseConfig);
+  if (override) deps.config = override;
+  const res = executeInit(deps);
   out(`\nbgsd-init ${res.alreadyInitialized ? "refreshed" : "complete"} — repo: ${repoRoot}\n`);
   out(`  base branch:         ${res.baseBranch}\n`);
   out(`  integration branch:  ${res.integrationBranch}\n`);

@@ -42,6 +42,25 @@ import {
 } from "./control.mjs";
 import { buildDashboardModel, summarizeSessions } from "./gui.mjs";
 import { resolveRepoRoot } from "./init-live.mjs";
+import { parseBgsdMd } from "./init.mjs";
+
+/**
+ * Read the Conductor's display identity (name + emoji) from this repo's BGSD.md.
+ * Defaults to Kiwi/🥝 when BGSD.md is absent or the fields are unset. Read-only.
+ */
+export function readConductorIdentity(repoRoot) {
+  const p = join(repoRoot, "BGSD.md");
+  try {
+    if (existsSync(p)) {
+      const cfg = parseBgsdMd(readFileSync(p, "utf8"));
+      return {
+        name: cfg?.conductor?.name || "Kiwi",
+        emoji: cfg?.conductor?.emoji || "🥝",
+      };
+    }
+  } catch (_) { /* fall through to defaults */ }
+  return { name: "Kiwi", emoji: "🥝" };
+}
 
 // Resolve our own absolute path so the daemon can re-invoke this exact script,
 // even though the plugin runs from an absolute cache path.
@@ -66,7 +85,8 @@ export function latestRunId(repoRoot) {
 
 /** Build the dashboard model for a run by reading its control files live. */
 export function modelForRun(repoRoot, runId) {
-  if (!runId) return buildDashboardModel({ run: { run_id: null, state: "no run" }, agents: [] });
+  const conductor = readConductorIdentity(repoRoot);
+  if (!runId) return buildDashboardModel({ run: { run_id: null, state: "no run" }, agents: [], conductor });
   const controlDir = join(runsDir(repoRoot), runId, "control");
   let agents = [];
   try {
@@ -89,7 +109,7 @@ export function modelForRun(repoRoot, runId) {
       };
     }
   } catch (_) { /* keep minimal run */ }
-  return buildDashboardModel({ run, agents });
+  return buildDashboardModel({ run, agents, conductor });
 }
 
 /**

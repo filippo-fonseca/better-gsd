@@ -201,6 +201,15 @@ test("G07 — buildDashboardModel: empty run -> empty lanes + zero counts", () =
   for (const l of model.lanes) assert.equal(l.agents.length, 0);
   // title is null on an empty run (header falls back to run id / "live view").
   assert.equal(model.run.title, null, "empty run has a null title");
+  // Conductor identity defaults to Kiwi/🥝 when none is supplied.
+  assert.equal(model.conductor.name, "Kiwi");
+  assert.equal(model.conductor.emoji, "🥝");
+});
+
+test("G07b — buildDashboardModel: carries a configured conductor identity", () => {
+  const model = buildDashboardModel({ conductor: { name: "Jarvis", emoji: "🤖" } });
+  assert.equal(model.conductor.name, "Jarvis");
+  assert.equal(model.conductor.emoji, "🤖");
 });
 
 test("G08 — buildPipeline marks done/active/pending around the current stage", () => {

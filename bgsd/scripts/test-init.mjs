@@ -41,6 +41,7 @@ import {
   planInit,
   executeInit,
 } from "./init.mjs";
+import { conductorOverride } from "./init-live.mjs";
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -129,6 +130,10 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.model_posture.verifier.model, "haiku");
   assert.equal(c.model_posture.verifier.effort, "low");
   assert.equal(c.conductor.suggest_gate_commands, true);
+  // Conductor identity + self-management defaults.
+  assert.equal(c.conductor.name, "Kiwi");
+  assert.equal(c.conductor.emoji, "🥝");
+  assert.equal(c.conductor.self_compact_at, 0.9);
 });
 
 test("I02 — defaultBgsdConfig: fresh deep copy", () => {
@@ -374,6 +379,42 @@ test("I17 — executeInit: surfaces a non-sync reason as a note", () => {
   });
   const res = executeInit(deps);
   assert.ok(res.notes.some((n) => n.includes("diverged from base")));
+});
+
+test("I18 — conductorOverride: sets name + emoji from flags", () => {
+  const argv = ["node", "init-live.mjs", "--conductor-name", "Jarvis", "--conductor-emoji", "🤖"];
+  const cfg = conductorOverride(argv, defaultBgsdConfig());
+  assert.equal(cfg.conductor.name, "Jarvis");
+  assert.equal(cfg.conductor.emoji, "🤖");
+  // Untouched knobs keep their defaults.
+  assert.equal(cfg.conductor.self_compact_at, 0.9);
+});
+
+test("I19 — conductorOverride: null when no identity flags", () => {
+  assert.equal(conductorOverride(["node", "init-live.mjs"], defaultBgsdConfig()), null);
+  assert.equal(conductorOverride(["node", "init-live.mjs", "--live"], defaultBgsdConfig()), null);
+});
+
+test("I20 — conductorOverride: one flag alone, no mutation of base", () => {
+  const base = defaultBgsdConfig();
+  const cfg = conductorOverride(["node", "x", "--conductor-name", "Friday"], base);
+  assert.equal(cfg.conductor.name, "Friday");
+  assert.equal(cfg.conductor.emoji, "🥝"); // default retained
+  assert.equal(base.conductor.name, "Kiwi"); // base untouched
+});
+
+test("I21 — executeInit: writes conductor identity into BGSD.md + config", () => {
+  const cfg = conductorOverride(
+    ["node", "x", "--conductor-name", "Jarvis", "--conductor-emoji", "🤖"],
+    defaultBgsdConfig()
+  );
+  const { deps, files } = mockDeps({ config: cfg });
+  executeInit(deps);
+  const parsed = parseBgsdMd(files.get("/repo/BGSD.md"));
+  assert.equal(parsed.conductor.name, "Jarvis");
+  assert.equal(parsed.conductor.emoji, "🤖");
+  const json = JSON.parse(files.get("/repo/.bgsd/config.json"));
+  assert.equal(json.conductor.name, "Jarvis");
 });
 
 // ---------------------------------------------------------------------------

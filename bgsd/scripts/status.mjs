@@ -34,8 +34,28 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseBgsdMd } from "./init.mjs";
+
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
+
+/** The Conductor's default display identity (overridden by BGSD.md). */
+const DEFAULT_CONDUCTOR = Object.freeze({ name: "Kiwi", emoji: "🥝" });
+
+/** Read the Conductor's name + emoji from a repo's BGSD.md (defaults on miss). */
+function readConductor(repoRoot) {
+  const p = join(repoRoot, "BGSD.md");
+  try {
+    if (existsSync(p)) {
+      const c = parseBgsdMd(readFileSync(p, "utf8"));
+      return {
+        name: c?.conductor?.name || DEFAULT_CONDUCTOR.name,
+        emoji: c?.conductor?.emoji || DEFAULT_CONDUCTOR.emoji,
+      };
+    }
+  } catch (_) { /* fall through */ }
+  return { ...DEFAULT_CONDUCTOR };
+}
 
 // ---------------------------------------------------------------------------
 // Re-export COLOR_OK so test-status.mjs can check plain degradation
@@ -130,24 +150,34 @@ function colorState(state) {
 // Mini Kiwi banner (3-row variant for /bgsd-status) — STATUS-02
 // ---------------------------------------------------------------------------
 
-function miniBanner() {
-  const lines = [];
-  lines.push(bold(cyan("╔══════════════════════════════════════════════════╗")));
-  lines.push(
-    bold(cyan("║")) +
-    "  " + bold(brightCyan("Kiwi")) + dim(cyan("  ·  bgsd Conductor")) +
-    "                          " +
-    bold(cyan("║"))
-  );
-  lines.push(
-    bold(cyan("║")) +
-    "  " + dim(cyan("/bgsd-status")) +
-    "  " + bold(brightGreen("🔒 main-protected")) +
-    "                    " +
-    bold(cyan("║"))
-  );
-  lines.push(bold(cyan("╚══════════════════════════════════════════════════╝")));
-  return lines.join("\n");
+// Rough terminal display width: astral code points (most emoji) take 2 cells,
+// variation selectors take 0, everything else 1. Lets the box stay aligned no
+// matter the Conductor's name/emoji length.
+function dispWidth(s) {
+  let w = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp === 0xfe0f) continue;
+    w += cp > 0xffff ? 2 : 1;
+  }
+  return w;
+}
+
+function miniBanner(name = DEFAULT_CONDUCTOR.name, emoji = DEFAULT_CONDUCTOR.emoji) {
+  const TOP = "╔══════════════════════════════════════════════════╗";
+  const BOT = "╚══════════════════════════════════════════════════╝";
+  const INNER = TOP.length - 2;
+  // Pad the colored content out to INNER using the plain text's display width,
+  // so the right border lines up whatever the name/emoji are.
+  const row = (plain, colored) =>
+    bold(cyan("║")) + colored + " ".repeat(Math.max(0, INNER - dispWidth(plain))) + bold(cyan("║"));
+
+  const r1plain = `  ${emoji} ${name}  ·  bgsd Conductor`;
+  const r1colored = "  " + emoji + " " + bold(brightCyan(name)) + dim(cyan("  ·  bgsd Conductor"));
+  const r2plain = "  /bgsd-status  🔒 main-protected";
+  const r2colored = "  " + dim(cyan("/bgsd-status")) + "  " + bold(brightGreen("🔒 main-protected"));
+
+  return [bold(cyan(TOP)), row(r1plain, r1colored), row(r2plain, r2colored), bold(cyan(BOT))].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +436,7 @@ function colorPct(pct) {
 // Butler narration line — STATUS-02 (Kiwi voice, human-facing)
 // ---------------------------------------------------------------------------
 
-function kiwiNarration(run, agents) {
+function kiwiNarration(run, agents, name = DEFAULT_CONDUCTOR.name) {
   if (!run) {
     return dim("Awaiting a run, sir. Try /bgsd-run \"<your prompt>\" to get started.");
   }
@@ -425,12 +455,12 @@ function kiwiNarration(run, agents) {
   const waves   = Array.isArray(run.waves) ? run.waves.length : 0;
   const currentWave = (run.checkpoints ?? []).length + 1;
 
-  // Map state to Kiwi narration
+  // Map state to Conductor narration
   if (state === "created" || state === "decomposed") {
-    return dim("Kiwi is decomposing your prompt, sir — the dependency graph is being assembled.");
+    return dim(`${name} is decomposing your prompt, sir — the dependency graph is being assembled.`);
   }
   if (state === "spawning") {
-    return dim(`Kiwi is fanning out the worktrees, sir — ${total} worker${total !== 1 ? "s" : ""} are being prepared.`);
+    return dim(`${name} is fanning out the worktrees, sir — ${total} worker${total !== 1 ? "s" : ""} are being prepared.`);
   }
   if (state === "executing" || state === "verifying") {
     const runningStr = running > 0 ? `${running} worker${running !== 1 ? "s" : ""} underway` : "workers running";
@@ -441,17 +471,17 @@ function kiwiNarration(run, agents) {
     return dim(`${runningStr}${waveStr}.`);
   }
   if (state === "merging") {
-    return dim(`Kiwi is merging verified branches into the rehearsal branch, sir — ${done} of ${total} done.`);
+    return dim(`${name} is merging verified branches into the rehearsal branch, sir — ${done} of ${total} done.`);
   }
   if (state === "checkpoint") {
-    return brightCyan("Kiwi needs your go/no-go at the merge boundary, sir. Please review and respond.");
+    return brightCyan(`${name} needs your go/no-go at the merge boundary, sir. Please review and respond.`);
   }
   if (state === "integrating") {
-    return dim("Kiwi is running Loop 2 integration verify→fix over the rehearsal branch, sir.");
+    return dim(`${name} is running Loop 2 integration verify→fix over the rehearsal branch, sir.`);
   }
   if (state === "review") {
     return brightCyan(
-      "Kiwi needs your evaluation, sir. The rehearsal app is ready — please review and submit your verdict."
+      `${name} needs your evaluation, sir. The rehearsal app is ready — please review and submit your verdict.`
     );
   }
   if (state === "done") {
@@ -461,7 +491,7 @@ function kiwiNarration(run, agents) {
     return brightRed("Run aborted, sir. All branches and control files have been preserved.");
   }
   if (state === "blocked" || state === "needs_input") {
-    return brightCyan("Kiwi needs your input, sir — one or more workers are awaiting a decision.");
+    return brightCyan(`${name} needs your input, sir — one or more workers are awaiting a decision.`);
   }
 
   return dim(`Run is in state: ${state}`);
@@ -481,16 +511,18 @@ function kiwiNarration(run, agents) {
  * @param {Telemetry|null} input.telemetry budget/context telemetry object
  * @returns {string}
  */
-export function renderStatus({ run, agents = [], telemetry = null }) {
+export function renderStatus({ run, agents = [], telemetry = null, conductor = DEFAULT_CONDUCTOR }) {
   const parts = [];
+  const name = conductor?.name || DEFAULT_CONDUCTOR.name;
+  const emoji = conductor?.emoji || DEFAULT_CONDUCTOR.emoji;
 
-  // 1. Mini Kiwi banner (3-row) with 🔒 main-protected (STATUS-02)
+  // 1. Mini Conductor banner (3-row) with 🔒 main-protected (STATUS-02)
   parts.push("");
-  parts.push(miniBanner());
+  parts.push(miniBanner(name, emoji));
   parts.push("");
 
   // 2. Butler narration (STATUS-02)
-  parts.push("  " + kiwiNarration(run, agents));
+  parts.push("  " + kiwiNarration(run, agents, name));
   parts.push("");
 
   // 3. Run overview: state, wave, units (STATUS-01)
@@ -622,7 +654,7 @@ export function loadStatus({ runId, bgsdDir } = {}) {
     }
   }
 
-  return { run, agents, telemetry: null };
+  return { run, agents, telemetry: null, conductor: readConductor(dirname(dir)) };
 }
 
 /**

@@ -24,6 +24,46 @@ even in `--plan-only` mode.
 
 ---
 
+## Name your Conductor (first-time only)
+
+**Only on a FRESH init** — when `BGSD.md` does **not** yet exist (check first;
+skip this whole step if it does, and never re-ask on a re-run or the every-sesh
+preflight). Right after the splash, before running the setup, ask the user to
+name and style their Conductor with **two separate `AskUserQuestion` prompts**
+(the arrow-key dropdowns). Each offers the default plus a few tasteful picks, and
+the user can always type their own via the free-text option.
+
+1. **Name** — header `Name`, question "What should I call your Conductor?".
+   Options: **Kiwi** (the default — "the bgsd Conductor"), **Jarvis**, **Friday**,
+   and let them type a custom name. Default/recommended is Kiwi.
+2. **Emoji** — header `Emoji`, question "And which emoji should ride on every
+   message it sends?". Options: **🥝** (the default bgsd mark), **🤖**, **🎩**,
+   **⚙️**, and let them type any emoji they like. Default/recommended is 🥝.
+
+Then run the setup passing the two choices (quote them; the emoji is UTF-8 safe):
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/init-live.mjs" \
+  --conductor-name "<chosen name>" --conductor-emoji "<chosen emoji>"
+```
+
+Both land in `BGSD.md` (and `.bgsd/config.json`) under `conductor.name` /
+`conductor.emoji`, and are used as the name pill on every message from then on.
+If the user just accepts the defaults, you may run the plain command below.
+
+**Then confirm the identity and tell them it's not permanent.** After setup, send
+one line under the new pill, e.g. `<emoji> **<Name>:** <Name> at your service,
+sir.`, and mention they can change either at any time by:
+- editing `conductor.name` / `conductor.emoji` in **`BGSD.md`**, or
+- `/bgsd-memory "rename yourself to <X>"` / `/bgsd-memory "change your emoji to <e>"`, or
+- **just telling the Conductor** ("rename yourself to Jarvis") — it edits `BGSD.md` for you.
+
+> If the user starts with `/bgsd-sesh` in a brand-new repo instead of running
+> `/bgsd-init` first, the sesh preflight sets the repo up with the **default**
+> identity (🥝 Kiwi) without asking. They can rename any time via the paths above.
+
+---
+
 ## Usage
 
 ```
