@@ -679,14 +679,46 @@
       var open = (model.agents || []).filter(function (x) { return agentKey(x) === openAgentId; })[0];
       if (open) renderModal(open); else closeCard();
     }
+  }
 
-    document.getElementById("stamp").textContent = "updated " + new Date(model.run.generated_at).toLocaleTimeString();
+  // ---- Idempotent re-render guard ----------------------------------------
+  // The poll used to rebuild the board wholesale every 1.5s, recreating every
+  // DOM node so CSS transitions and entrance animations restarted each tick
+  // (visible blinking). The model is stable between real changes EXCEPT
+  // run.generated_at, a fresh server timestamp on every request; compare
+  // everything but that stamp and skip the rebuild when nothing changed. The
+  // stamp itself is a footer text node updated in place on every tick.
+  var lastModelSig = null;
+  function modelSignature(model) {
+    var run = {};
+    for (var k in model.run) { if (k !== "generated_at") run[k] = model.run[k]; }
+    return JSON.stringify({
+      run: run,
+      conductor: model.conductor,
+      counts: model.counts,
+      overall: model.overall,
+      pipeline: model.pipeline,
+      lanes: model.lanes,
+      agents: model.agents
+    });
+  }
+  function renderIfChanged(model) {
+    var sig = modelSignature(model);
+    if (sig !== lastModelSig) {
+      lastModelSig = sig;
+      render(model);
+    }
+    var stamp = "updated " + new Date(model.run.generated_at).toLocaleTimeString();
+    var stampEl = document.getElementById("stamp");
+    if (stampEl.textContent !== stamp) stampEl.textContent = stamp;
   }
 
   function setLive(state, text) {
     var l = document.getElementById("live");
-    l.className = "live" + (state ? " " + state : "");
-    document.getElementById("live-text").textContent = text;
+    var cls = "live" + (state ? " " + state : "");
+    if (l.className !== cls) l.className = cls;
+    var lt = document.getElementById("live-text");
+    if (lt.textContent !== text) lt.textContent = text;
   }
 
   // --- View + selected-run state -----------------------------------------
@@ -724,7 +756,7 @@
   function tick() {
     fetch(stateUrl(), { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
-      .then(function (model) { setLive("", "live"); render(model); })
+      .then(function (model) { setLive("", "live"); renderIfChanged(model); })
       .catch(function () { setLive("lost", "connection lost, retrying"); });
   }
 
@@ -760,11 +792,22 @@
     });
   }
 
+  // Same idempotence guard for the sessions list: skip the rebuild when the
+  // payload is unchanged. viewingRun is part of the signature because it drives
+  // the highlighted "viewing" row even when the list itself did not change.
+  var lastSessionsSig = null;
   function loadSessions() {
     fetch("/api/sessions", { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
-      .then(function (list) { renderSessions(list); })
+      .then(function (list) {
+        var sig = JSON.stringify([viewingRun, list]);
+        if (sig === lastSessionsSig) return;
+        lastSessionsSig = sig;
+        renderSessions(list);
+      })
       .catch(function () {
+        // The error state replaces the list DOM, so force a re-render on recovery.
+        lastSessionsSig = null;
         var wrap = document.getElementById("sessions");
         wrap.innerHTML = "";
         wrap.appendChild(el("div", "empty", "could not load sessions, retrying"));
@@ -820,7 +863,7 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function (model) {
         if (!model || !model.run || !model.run.run_id) { showTab("sessions"); }
-        else { setLive("", "live"); render(model); }
+        else { setLive("", "live"); renderIfChanged(model); }
       })
       .catch(function () { tick(); });
   })();
