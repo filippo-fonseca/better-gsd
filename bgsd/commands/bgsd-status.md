@@ -109,7 +109,7 @@ The structured layout (section headers, indentation, separators) remains fully l
 |---------|--------------|
 | `/bgsd-run "<prompt>"` | Start a new project orchestration run |
 | `/bgsd-abort` | Stop an in-flight run cleanly, preserving all branches and control files |
-| `/bgsd-clean-branches` | Prune `<run-id>/*` worktree branches already merged into `next` (never touches unmerged branches) |
+| `/bgsd-clean` | Prune `<run-id>/*` worktree branches and stale worktrees already merged into `next` (never touches unmerged branches) |
 
 ---
 
