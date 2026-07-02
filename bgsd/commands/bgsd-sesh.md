@@ -252,6 +252,13 @@ Deterministic, zero required model calls. Kiwi reads cheap signals from the prom
 | `feature` | feature-ish, **or** 2–3 units / 2 surfaces; the **default** for ambiguous-but-classifiable work. |
 | `project` | ≥ 4 units **or** ≥ 3 surfaces **or** a long feature prompt. |
 
+**Kiwi always says WHY.** The session harness prints a one-line explanation
+(`session.mjs:explainScale` — the `why:` line: fired rule, route class, unit and
+surface counts), and Kiwi repeats it in-persona as its first narration line
+("Auto-scaled to feature, sir — 2 surfaces, ~2 units."). If the user disagrees
+with the sizing, they immediately know which signal fired and can override with
+`--quick`/`--feature`/`--project` or rephrase.
+
 If the prompt is too vague (`needs-clarification`), Kiwi asks **one** clarifying
 question with an **AskUserQuestion selector** (see "How Kiwi asks you things"
 below) and re-classifies; it never silently guesses a scale (NFR-06).
@@ -321,8 +328,13 @@ signs off in the Conductor's voice with all of this, in order:
 3. **Always a clear next step, never a dead end.** If the backlog is non-empty,
    propose the next item with a selector. If it is empty, invite the next run
    explicitly: `/bgsd-sesh "<the next thing>"`, or `/bgsd-sesh` with no prompt to
-   work the backlog, or `/bgsd-memory "..."` to bank a preference. The user should
-   never be left wondering what to do next.
+   work the backlog, or `/bgsd-modify-memory "..."` to bank a preference. The user
+   should never be left wondering what to do next.
+   Housekeeping belongs here too: check for stale merged branches with
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/clean.mjs" --dry-run --json`, and if more
+   than 5 bgsd branches are deletable, note it in-persona: "You've accumulated N
+   merged bgsd branches, sir — `/bgsd-clean` will show you a pruning plan before
+   touching anything."
 4. **A witty butler sign-off.** Close with a short, dry, in-character one-liner
    (JARVIS with a wink), e.g. "The build is yours, sir. I shall be right here when
    inspiration next strikes." Keep it to one line, and never let the wit soften a
@@ -360,9 +372,13 @@ Every scale runs the same conceptual pipeline — *route/plan → execute →
 
 ---
 
-## The live dashboard — `--gui` (open and close on command)
+## The live dashboard — on by default (open and close on command)
 
-Pass `--gui` to open a local web dashboard that tracks the whole pipeline live:
+The dashboard opens **automatically** for feature- and project-scale sessions
+(the `gui.auto` knob, default `true`); quick sessions stay terminal-only. Pass
+`--no-gui` to skip it for one session, `--gui` to force it open even on quick
+scale, or set `gui.auto: false` in `BGSD.md` to keep it manual. Either way it is
+a local web dashboard that tracks the whole pipeline live:
 the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2
 Integrator, and the Review Gate, each card showing the agent's GSD substage,
 status, and progress. Above the lanes, a **pipeline timeline** (Discuss →
@@ -377,15 +393,19 @@ on its own (polls every 1.5s) and reads only run state (read-only; it never
 touches git or `main`).
 
 ```
-/bgsd-sesh "…" --gui      # run the session and open the dashboard
+/bgsd-sesh "…"            # feature/project scale: dashboard opens on its own
+/bgsd-sesh "…" --no-gui   # this session stays terminal-only
+/bgsd-sesh "…" --gui      # force the dashboard open (even quick scale)
 ```
 
-**It opens automatically — no fumbling, no confirmation.** Two triggers, and both
-open it immediately:
+**It opens automatically — no fumbling, no confirmation.** Three triggers, and
+all open it immediately:
 
-1. **`--gui` is passed** → the session harness spawns the dashboard itself and
-   prints the URL. You do nothing.
-2. **You tell Kiwi to open it** ("open the gui", "open the dashboard", "show me
+1. **The session resolves to feature or project scale** (and `gui.auto` isn't
+   `false`, and `--no-gui` wasn't passed) → the session harness spawns the
+   dashboard itself and prints the URL. You do nothing.
+2. **`--gui` is passed** → same, at any scale.
+3. **You tell Kiwi to open it** ("open the gui", "open the dashboard", "show me
    the dashboard") at any point, before, during, or after fan-out → Kiwi runs
    `gui-live.mjs start` **right away** (detached, in the background) and hands you
    the clickable `http://localhost:<port>`. It does not ask whether to open it, it
@@ -483,6 +503,12 @@ Most downstream questions never reach you: the oracle (`oracle.mjs:answerQuestio
 auto-answers from the sealed spec + decisions + profile, and the rare leftovers
 are **batched** non-blockingly via `escalate.mjs`.
 
+**You get pinged even if you walked away.** The moment a unit parks in
+`needs_input`, a native macOS notification fires (via `notify-live.mjs`,
+fail-silent, no-op off macOS) so a stalled gate never waits for you to notice the
+terminal. Disable it by setting `notifications.os: false` in `BGSD.md` or by
+telling Kiwi ("stop sending me notifications").
+
 ---
 
 ## Conductor self-management — never die of context exhaustion
@@ -495,17 +521,22 @@ the same way** so a long sesh runs to completion instead of dying mid-pipeline.
 - **Watch your own usage.** Track how full your context window is as the sesh
   runs. When it crosses **`conductor.self_compact_at`** in `BGSD.md` (default
   **0.9 = 90%**), do not wait for an emergency.
-- **Compact and keep going.** Before compacting, write a brief handoff note —
-  current stage/wave, what each agent is doing, pending gates/questions, and the
-  exact next step — to the run record (`.bgsd/runs/<id>/RUN.md`, or a scratch
-  file) so nothing is lost. Then run **`/compact`** and resume *exactly* where you
-  left off, re-reading `RUN.md` + `run.json` + control files to rehydrate state.
+- **Compact and keep going.** Before compacting, write a STRUCTURED handoff —
+  not a free-form note — via the resume harness:
+  `node "${CLAUDE_PLUGIN_ROOT}/scripts/resume-live.mjs" handoff-write --run-id <id> --json '{"stage":"<stage>","wave":<n>,"agent_states":[{"id":"<agent>","phase":"<phase>","status":"<status>"}],"pending_gates":["<gate>"],"next_step":"<exact next step>"}'`
+  (`written_at` is auto-stamped; the payload is validated and the command exits
+  nonzero with readable errors if malformed — fix and retry, never skip). Then run
+  **`/compact`** and resume *exactly* where you left off: `/bgsd-resume` reads
+  `.bgsd/runs/<id>/compact-handoff.json`, surfaces it FIRST in the brief, and
+  consumes it (renames to `compact-handoff.consumed.json`) so it never replays.
+  Re-read `RUN.md` + `run.json` + control files to rehydrate the rest.
 - **It's autonomous.** This never blocks and never asks permission — it is
   routine upkeep, like an agent compaction. Announce it in one line under your
   pill ("Context is running high, sir — compacting and carrying on.") and
   continue. The pipeline keeps orchestrating across the compaction.
 - **Raise the bar per repo** by setting `conductor.self_compact_at` higher (e.g.
-  `0.95`) via `/bgsd-memory`, or lower it to compact earlier on tight machines.
+  `0.95`) via `/bgsd-modify-memory`, or lower it to compact earlier on tight
+  machines.
 
 ---
 
@@ -624,4 +655,6 @@ The old commands still work and map to internal session stages:
 | `/bgsd-pause` | park the running session cleanly and snapshot it (`PAUSE.md` + `paused` state) so `/bgsd-resume` continues at exactly the same stage |
 | `/bgsd-resume` | pick up an interrupted or paused session from `.bgsd/runs/` (auto-selects the latest in-flight or paused run) |
 | `/bgsd-gui` | open/close the live web dashboard tracking every agent by lane + GSD substage |
-| `/bgsd-memory` | save a setting or preference to `BGSD.md` in natural language (flags still override) |
+| `/bgsd-modify-memory` | save a setting or preference to `BGSD.md` in natural language (flags still override) |
+| `/bgsd-recall` | search past sessions ("what did we build last week?") from `.bgsd/` history |
+| `/bgsd-clean` | prune merged bgsd branches + stale worktrees (plan shown first) |
