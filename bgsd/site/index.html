@@ -1153,6 +1153,91 @@
         <span class="card-tag">defaults &rarr; you override, anytime</span>
       </div>
     </div>
+
+    <!-- model-selection table: full doctrine, reuses cmd-ref styling -->
+    <div class="section-header center" style="margin-top: 3.5rem;">
+      <h3 class="section-title" style="font-size: clamp(1.4rem, 3vw, 1.9rem);">How bgsd picks models</h3>
+      <p class="section-sub">
+        Reasoning-leverage high, token-volume low: spend the priciest model only where it counts.
+        These are <strong>defaults</strong> — the Conductor decides per unit and adapts, and you have the
+        final say. Override per-unit, per-session, by flag, in <code>BGSD.md</code>, or by just telling
+        the Conductor (it adapts on the fly, no restart).
+      </p>
+    </div>
+
+    <div class="cmd-ref-wrap">
+      <table class="cmd-ref-table">
+        <thead>
+          <tr>
+            <th scope="col">Role</th>
+            <th scope="col">Where in the workflow</th>
+            <th scope="col">Model · effort</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cmd-ref-name">Conductor (live session)</td>
+            <td class="cmd-ref-desc">orchestrates the whole run</td>
+            <td class="cmd-ref-desc">Opus (nudge + settings.json seed; can't force)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Decompose</td>
+            <td class="cmd-ref-desc">top-level, once, before Loop 1</td>
+            <td class="cmd-ref-desc">Fable · high</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Scout / research</td>
+            <td class="cmd-ref-desc">Loop-1 unit — reads the codebase</td>
+            <td class="cmd-ref-desc">Sonnet · low (Haiku if trivial)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Planner</td>
+            <td class="cmd-ref-desc">Loop-1 unit</td>
+            <td class="cmd-ref-desc">Fable · high (hard &ge;0.4); Opus · high (easy-but-planned)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Executor</td>
+            <td class="cmd-ref-desc">Loop-1 unit — builds</td>
+            <td class="cmd-ref-desc">Sonnet · xhigh default; Opus · xhigh (hard); Fable · medium only when <code>--fable</code>-armed</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Code review</td>
+            <td class="cmd-ref-desc">after execute, fresh context</td>
+            <td class="cmd-ref-desc">Opus · high</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Verifier / Tester</td>
+            <td class="cmd-ref-desc">verify each unit</td>
+            <td class="cmd-ref-desc">Haiku · low (Sonnet if verdict subtle)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Conflict / merge resolver</td>
+            <td class="cmd-ref-desc">Loop 2 merge into next</td>
+            <td class="cmd-ref-desc">Opus · high (Fable on low-confidence)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Decision oracle (proxy Q&amp;A)</td>
+            <td class="cmd-ref-desc">inside a unit's discuss/plan</td>
+            <td class="cmd-ref-desc">Fable · high (only when not deterministic)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Loop-2 fix agents</td>
+            <td class="cmd-ref-desc">Loop 2 integration</td>
+            <td class="cmd-ref-desc">Sonnet · medium</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Changelog / PR / doc-agg / routing</td>
+            <td class="cmd-ref-desc">review &amp; ship</td>
+            <td class="cmd-ref-desc">deterministic (no model)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="cmd-ref-note">
+      <code>--fable</code> arms Fable-eligibility for the toughest executors only (permission-gated);
+      it does not put the Conductor or planner on Fable.
+    </p>
   </div>
 </section>
 
