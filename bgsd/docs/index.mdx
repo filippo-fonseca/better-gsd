@@ -34,7 +34,7 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ## New in this release
 
-Recent additions to how the Conductor runs and talks to you (bgsd 0.5.4). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
+Recent additions to how the Conductor runs and talks to you (bgsd 0.5.5). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
 
 - **The full pipeline now actually runs.** As of 0.5.0, a plain `/bgsd-sesh` fires the entire two-loop pipeline end-to-end with zero friction. The old `--live` human-gate on the execution path itself is gone; only the `main`/`master` branch guard remains. Nothing writes to `main`.
 - **Per-unit GSD tailoring.** Each Loop-1 Pipeline Agent now runs a per-unit-tailored GSD flow in its own git worktree. The Conductor decides which GSD phases each unit gets: research on harder units, `/gsd-ui-phase` for UI units, `/gsd-ai-integration-phase` for AI units, a code-review gate on harder work. Trivial/quick units skip GSD phases and apply a direct fix. This is driven by the new `/bgsd-run-agent` command and `phaseconfig.mjs` resolver.

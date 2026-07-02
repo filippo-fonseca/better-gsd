@@ -10,7 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.5.4-informational.svg)](./bgsd/.claude-plugin/plugin.json)
+[![version](https://img.shields.io/badge/version-0.5.5-informational.svg)](./bgsd/.claude-plugin/plugin.json)
 [![tests](https://img.shields.io/badge/tests-44%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
