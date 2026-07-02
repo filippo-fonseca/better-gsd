@@ -99,7 +99,7 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
-You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/docs/commands-reference.mdx).**
+You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/docs/commands-reference.mdx).**
 
 ---
 

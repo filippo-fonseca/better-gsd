@@ -1,7 +1,7 @@
-# /bgsd-memory — tell Kiwi what to remember for this repo
+# /bgsd-modify-memory — tell Kiwi what to remember for this repo
 
 > **Kiwi · bgsd Conductor — persist a preference or setting**
-> `/bgsd-memory "<whatever you want remembered>"` saves it to this repo's
+> `/bgsd-modify-memory "<whatever you want remembered>"` saves it to this repo's
 > `BGSD.md` so it holds for every future session. Tell it a concrete setting
 > ("always verify headless", "default the pipeline to thorough", "never use the
 > cheap model for verification") and Kiwi writes the exact knob. Tell it a
@@ -14,10 +14,10 @@
 ## Usage
 
 ```
-/bgsd-memory "always verify headless"
-/bgsd-memory "default the pipeline mode to thorough"
-/bgsd-memory "keep PR descriptions to one paragraph"
-/bgsd-memory                       # with no argument: show what's currently remembered
+/bgsd-modify-memory "always verify headless"
+/bgsd-modify-memory "default the pipeline mode to thorough"
+/bgsd-modify-memory "keep PR descriptions to one paragraph"
+/bgsd-modify-memory                       # with no argument: show what's currently remembered
 ```
 
 ## How Kiwi handles it
@@ -56,7 +56,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/bgsdmd.mjs" remember "Keep PR descriptions t
 
 > If the `bgsdmd.mjs` CLI does not expose a subcommand you need, Kiwi calls the
 > exported `editSettingLive` / `addPreferenceLive` functions directly. The point
-> is: whatever you tell `/bgsd-memory`, it lands in `BGSD.md` and sticks.
+> is: whatever you tell `/bgsd-modify-memory`, it lands in `BGSD.md` and sticks.
 
 ---
 
@@ -71,6 +71,11 @@ setting override a flag the user typed for that run.
 ---
 
 ## Related
+
+| Command | What it does |
+|---------|--------------|
+| `/bgsd-modify-memory "<pref>"` | **Write** — modify a setting or preference in `BGSD.md`. |
+| `/bgsd-recall "<terms>"` | **Read** — search past session history and answer conversationally. |
 
 - `BGSD.md` — the settings file this writes to (settings block + Notes).
 - `bgsd/scripts/bgsdmd.mjs` — `editSettingLive`, `addPreferenceLive`, `rememberLive`.

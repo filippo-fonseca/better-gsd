@@ -101,7 +101,7 @@ export function rememberLive(bgsdDir, name, content) {
 }
 
 // ---------------------------------------------------------------------------
-// CLI — the front door for /bgsd-memory
+// CLI — the front door for /bgsd-modify-memory
 // ---------------------------------------------------------------------------
 
 const invokedDirectly =

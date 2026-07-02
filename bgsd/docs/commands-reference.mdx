@@ -19,7 +19,8 @@ In day-to-day use you only ever type one command, `/bgsd-sesh` (plus `/bgsd-init
 | [`/bgsd-init`](#bgsd-init) | setup | One-time, idempotent repo setup (also a `/bgsd-sesh` preflight). |
 | [`/bgsd-gui`](#bgsd-gui) | observability | Open, close, or update the live web dashboard. |
 | [`/bgsd-resume`](#bgsd-resume) | recovery | Pick up an interrupted session from `.bgsd/runs/`. |
-| [`/bgsd-memory`](#bgsd-memory) | settings | Save a preference or knob to `BGSD.md` in natural language. |
+| [`/bgsd-modify-memory`](#bgsd-modify-memory) | settings | Save a preference or knob to `BGSD.md` in natural language. |
+| [`/bgsd-recall`](#bgsd-recall) | history | Search past session records and answer conversationally. |
 | [`/bgsd-status`](#bgsd-status) | observability | The always-on, read-only live status view. |
 | [`/bgsd-queue`](#bgsd-queue) | backlog | Manage the fix-stream queue and the cross-session backlog. |
 | [`/bgsd-verify`](#bgsd-verify) | internal stage | Verify a running app against acceptance criteria. |
@@ -156,16 +157,16 @@ If no resumable session exists, `/bgsd-resume` is not blocked: it reports "no in
 
 ---
 
-## /bgsd-memory {#bgsd-memory}
+## /bgsd-modify-memory {#bgsd-modify-memory}
 
 **Persist a preference or setting.** Tell Kiwi in plain language what to remember for this repo and it writes the exact `BGSD.md` knob (for a known setting) or appends a bullet to the Notes section (for a free-form preference). Reads back at the start of every session.
 
 ### Usage
 
 ```
-/bgsd-memory "always verify headless"
-/bgsd-memory "default the pipeline mode to thorough"
-/bgsd-memory                       # no argument: show what's currently remembered
+/bgsd-modify-memory "always verify headless"
+/bgsd-modify-memory "default the pipeline mode to thorough"
+/bgsd-modify-memory                       # no argument: show what's currently remembered
 ```
 
 ### Argument
@@ -176,6 +177,28 @@ If no resumable session exists, `/bgsd-resume` is not blocked: it reports "no in
 | *(no argument)* | Show what is currently remembered. |
 
 **The one hard rule:** anything saved here is a default. A flag you type on a specific `/bgsd-sesh` always overrides the `BGSD.md` value for that session. Precedence is absolute: **flag > BGSD.md > built-in default.** Engine: `scripts/bgsdmd.mjs` (`set <dot.path> <value>` / `remember "<note>"`).
+
+---
+
+## /bgsd-recall {#bgsd-recall}
+
+**Search past session history.** Runs `kb.mjs --query "<terms>"` over the archived `.bgsd/seshs/` corpus and answers conversationally with concrete facts: what shipped, when, which run id, and which unit. Read-only — never modifies any record or setting.
+
+### Usage
+
+```
+/bgsd-recall "auth middleware"
+/bgsd-recall "what changed in the stripe layer"
+/bgsd-recall "what did we build last month"
+```
+
+### Argument
+
+| Argument | What it does |
+|---|---|
+| `"<search terms>"` | Free-text query. Matched against all `.md/.mdx/.json/.txt` files under `.bgsd/seshs/` by term frequency. |
+
+Engine: `scripts/kb.mjs --query "<terms>"`. Corpus: `.bgsd/seshs/<run-id>/` (archived sessions only; not in-flight runs). For live run state use `/bgsd-status`.
 
 ---
 

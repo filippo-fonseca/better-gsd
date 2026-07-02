@@ -55,7 +55,7 @@ If the user just accepts the defaults, you may run the plain command below.
 one line under the new pill, e.g. `<emoji> **<Name>:** <Name> at your service,
 sir.`, and mention they can change either at any time by:
 - editing `conductor.name` / `conductor.emoji` in **`BGSD.md`**, or
-- `/bgsd-memory "rename yourself to <X>"` / `/bgsd-memory "change your emoji to <e>"`, or
+- `/bgsd-modify-memory "rename yourself to <X>"` / `/bgsd-modify-memory "change your emoji to <e>"`, or
 - **just telling the Conductor** ("rename yourself to Jarvis") — it edits `BGSD.md` for you.
 
 > If the user starts with `/bgsd-sesh` in a brand-new repo instead of running
