@@ -15,9 +15,26 @@
  *   node resume-live.mjs               # plan to resume the latest interrupted run
  *   node resume-live.mjs <run-id>      # plan to resume a specific run
  *   node resume-live.mjs --plan-only   # explicit preview (same read-only output)
+ *   node resume-live.mjs handoff-write --run-id <id> [--json '<payload>']
+ *                                      # validate + write a compaction handoff to
+ *                                      # .bgsd/runs/<id>/compact-handoff.json
+ *                                      # (payload from --json, else stdin;
+ *                                      #  written_at auto-stamped if omitted)
+ *
+ * COMPACTION HANDOFF (read side): a real resume that finds a
+ * compact-handoff.json for the selected run surfaces it FIRST in the brief,
+ * then CONSUMES it by renaming to compact-handoff.consumed.json so it is never
+ * replayed on a later resume. `--plan-only` reads but never consumes.
  */
 
-import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { readAllControlFiles } from "./control.mjs";
@@ -25,7 +42,8 @@ import {
   summarizeRun,
   pickLatestResumable,
   findRun,
-  buildResumeSummary,
+  buildResumeBrief,
+  validateCompactHandoff,
 } from "./resume.mjs";
 import { resumePausedRun } from "./pause.mjs";
 import { resolveRepoRoot } from "./init-live.mjs";
@@ -138,13 +156,122 @@ export function planResume(repoRoot, runId = null) {
 }
 
 // ---------------------------------------------------------------------------
+// Compaction handoff (write / read / consume)
+// ---------------------------------------------------------------------------
+
+export function handoffPath(repoRoot, runId) {
+  return join(repoRoot, ".bgsd", "runs", runId, "compact-handoff.json");
+}
+
+/**
+ * Validate + write a compaction handoff for a run. `written_at` is auto-stamped
+ * when omitted (the write moment IS the handoff moment). Throws with every
+ * validation error joined into one readable message; the run dir must already
+ * exist (a handoff for a nonexistent run is always a typo).
+ *
+ * @returns {{ path: string, handoff: object }}
+ */
+export function writeCompactHandoff(repoRoot, runId, payload, nowFn = () => new Date().toISOString()) {
+  const runDir = join(repoRoot, ".bgsd", "runs", runId);
+  if (!existsSync(runDir)) {
+    throw new Error(`no run "${runId}" under .bgsd/runs — cannot write a handoff for it`);
+  }
+  const handoff = { ...payload };
+  if (handoff.written_at === undefined) handoff.written_at = nowFn();
+  const { ok, errors } = validateCompactHandoff(handoff);
+  if (!ok) {
+    throw new Error(`invalid compaction handoff:\n  - ${errors.join("\n  - ")}`);
+  }
+  const p = handoffPath(repoRoot, runId);
+  const tmp = p + ".tmp";
+  writeFileSync(tmp, JSON.stringify(handoff, null, 2), "utf8");
+  renameSync(tmp, p);
+  return { path: p, handoff };
+}
+
+/**
+ * Read a run's compact-handoff.json, if any. A missing file is the normal case
+ * ({ handoff: null, error: null }); a present-but-corrupt or invalid file is
+ * surfaced as an error string, never silently ignored (NFR-06).
+ *
+ * @returns {{ handoff: object|null, error: string|null }}
+ */
+export function readCompactHandoff(repoRoot, runId) {
+  const p = handoffPath(repoRoot, runId);
+  if (!existsSync(p)) return { handoff: null, error: null };
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(p, "utf8"));
+  } catch (err) {
+    return { handoff: null, error: `compact-handoff.json is not valid JSON: ${err.message}` };
+  }
+  const { ok, errors } = validateCompactHandoff(parsed);
+  if (!ok) return { handoff: null, error: `compact-handoff.json is invalid: ${errors.join("; ")}` };
+  return { handoff: parsed, error: null };
+}
+
+/**
+ * Mark a run's handoff consumed by renaming it to compact-handoff.consumed.json
+ * (kept as a record; never re-read by resume). Returns the consumed path, or
+ * null when there was nothing to consume.
+ */
+export function consumeCompactHandoff(repoRoot, runId) {
+  const p = handoffPath(repoRoot, runId);
+  if (!existsSync(p)) return null;
+  const consumed = join(repoRoot, ".bgsd", "runs", runId, "compact-handoff.consumed.json");
+  renameSync(p, consumed);
+  return consumed;
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
-export function main() {
+function parseFlags(args) {
+  const flags = {};
+  for (let i = 0; i < args.length; i++) {
+    if (!args[i].startsWith("--")) continue;
+    const key = args[i].slice(2);
+    const next = args[i + 1];
+    if (next && !next.startsWith("--")) { flags[key] = next; i++; }
+    else flags[key] = true;
+  }
+  return flags;
+}
+
+function handoffWriteCli(args) {
   const out = (s) => process.stdout.write(s);
   const repoRoot = resolveRepoRoot();
+  const flags = parseFlags(args);
+  const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : null;
+  if (!runId) {
+    throw new Error(`handoff-write requires --run-id <id>`);
+  }
+  let raw;
+  if (typeof flags.json === "string") {
+    raw = flags.json;
+  } else if (!process.stdin.isTTY) {
+    raw = readFileSync(0, "utf8");
+  } else {
+    throw new Error(`handoff-write needs a payload: pass --json '<...>' or pipe JSON on stdin`);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`handoff payload is not valid JSON: ${err.message}`);
+  }
+  const { path } = writeCompactHandoff(repoRoot, runId, payload);
+  out(`\nbgsd-resume handoff-write — repo: ${repoRoot}\n`);
+  out(`  Handoff recorded for ${runId} → ${path}\n`);
+  out(`  The next /bgsd-resume of this run will surface it first, then consume it.\n\n`);
+}
+
+export function main() {
+  const out = (s) => process.stdout.write(s);
   const rawArgs = process.argv.slice(2);
+  if (rawArgs[0] === "handoff-write") return handoffWriteCli(rawArgs.slice(1));
+  const repoRoot = resolveRepoRoot();
   const planOnly = rawArgs.includes("--plan-only") || rawArgs.includes("--dry-run");
   const args = rawArgs.filter((a) => a !== "--plan-only" && a !== "--dry-run");
   const runId = args[0] ?? null;
@@ -157,8 +284,19 @@ export function main() {
     out(`  Start fresh with /bgsd-sesh "<what you need>", or check /bgsd-status.\n\n`);
     return;
   }
-  const summary = buildResumeSummary(run);
+  const { handoff, error: handoffError } = readCompactHandoff(repoRoot, run.run_id);
+  const summary = buildResumeBrief(run, handoff);
   for (const line of summary.lines) out(`  ${line}\n`);
+  if (handoffError) {
+    out(`  WARNING: a compaction handoff exists for ${run.run_id} but is unusable — ${handoffError}\n`);
+    out(`  Resuming from control files alone; inspect/remove compact-handoff.json by hand.\n`);
+  }
+  if (handoff && !planOnly) {
+    const consumed = consumeCompactHandoff(repoRoot, run.run_id);
+    out(`\n  Handoff consumed → ${consumed} (will not replay on the next resume).\n`);
+  } else if (handoff && planOnly) {
+    out(`\n  (preview) Handoff left in place — a real resume will consume it.\n`);
+  }
 
   // A PAUSED run is restored to its exact recorded state on a real resume (never
   // on a read-only preview). This clears the paused marker and moves run.json

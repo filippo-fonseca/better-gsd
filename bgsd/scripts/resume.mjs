@@ -128,6 +128,119 @@ export function findRun(runs, runId) {
 }
 
 /**
+ * Validate a Conductor compaction handoff (the structured note the Conductor
+ * writes to `.bgsd/runs/<run-id>/compact-handoff.json` right before running
+ * /compact, so the post-compaction session rehydrates from a schema'd record
+ * instead of a free-form RUN.md note).
+ *
+ * Required shape:
+ *   { stage: string, wave: integer >= 0,
+ *     agent_states: { id, phase, status }[],
+ *     pending_gates: string[],
+ *     next_step: string, written_at: ISO string }
+ *
+ * Collects every problem instead of stopping at the first, so the writer gets
+ * one readable report. Never throws.
+ *
+ * @param {unknown} obj
+ * @returns {{ ok: boolean, errors: string[] }}
+ */
+export function validateCompactHandoff(obj) {
+  const errors = [];
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+    return { ok: false, errors: ["handoff must be a plain object"] };
+  }
+  const nonEmptyString = (field) => {
+    if (typeof obj[field] !== "string" || obj[field].trim() === "") {
+      errors.push(`"${field}" must be a non-empty string`);
+      return false;
+    }
+    return true;
+  };
+  nonEmptyString("stage");
+  nonEmptyString("next_step");
+  if (
+    typeof obj.wave !== "number" ||
+    !Number.isInteger(obj.wave) ||
+    obj.wave < 0
+  ) {
+    errors.push(`"wave" must be a non-negative integer`);
+  }
+  if (!Array.isArray(obj.agent_states)) {
+    errors.push(`"agent_states" must be an array of { id, phase, status }`);
+  } else {
+    obj.agent_states.forEach((a, i) => {
+      if (a === null || typeof a !== "object" || Array.isArray(a)) {
+        errors.push(`"agent_states[${i}]" must be a plain object`);
+        return;
+      }
+      for (const field of ["id", "phase", "status"]) {
+        if (typeof a[field] !== "string" || a[field].trim() === "") {
+          errors.push(`"agent_states[${i}].${field}" must be a non-empty string`);
+        }
+      }
+    });
+  }
+  if (!Array.isArray(obj.pending_gates)) {
+    errors.push(`"pending_gates" must be an array of strings`);
+  } else {
+    obj.pending_gates.forEach((g, i) => {
+      if (typeof g !== "string") {
+        errors.push(`"pending_gates[${i}]" must be a string`);
+      }
+    });
+  }
+  if (typeof obj.written_at !== "string" || Number.isNaN(Date.parse(obj.written_at))) {
+    errors.push(`"written_at" must be an ISO date string`);
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Human-readable lines for a validated compaction handoff: stage/wave header,
+ * one line per agent, pending gates, and the recorded next step.
+ *
+ * @param {object} handoff  A handoff that passed validateCompactHandoff.
+ * @returns {string[]}
+ */
+export function buildHandoffLines(handoff) {
+  const lines = [
+    `Compaction handoff on record (written ${handoff.written_at}) — picking up mid-flight state:`,
+    `  Stage: ${handoff.stage} · wave ${handoff.wave}`,
+  ];
+  if (handoff.agent_states.length === 0) {
+    lines.push(`  Agents: none in flight at handoff time`);
+  }
+  for (const a of handoff.agent_states) {
+    lines.push(`  · ${a.id}  [${a.status}] @ ${a.phase}`);
+  }
+  lines.push(
+    handoff.pending_gates.length > 0
+      ? `  Pending gates: ${handoff.pending_gates.join(", ")}`
+      : `  Pending gates: none`
+  );
+  lines.push(`  Next step: ${handoff.next_step}`);
+  return lines;
+}
+
+/**
+ * The full resume brief: the standard resume summary, with a compaction
+ * handoff (when one is present) surfaced FIRST — the handoff is the freshest,
+ * most specific record of where the Conductor stood, so it leads the brief
+ * and the control-file summary follows as corroboration.
+ *
+ * @param {object|null} run       A summary from summarizeRun/pickLatestResumable.
+ * @param {object|null} [handoff] A validated compaction handoff, or null.
+ * @returns {{ run_id: string|null, pending: number, paused: boolean,
+ *             resume_state: string|null, handoff: object|null, lines: string[] }}
+ */
+export function buildResumeBrief(run, handoff = null) {
+  const base = buildResumeSummary(run);
+  if (!handoff) return { ...base, handoff: null };
+  return { ...base, handoff, lines: [...buildHandoffLines(handoff), ...base.lines] };
+}
+
+/**
  * Build a compact, human-readable resume plan from a run summary. Lists each
  * unit with a glyph (✓ terminal, … in-flight) and ends with the next step.
  *

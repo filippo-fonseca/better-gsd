@@ -16,6 +16,10 @@
  * R09 — summarizeRun: a paused run is resumable + surfaces resume_state (PAUSE-01)
  * R10 — pickLatestResumable: a paused all-terminal run still wins over finished
  * R11 — buildResumeSummary: paused run renders the paused header + resume step
+ * R12 — validateCompactHandoff: happy path (full valid handoff, empty arrays ok)
+ * R13 — validateCompactHandoff: sad paths (missing/mistyped fields, all collected)
+ * R14 — buildResumeBrief: handoff lines lead the brief, summary follows
+ * R15 — buildResumeBrief: no handoff -> identical to buildResumeSummary + handoff:null
  */
 
 import assert from "node:assert/strict";
@@ -27,6 +31,8 @@ import {
   pickLatestResumable,
   findRun,
   buildResumeSummary,
+  validateCompactHandoff,
+  buildResumeBrief,
 } from "./resume.mjs";
 
 let passed = 0;
@@ -181,6 +187,90 @@ test("R11 — buildResumeSummary: paused run renders the paused header + resume 
   assert.ok(/PAUSED run paused-run/.test(out.lines[0]), "header calls out the paused run");
   assert.ok(out.lines.some((l) => /restoring to state "executing"/.test(l)));
   assert.ok(out.lines.some((l) => /PAUSE\.md/.test(l)), "next-step line points at the snapshot");
+});
+
+const validHandoff = () => ({
+  stage: "loop1",
+  wave: 2,
+  agent_states: [
+    { id: "u1", phase: "execute", status: "running" },
+    { id: "u2", phase: "verify", status: "blocked" },
+  ],
+  pending_gates: ["review-gate:u2"],
+  next_step: "answer u2's blocker, then re-check the wave",
+  written_at: "2026-07-01T10:00:00.000Z",
+});
+
+test("R12 — validateCompactHandoff: happy path (full valid handoff, empty arrays ok)", () => {
+  assert.deepEqual(validateCompactHandoff(validHandoff()), { ok: true, errors: [] });
+  const minimal = { ...validHandoff(), agent_states: [], pending_gates: [], wave: 0 };
+  assert.deepEqual(validateCompactHandoff(minimal), { ok: true, errors: [] });
+});
+
+test("R13 — validateCompactHandoff: sad paths (missing/mistyped fields, all collected)", () => {
+  for (const bad of [null, [], "x", 7]) {
+    const r = validateCompactHandoff(bad);
+    assert.equal(r.ok, false);
+    assert.ok(/plain object/.test(r.errors[0]));
+  }
+
+  const r1 = validateCompactHandoff({});
+  assert.equal(r1.ok, false);
+  for (const field of ["stage", "wave", "agent_states", "pending_gates", "next_step", "written_at"]) {
+    assert.ok(r1.errors.some((e) => e.includes(`"${field}"`)), `missing "${field}" must be reported`);
+  }
+
+  const r2 = validateCompactHandoff({
+    ...validHandoff(),
+    stage: "  ",
+    wave: 1.5,
+    agent_states: [{ id: "u1", phase: "execute" }, "nope"],
+    pending_gates: ["ok", 42],
+    written_at: "not-a-date",
+  });
+  assert.equal(r2.ok, false);
+  assert.ok(r2.errors.some((e) => e.includes(`"stage"`)));
+  assert.ok(r2.errors.some((e) => e.includes(`"wave"`) && /non-negative integer/.test(e)));
+  assert.ok(r2.errors.some((e) => e.includes(`agent_states[0].status`)));
+  assert.ok(r2.errors.some((e) => e.includes(`agent_states[1]`) && /plain object/.test(e)));
+  assert.ok(r2.errors.some((e) => e.includes(`pending_gates[1]`)));
+  assert.ok(r2.errors.some((e) => e.includes(`"written_at"`)));
+
+  assert.equal(validateCompactHandoff({ ...validHandoff(), wave: -1 }).ok, false);
+});
+
+test("R14 — buildResumeBrief: handoff lines lead the brief, summary follows", () => {
+  const run = summarizeRun({
+    runId: "run-h",
+    controls: [ctl("u1", "done"), ctl("u2", "running", { phase: "execute" })],
+    mtime: 1,
+  });
+  const brief = buildResumeBrief(run, validHandoff());
+  assert.equal(brief.run_id, "run-h");
+  assert.equal(brief.handoff.stage, "loop1");
+  assert.ok(/Compaction handoff/.test(brief.lines[0]), "handoff header must lead the brief");
+  assert.ok(/Stage: loop1 · wave 2/.test(brief.lines[1]));
+  assert.ok(brief.lines.some((l) => /u2\s+\[blocked\] @ verify/.test(l)));
+  assert.ok(brief.lines.some((l) => /Pending gates: review-gate:u2/.test(l)));
+  assert.ok(brief.lines.some((l) => /Next step: answer u2's blocker/.test(l)));
+  const handoffNextIdx = brief.lines.findIndex((l) => /Next step:/.test(l));
+  const summaryHeaderIdx = brief.lines.findIndex((l) => /Resuming run run-h/.test(l));
+  assert.ok(summaryHeaderIdx > handoffNextIdx, "control-file summary follows the handoff");
+
+  const empty = buildResumeBrief(run, { ...validHandoff(), agent_states: [], pending_gates: [] });
+  assert.ok(empty.lines.some((l) => /Agents: none in flight/.test(l)));
+  assert.ok(empty.lines.some((l) => /Pending gates: none/.test(l)));
+});
+
+test("R15 — buildResumeBrief: no handoff -> identical to buildResumeSummary + handoff:null", () => {
+  const run = summarizeRun({ runId: "run-p", controls: [ctl("u1", "running")], mtime: 1 });
+  const brief = buildResumeBrief(run);
+  assert.equal(brief.handoff, null);
+  assert.deepEqual(brief.lines, buildResumeSummary(run).lines);
+
+  const none = buildResumeBrief(null, null);
+  assert.equal(none.run_id, null);
+  assert.ok(/no resumable/i.test(none.lines[0]));
 });
 
 process.stdout.write(`\nresume.mjs: ${passed} passed, ${failed} failed\n`);
