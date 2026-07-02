@@ -16,7 +16,7 @@ unless you explicitly pass `--live` after reading the human-gated checklist.
 
 ```
 created
-  → decomposed     (Opus/xhigh decompose call; units + DAG written to RUN.md)
+  → decomposed     (Fable/high decompose call; units + DAG written to RUN.md)
   → spawning       (worktrees planned; spawn plan printed in --dry-run)
   → executing      (scheduler dispatches units wave-by-wave)
   → verifying      (Loop 1 per worktree: verify→fix until PASS/blocked)

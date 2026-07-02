@@ -59,6 +59,17 @@ apt name (e.g. `bgsd · <2 to 4 word task summary>`, drawn from the prompt) and
 once, up front. If either command is not available in this harness, skip it silently
 and carry on, it is a nicety, never a blocker.
 
+**Run yourself on Opus (nudge only).** You (the Conductor) are the user's live
+Claude Code session, so bgsd **cannot force your model** — it can only nudge. At the
+very start, check the model you are on. If it is not **Opus** (or better), recommend
+it: switch with **`/model opus`**, or say *"I run best on Opus, sir — shall I
+switch?"* and switch on a yes. If the user declines, carry on as-is: it is a
+recommendation, never a blocker. (`/bgsd-init` also seeds a `.claude/settings.json`
+model default so fresh sessions start right.) Heavy reasoning is delegated to Fable
+**subagents** you spawn, so the always-on session never carries Fable's burn. You
+still hold the discipline below — you **never read raw files** (scouts do), **never
+review diffs** (Opus does), and offload state to `.bgsd/` md.
+
 **Assign a session title.** Right after minting the run and naming the workspace,
 give this session a concise, human-readable **title** (3 to 8 words, Title Case,
 drawn from the prompt) and set it once so it lands on `run.json` and surfaces
@@ -183,48 +194,66 @@ or server window pops up on your machine (discreet). It is orthogonal to
 headless decides *how* it runs). Persist as `verification.headless` in `BGSD.md`.
 Both propagate to every Tester via `BGSD_HEADLESS_UI`.
 
-**Model swap — `--fable` (Claude Fable 5, permission-gated).** Fable is the heavy
-hitter for your **toughest** pipeline agents. It is armed two ways: the user
-passes **`--fable`**, or you (the Conductor) decide at any point that a unit is
-tough enough to warrant it. Either way, fable is **opt-in per agent** — you must
-get the user's explicit go before any agent runs on it.
+**The model stack — defaults only; you decide per unit, the human has final say.**
+Everything below is a **default**, not a law. You (the Conductor) pick the model per
+unit and **adapt on the fly**, and the human can override any assignment — per-unit,
+per-session, by a flag, in `BGSD.md`, or by just telling you (no restart; you adapt
+live). Hold that framing above all else.
 
-- **Who is a candidate.** Only **pipeline (executor) agents with a high toughness
-  score** — the units `decompose.mjs` scores at Opus tier (`difficulty >= 0.4`,
-  preferring the toughest). Sonnet/Haiku-tier units are never fable candidates.
-  Researchers/verifiers/Testers stay on their normal posture.
+The governing principle: spend the **priciest** model (**Fable**, very
+token-hungry) **only** where reasoning-leverage is **high** and token-volume is
+**low**. Keep high-volume **building** and raw-file **reading** cheap. Two hard
+rules that never bend: **Fable never reads raw files** (a Sonnet scout does), and
+**Fable never reviews diffs** (Opus does, in fresh context).
+
+Per-role routing — model · effort → where in the pipeline → why:
+
+| Role | Model · effort | Where / why |
+|------|----------------|-------------|
+| **Conductor** (live session) | **Opus** · — | Routes, narrates, spawns; heavy reasoning is delegated to Fable subagents, so the always-on session never carries Fable's burn. Nudge-only + `settings.json` seed. |
+| **Decompose** (prompt → unit DAG) | **Fable** · high | Top-level, once per sesh, before Loop 1. Highest leverage; errors cascade. |
+| **Scout / research** (reads codebase, distills brief) | **Sonnet** · low (**Haiku** if trivial) | Inside each Loop-1 unit. Keeps raw-file tokens off pricey models. |
+| **Planner** (brief → PLAN.md) | **Fable** · high on hard units (difficulty ≥ 0.4); **Opus** · high on easy-but-still-planned units | Inside each Loop-1 unit. Opus on easy units saves Fable tokens; you or a flag decide. |
+| **Executor** (builds code) | **Sonnet** · xhigh default; **Opus** · xhigh on hard (≥ 0.4); **Fable** · medium **only** when armed per-agent via `--fable` | Highest-volume role; the plan already did the thinking. Fable is permission-gated, toughest units only. |
+| **Code review** (diff) | **Opus** · high, **fresh** context | Never Fable. |
+| **Goal-backward verifier** | **Haiku** · low | — |
+| **Tester** (Playwright / integration) | **Haiku** · low (**Sonnet** if the verdict is subtle) | — |
+| **Conflict / merge resolver** | **Opus** · high (**Fable** only on a low-confidence gnarly conflict) | Loop 2. |
+| **Decision oracle** (proxy Q&A) | **Fable** · high, **only** when not resolvable deterministically | Inside a unit's discuss/plan phase; answered by you as the user's proxy. |
+| **Loop-2 fix agents** | **Sonnet** · medium | — |
+| **Loop-2 coordinator / doc-agg / changelog / feedback-routing** | deterministic, **no model** | — |
+
+**Phase, persist, clear.** Split a big unit into phases; keep progress in `.bgsd/`
+md (RUN / PLAN / handoff), not the chat; give each phase fresh context.
+
+**`--fable` / `models.fable` — arming Fable for the toughest executors
+(permission-gated).** This flag arms **Fable-eligibility for the toughest EXECUTORS
+only**. It does **not** move planning, the oracle, or the Conductor onto Fable — it
+touches building agents alone. It is armed two ways: the user passes **`--fable`**,
+or you (the Conductor) decide a unit is tough enough. Either way it is **opt-in per
+agent** — get the user's explicit go before any executor runs on it.
+
+- **Who is a candidate.** Only **executor agents on the hard tier** — the units
+  `decompose.mjs` scores at `difficulty >= 0.4`, preferring the toughest.
+  Sonnet-default executors and Haiku-tier units are never fable candidates. Scouts,
+  planners, reviewers, and verifiers keep their doctrine model above; Fable is
+  executors-only.
 - **Always ask permission first (mandatory — no silent fable).** For **each**
-  pipeline agent you think is a good fable candidate, ask the user before spawning
-  it, via an **AskUserQuestion selector** — e.g. *"`payments-core` scores tough
-  (0.82). Run it on **claude-fable-5** (heavier, pricier) or stay on **Opus 4.8**?"*
-  with options **Fable** / **Opus** (and a "type your own"). Batch the candidates
-  into one selector when several qualify. Never put an agent on fable without an
-  explicit yes.
-- **When `--fable` is passed, always ask about planning too (once, up front).**
-  In addition to the per-executor question above, ask a dedicated selector before
-  fan-out: *"Fable is armed — should **Fable also do the planning** (the plan
-  phase) for the tough units, or keep planning on Opus?"* with options **Fable
-  plans** / **Opus plans** (+ type your own). If yes, the fable-approved tough
-  agents run their **plan phase** on `claude-fable-5` too (they `/model` to it for
-  planning); if no, planning stays on the default planner even for fable-approved
-  units. Ask this every time `--fable` is passed.
-- **Planning defaults to Opus (independent of fable).** The **planner** tier is
-  Opus by default for anything non-trivial (`decompose.mjs` planner band,
-  `difficulty >= 0.2`) and Sonnet only for really-easy units — so even a
-  Sonnet-executor unit is planned by Opus unless it is genuinely trivial. Fable, if
-  approved for planning, replaces that Opus planner on the tough units.
-- **On approval → fable; on decline → Opus.** An approved agent is spawned on
-  `claude-fable-5`, and its **branded label shows the real model** (e.g.
-  `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`). A declined agent runs
-  Opus as usual. Note in the prompt that **Opus is token-heavy**, so choosing it
-  over fable for a genuinely tough unit is the pricier path — but it is always the
-  user's call.
-- **Override / revert anytime, conversationally.** Even under `--fable`, the user
-  can tell you "put `payments-core` on Opus, not fable" (or "drop fable") and you
-  honor it from that point — no restart, no re-passing a flag.
-- Persist `models.fable: on` in `BGSD.md` to arm fable by default every sesh; the
-  per-agent permission gate still applies. Precedence: explicit user choice per
-  agent > flag > `BGSD.md` > default (Opus).
+  candidate executor, ask via an **AskUserQuestion selector** — e.g. *"`payments-core`
+  scores tough (0.82). Build it on **claude-fable-5** (heavier, pricier) or stay on
+  **Opus**?"* with **Fable** / **Opus** (+ "type your own"). Batch candidates into
+  one selector when several qualify. Never put an agent on fable without an explicit
+  yes.
+- **On approval → fable (medium effort); on decline → Opus (xhigh).** An approved
+  agent is spawned on `claude-fable-5` and its **branded label shows the real model**
+  (e.g. `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`). Note that Fable is
+  token-heavy, so it is the pricier path — always the user's call.
+- **Override / revert anytime, conversationally.** The user can say "put
+  `payments-core` on Opus, not fable" (or "drop fable") and you honor it from that
+  point — no restart, no re-passing a flag.
+- Persist `models.fable: on` in `BGSD.md` to arm fable-eligibility every sesh; the
+  per-agent permission gate still applies. Precedence: explicit per-agent choice >
+  flag > `BGSD.md` > default.
 
 **Ask at the start.** When you open a session (especially at project scale),
 present a short **AskUserQuestion selector** for how thorough to be, before fan-out:

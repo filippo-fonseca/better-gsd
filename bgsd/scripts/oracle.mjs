@@ -778,7 +778,10 @@ export function answerQuestion(oracle, question, { threshold, phase, writeFn } =
     };
   }
 
-  // Below threshold → escalate (never auto-answer below threshold, NFR-11)
+  // Below threshold → escalate (never auto-answer below threshold, NFR-11).
+  // The oracle store/matching/scoring above is deterministic (zero model calls);
+  // only when it cannot answer deterministically does the escalation hand off to
+  // the proxy-Q&A layer, which reasons on Fable/high (high-leverage, low-volume).
   const sourceRanking = scored
     .sort((a, b) => b.raw - a.raw)
     .map((c) => `${c.authority}(${(c.raw).toFixed(3)})`);

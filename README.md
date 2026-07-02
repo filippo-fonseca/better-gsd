@@ -10,8 +10,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.6.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
-[![tests](https://img.shields.io/badge/tests-44%20passing-brightgreen.svg)](#architecture-at-a-glance)
+[![version](https://img.shields.io/badge/version-0.7.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
+[![tests](https://img.shields.io/badge/tests-47%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [Landing page](https://site-filippo-fonsecas-projects.vercel.app) · [Docs](./bgsd/docs) · [Contributing](./CONTRIBUTING.md) · [Architecture](./ARCHITECTURE.md)
@@ -109,12 +109,12 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
-| `--fable` | Arm **Claude Fable 5** for your toughest pipeline agents (high difficulty / Opus-tier units). The Conductor **asks permission per candidate** before putting any agent on fable; you can keep it on Opus (token-heavy) for any agent, or drop fable, anytime by telling the Conductor. Fable is never used silently. |
+| `--fable` | Arm **Claude Fable 5** eligibility for your toughest **executor** agents only (permission-gated). The Conductor **asks permission per candidate** before putting any executor on Fable; you can keep it on Opus (token-heavy) for any agent, or drop Fable, anytime by telling the Conductor. It does **not** put the Conductor or planner on Fable, and Fable is never used silently. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
-You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
+You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), **`/bgsd-clean`** (prune merged bgsd branches and their stale worktrees), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
 
 ---
 
@@ -134,9 +134,9 @@ Throughout, the Conductor leads every message with a name pill — `🥝 Kiwi:` 
 
 ### Live dashboard (`/bgsd-gui`)
 
-When you want a bird's-eye view of the whole pipeline, pass `--gui` (or run `/bgsd-gui` at any point). The Conductor opens a local web dashboard that shows every agent in real time: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate. Each card displays the agent's current GSD substage, status, and progress. You can watch the entire run move through the pipeline — unparalleled visibility into what every agent is actually doing.
+For feature- and project-scale sessions the dashboard **opens on its own** (controlled by the `gui.auto` knob in `BGSD.md`, default on); pass `--no-gui` to suppress it, or `--gui` to force it even on a quick fix. The Conductor opens a local web dashboard that shows every agent in real time: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate. Each card displays the agent's current GSD substage, status, and progress. You can watch the entire run move through the pipeline: unparalleled visibility into what every agent is actually doing.
 
-The terminal is already kept legible by the Conductor's per-message narration, so the dashboard is not required. But when you are running many agents at once and want to see the full picture without scrolling, `/bgsd-gui` gives you an animated full-pipeline view you can watch live.
+The terminal is already kept legible by the Conductor's per-message narration, so the dashboard is not required. But when you are running many agents at once and want to see the full picture without scrolling, it gives you an animated full-pipeline view you can watch live (and it now refreshes without any flicker: it only re-renders when the run state actually changes).
 
 ---
 
@@ -145,7 +145,7 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 | Feature | What it gives you |
 |---------|-------------------|
 | One front door | `/bgsd-sesh "..."` is the entire interface; the Conductor runs every stage for you. |
-| Auto-scale | The same pipeline sized to the job (quick / feature / project), overridable by flag. |
+| Auto-scale, explained | The same pipeline sized to the job (quick / feature / project), overridable by flag; the Conductor prints a one-line reason for every sizing decision. |
 | Real verification | A Playwright Tester driving the app plus a goal-backward code verifier; a four-rung driver ladder (console, network, DOM, vision). |
 | No silent green | Insufficient evidence yields `INSUFFICIENT_EVIDENCE`; a missing MCP yields `BLOCKED`. Never a fabricated `PASS`. |
 | Parallel worktrees | One isolated git worktree per unit, with `.env*` files copied in so apps actually boot. |
@@ -153,10 +153,31 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 | Cross-session backlog | Defer scope with `/bgsd-queue`; a no-prompt sesh pulls the next item. |
 | Verification-depth knob | `--no-usage-verification` for code-only verification on non-UI changes. |
 | Per-agent context management | Watches each roughly 1M-token agent, compacts at 0.70 and relaunches at 0.90 of its window. |
-| Resume | `/bgsd-resume` picks an interrupted session back up from `.bgsd/runs/`. |
-| Live dashboard | `--gui` opens a colorful web view of every agent by lane and GSD substage. |
+| Resume, losslessly | `/bgsd-resume` picks an interrupted or compacted session back up from `.bgsd/runs/`, reading a structured handoff so it lands exactly where it left off. |
+| Live dashboard, auto-opened | `--gui` opens a colorful web view of every agent by lane and GSD substage; it auto-opens for feature/project sessions (`gui.auto`) and refreshes without flicker. |
+| Walk-away notifications | A native macOS notification pings you when a unit needs your input, so you can leave the terminal (`notifications.os`). |
+| Cleanup | `/bgsd-clean` prunes merged bgsd branches and their stale worktrees; plan-first, and it never touches `next`/`main`. |
 | Settings as a file | `BGSD.md` holds your knobs; tell the Conductor a preference in chat and it self-edits the file. |
-| Memory | Every session is recorded under `.bgsd/`; any Claude can read that history later. |
+| Memory and recall | Every session is recorded under `.bgsd/`; ask `/bgsd-recall "..."` for a conversational answer about past work. |
+
+### How bgsd picks models
+
+The guiding principle: spend the priciest, token-hungry model (**Fable**) **only** where reasoning-leverage is high and token-volume is low; keep building and raw-file reading cheap. Fable never reads raw files (a Sonnet scout does) and never reviews diffs (Opus does). bgsd can only guarantee a *subagent's* model (set at spawn); the Conductor is your live session, so bgsd nudges it via `/model` and seeds a `.claude/settings.json` model default at init.
+
+| Role | Where | Model · effort |
+|------|-------|----------------|
+| Conductor (live session) | orchestrates the run | Opus (nudge + `settings.json`) |
+| Decompose | top-level, before Loop 1 | Fable · high |
+| Scout / research | Loop-1 unit, reads files | Sonnet · low (Haiku if trivial) |
+| Planner | Loop-1 unit | Fable · high (hard); Opus · high (easy) |
+| Executor | Loop-1 unit, builds | Sonnet · xhigh; Opus (hard); Fable · medium only if `--fable`-armed |
+| Code review | fresh context | Opus · high |
+| Verifier / Tester | verify | Haiku · low |
+| Conflict resolver | Loop 2 | Opus · high |
+| Oracle (proxy Q&A) | in-unit decisions | Fable · high (when not deterministic) |
+| Loop-2 fix | Loop 2 | Sonnet · medium |
+
+These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, by flag, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). `--fable` (or `models.fable`) arms Fable-**eligibility for the toughest executors only** (permission-gated); it does not put the Conductor or planner on Fable.
 
 ---
 
@@ -165,7 +186,7 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 - The plugin lives in [`bgsd/`](./bgsd): commands in [`bgsd/commands`](./bgsd/commands), the tester agent in [`bgsd/agents`](./bgsd/agents), the engine in [`bgsd/scripts`](./bgsd/scripts), docs in [`bgsd/docs`](./bgsd/docs), and the landing page in [`bgsd/site`](./bgsd/site).
 - A thin npm launcher lives in [`installer/`](./installer).
 - The engine is written as **pure, dependency-injected** modules (`bgsd/scripts/*.mjs`) paired with a `*-live.mjs` seam that wires real git and filesystem access and guards every mutation behind `--live` and a not-production-branch check.
-- Tests are home-grown `bgsd/scripts/test-*.mjs` files (`node:assert/strict`, a local `test()` runner). There are **40** of them today, and all must exit 0. Run the suite with:
+- Tests are home-grown `bgsd/scripts/test-*.mjs` files (`node:assert/strict`, a local `test()` runner). There are **47** of them today, and all must exit 0. Run the suite with:
 
   ```sh
   for t in bgsd/scripts/test-*.mjs; do node "$t"; done

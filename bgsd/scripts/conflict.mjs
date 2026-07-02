@@ -442,7 +442,8 @@ export function computeMergeOrder({ waves, unitStatuses, edges, alreadyMerged = 
  * @param {Function} opts.resolverFn
  *   async (unitId, conflicts, runId) =>
  *     { confidence: number, resolution: object, summary: string }
- *   INJECTED. In tests: mock.  In live: invokes the Opus merge-resolver agent.
+ *   INJECTED. In tests: mock.  In live: invokes the Opus/high
+ *   merge-resolver agent (Fable only on a low-confidence, gnarly conflict).
  * @param {Function} opts.escalateFn
  *   async (unitId, conflictInfo) => void
  *   INJECTED. Called when resolver confidence is below threshold.

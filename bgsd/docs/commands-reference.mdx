@@ -21,6 +21,7 @@ In day-to-day use you only ever type one command, `/bgsd-sesh` (plus `/bgsd-init
 | [`/bgsd-resume`](#bgsd-resume) | recovery | Pick up an interrupted session from `.bgsd/runs/`. |
 | [`/bgsd-modify-memory`](#bgsd-modify-memory) | settings | Save a preference or knob to `BGSD.md` in natural language. |
 | [`/bgsd-recall`](#bgsd-recall) | history | Search past session records and answer conversationally. |
+| [`/bgsd-clean`](#bgsd-clean) | maintenance | Prune merged bgsd branches and their stale git worktrees. |
 | [`/bgsd-status`](#bgsd-status) | observability | The always-on, read-only live status view. |
 | [`/bgsd-queue`](#bgsd-queue) | backlog | Manage the fix-stream queue and the cross-session backlog. |
 | [`/bgsd-verify`](#bgsd-verify) | internal stage | Verify a running app against acceptance criteria. |
@@ -59,7 +60,7 @@ A `--live` gate protects every irreversible boundary. Real merges and `gh pr cre
 | `--no-usage-verification` | none | Code-only verification: still runs the goal-backward gsd-verifier, but skips the Playwright UI usage testing. Sets `BGSD_USAGE_TESTING=0`. Persist as `verification.usage_testing`. |
 | `--headless-ui` | none | Runs Playwright headless (no visible browser or server window, discreet). Sets `BGSD_HEADLESS_UI=1`. Persist as `verification.headless`. |
 | `--gui` | none | Opens the live web dashboard for the run and prints the URL. See [`/bgsd-gui`](#bgsd-gui). |
-| `--fable` | none | Arm **Claude Fable 5** for the toughest pipeline (executor) agents — high-difficulty / Opus-tier units (`difficulty >= 0.4`). Armed by passing `--fable` OR by the Conductor judging a unit tough enough at any time. Permission-gated and never silent: for each candidate the Conductor asks you (an AskUserQuestion selector — **Fable / Opus**) before that agent runs on Fable. Declining keeps **Opus** (token-heavy, so the pricier path for a genuinely tough unit). You can override any agent back to Opus, or drop Fable entirely, conversationally — no restart. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Researchers, verifiers, and Testers are never Fable candidates. |
+| `--fable` | none | Arm **Fable-eligibility** for the toughest **executor** agents only — high-difficulty units (`difficulty >= 0.4`). It does **not** put the Conductor or the planner on Fable; it only makes a hard executor a Fable candidate. Armed by passing `--fable` OR by the Conductor judging an executor tough enough at any time. Permission-gated and never silent: for each candidate the Conductor asks you (an AskUserQuestion selector, **Fable / Opus**) before that agent runs on Fable. Declining keeps that executor on **Opus** (`opus/xhigh`, the default hard-executor path). You can override any agent back to Opus, or drop Fable entirely, conversationally, with no restart. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Scouts, verifiers, and Testers are never Fable candidates. |
 | `--plan-only` | none | **Preview only.** Classify and print the depth plan; invoke zero boundaries. Nothing spawns or runs. |
 | `--dry-run` | none | Alias for `--plan-only`. Same preview behavior. |
 
@@ -199,6 +200,33 @@ If no resumable session exists, `/bgsd-resume` is not blocked: it reports "no in
 | `"<search terms>"` | Free-text query. Matched against all `.md/.mdx/.json/.txt` files under `.bgsd/seshs/` by term frequency. |
 
 Engine: `scripts/kb.mjs --query "<terms>"`. Corpus: `.bgsd/seshs/<run-id>/` (archived sessions only; not in-flight runs). For live run state use `/bgsd-status`.
+
+---
+
+## /bgsd-clean {#bgsd-clean}
+
+**Prune merged bgsd branches and stale worktrees.** Removes the `bgsd-`-prefixed branches left behind by completed runs, together with their now-orphaned git worktrees. It is plan-first: it always shows exactly what it would remove before touching anything, only ever considers `bgsd-`-prefixed branches, and hard-protects `next`, `main`, `master`, and the branch you are currently on — those are never deleted regardless of flags.
+
+### Usage
+
+```
+/bgsd-clean               # plan-first: show what would be pruned, then confirm
+/bgsd-clean --dry-run     # preview only; delete nothing
+/bgsd-clean --json        # machine-readable preview of the prune plan
+/bgsd-clean --force       # also include unmerged bgsd branches (protected ones still safe)
+```
+
+### Flags
+
+| Flag | Argument | What it does |
+|---|---|---|
+| `--dry-run` | none | Preview only. Print the exact branches and worktrees that would be pruned and exit without deleting anything. |
+| `--force` | none | Include **unmerged** `bgsd-` branches in the prune set. Protected branches (`next` / `main` / `master` and the current branch) are still never touched. |
+| `--yes` | none | Skip the interactive confirmation and apply the plan directly (for scripted or non-interactive use). |
+| `--json` | none | Emit the prune plan as machine-readable JSON instead of the human-readable plan. Combines with `--dry-run` for a pure preview. |
+| `--integration-branch` | `<name>` | Treat `<name>` as the integration branch used to decide "merged" (default `next`). The named branch is also protected from deletion. |
+
+Only `bgsd-`-prefixed branches are ever eligible; `next`, `main`, `master`, and the current branch are hard-protected and cannot be removed even with `--force`. Engine: `scripts/clean.mjs`.
 
 ---
 
@@ -446,7 +474,7 @@ Every escalation item is a selector with 2 to 4 options (the same hard 2-to-4 li
 
 A quick tour of what the Conductor now does, all reflected in the commands above:
 
-- **Two-band model routing.** Pipeline agents run at `opus/xhigh` for difficulty at or above 0.4 and `sonnet/xhigh` below it; the researcher runs one band below the executor; the verifier runs `haiku/low`. Every subagent is spawned with a branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
+- **Role-aware model routing.** Each pipeline role gets a model and effort by role, not one flat band: executors default to `sonnet/xhigh` and escalate to `opus/xhigh` on hard units (difficulty at or above 0.4); the scout runs cheaper than its executor (`sonnet/low`, Haiku when trivial); the verifier runs `haiku/low`; code review and merge resolution run on a fresh-context Opus; decompose and hard planning run on Fable. Defaults only: the Conductor adapts per unit and you can override anywhere (per-unit, per-session, by flag, or in `BGSD.md`). See the full role→model table in [the index](./index.mdx#how-bgsd-picks-models). Every subagent is spawned with a branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
 - **Execution modes.** `fast`, `thorough`, and `adaptive` (the default) for both pipeline agents (`--mode`) and verifiers (`--verify-mode`). Adaptive sizes each unit and gives the hard ones research while trivial ones skip it.
 - **Headless UI.** `--headless-ui` runs Playwright discreetly, with no visible browser or server window.
 - **The backlog loop.** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next queued item; deferred scope is enqueued rather than dropped, and drains across sessions.
