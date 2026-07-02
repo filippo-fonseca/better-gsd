@@ -177,22 +177,35 @@ or server window pops up on your machine (discreet). It is orthogonal to
 headless decides *how* it runs). Persist as `verification.headless` in `BGSD.md`.
 Both propagate to every Tester via `BGSD_HEADLESS_UI`.
 
-**Model swap — `--fable`.** `--fable` swaps the **top-tier model** from Opus 4.8 to
-**`claude-fable-5`** everywhere the pipeline would otherwise reach for Opus:
+**Model swap — `--fable` (Claude Fable 5, permission-gated).** Fable is the heavy
+hitter for your **toughest** pipeline agents. It is armed two ways: the user
+passes **`--fable`**, or you (the Conductor) decide at any point that a unit is
+tough enough to warrant it. Either way, fable is **opt-in per agent** — you must
+get the user's explicit go before any agent runs on it.
 
-- The **moment** you see `--fable`, switch your own model: run **`/model claude-fable-5`**.
-- Every agent whose model posture resolves to **Opus** (the executor/researcher/
-  verifier tiers that `decompose.mjs` marks `opus`) is spawned as `claude-fable-5`
-  instead, and its **branded label shows the real model** (e.g.
-  `Agent · 🔧 Pipeline · search-bar (claude-fable-5)`). Sonnet/Haiku tiers are
-  unaffected — this only replaces Opus.
-- **Revert anytime, conversationally.** Tell the Conductor "drop fable", "back to
-  Opus", or similar, and it runs **`/model`** back to the default (Opus 4.8) and
-  resumes normal posture from that point on — no restart needed. The user never
-  has to re-pass a flag to undo it.
-- Persist as `models.top_tier: claude-fable-5` in `BGSD.md` to make it the default
-  for every sesh; a passed `--fable` (or a revert) always wins for the current
-  session (flag > `BGSD.md` > default).
+- **Who is a candidate.** Only **pipeline (executor) agents with a high toughness
+  score** — the units `decompose.mjs` scores at Opus tier (`difficulty >= 0.4`,
+  preferring the toughest). Sonnet/Haiku-tier units are never fable candidates.
+  Researchers/verifiers/Testers stay on their normal posture.
+- **Always ask permission first (mandatory — no silent fable).** For **each**
+  pipeline agent you think is a good fable candidate, ask the user before spawning
+  it, via an **AskUserQuestion selector** — e.g. *"`payments-core` scores tough
+  (0.82). Run it on **claude-fable-5** (heavier, pricier) or stay on **Opus 4.8**?"*
+  with options **Fable** / **Opus** (and a "type your own"). Batch the candidates
+  into one selector when several qualify. Never put an agent on fable without an
+  explicit yes.
+- **On approval → fable; on decline → Opus.** An approved agent is spawned on
+  `claude-fable-5`, and its **branded label shows the real model** (e.g.
+  `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`). A declined agent runs
+  Opus as usual. Note in the prompt that **Opus is token-heavy**, so choosing it
+  over fable for a genuinely tough unit is the pricier path — but it is always the
+  user's call.
+- **Override / revert anytime, conversationally.** Even under `--fable`, the user
+  can tell you "put `payments-core` on Opus, not fable" (or "drop fable") and you
+  honor it from that point — no restart, no re-passing a flag.
+- Persist `models.fable: on` in `BGSD.md` to arm fable by default every sesh; the
+  per-agent permission gate still applies. Precedence: explicit user choice per
+  agent > flag > `BGSD.md` > default (Opus).
 
 **Ask at the start.** When you open a session (especially at project scale),
 present a short **AskUserQuestion selector** for how thorough to be, before fan-out:
