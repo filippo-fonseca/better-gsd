@@ -31,8 +31,8 @@
  *   touched:      string[] — file globs / area names the unit will touch
  *   deps:         string[] — ids of units this unit depends on
  *   difficulty:   number   — score in [0, 1] (cheap heuristic, GRAPH-04)
- *   model_posture: object  — { executor, verifier, researcher } model×effort
- *                           (the per-worktree routing matrix written to config)
+ *   model_posture: object  — { planner, executor, researcher, verifier,
+ *                           fablePlan, spawnModel } (per-worktree routing matrix)
  * }
  *
  * GRAPH-04 ROUTING MATRIX
@@ -44,18 +44,20 @@
  *                    + 0.1 * scope_len_factor
  *
  * Resulting per-unit posture (DEFAULTS — the Conductor and the human can
- * override any of these on the fly). The principle: spend the priciest model
- * (Fable) only on high-leverage, low-volume reasoning (the plan); keep the
- * high-volume build and the file-reading scout cheap:
- *   planner:    >= 0.5 -> fable/high  ; < 0.5 -> opus/high      (reasoning; gates the unit)
- *   executor:   >= 0.5 -> fable/xhigh ; >= 0.2 -> opus/xhigh ; < 0.2 -> sonnet/xhigh
+ * override any of these on the fly). The principle: **Opus is the standard for
+ * every role.** Fable is NEVER the executor (it guzzles tokens on the highest-
+ * VOLUME role); its reasoning is leveraged only as a separate upstream pre-plan
+ * that seeds the Opus pipeline. Sonnet appears only on trivial fixes, opt-in.
+ *   planner:    opus/high always (an external Fable pre-plan can seed it)
+ *   executor:   opus/xhigh ; sonnet/xhigh only on trivial (< 0.2) with --sonnet
  *   researcher: opus (explore floor); high effort, medium if trivial (< 0.2)
- *   verifier:   always haiku/low
- * The worktree subprocess is launched on the executor's model (`--model`), so a
- * unit's plan+execute share one coherent model; cheap phase-subagents (scout,
- * review) still run inside via the agent tool. Fable is realized by running the
- * whole hard-unit (>= 0.5) subprocess on it, since bgsd cannot spawn a Fable
- * subagent in-session (the agent tool offers only opus/sonnet/haiku).
+ *   verifier:   opus/medium
+ *   fablePlan:  bool — run a separate Fable pre-planner upstream (>= 0.5 or --fable)
+ * The worktree subprocess is launched on the executor's model (`--model`) — Opus
+ * or, for trivial fixes, Sonnet, never Fable. When fablePlan is set, a standalone
+ * `claude -p --model claude-fable-5` planner writes a plan markdown first; that
+ * markdown is passed to the Opus pipeline agent (`--seed-plan`), so Fable-grade
+ * planning lands without running the token-heavy subprocess on Fable.
  *
  * Usage (library):
  *   import { buildUnits, deriveModelPosture, parseDecompositionResponse,
@@ -139,47 +141,67 @@ export function difficultyScore({ touched = [], deps = [], title = "", scope = "
 // ---------------------------------------------------------------------------
 
 /**
- * The EXECUTOR posture for a difficulty score. Three bands, cheapest-capable per
- * band (the plan already did the hard reasoning, and executor is the highest-
- * VOLUME role, so we don't over-spend):
- *   >= 0.5  -> fable/xhigh   — hard units build on Fable ("hard GSD needs Fable executors")
- *   >= 0.2  -> opus/xhigh    — the default
- *   <  0.2  -> sonnet/xhigh  — the easiest units only
+ * The EXECUTOR posture for a difficulty score. **Fable is NEVER the executor** —
+ * it is the highest-VOLUME role and Fable guzzles too many tokens there. Opus is
+ * the standard; Sonnet is allowed ONLY on trivial units (< 0.2) and ONLY when
+ * opted in (the `--sonnet` flag or a Conductor call for a genuinely easy fix).
+ * Everything else is Opus.
+ *   sonnet opt-in AND < 0.2  -> sonnet/xhigh  — trivial fixes only
+ *   otherwise                -> opus/xhigh    — the standard, all units
  * DEFAULT ONLY: the Conductor and, ultimately, the human can override any unit's
  * executor on the fly (flag, BGSD.md, or just asking).
+ *
+ * @param {number} score
+ * @param {object} [opts]
+ * @param {boolean} [opts.sonnet=false]  Allow Sonnet on trivial (< 0.2) units.
  */
-export function executorPostureForScore(score) {
-  if (score >= 0.5) return { model: "fable",  effort: "xhigh" };
-  if (score >= 0.2) return { model: "opus",   effort: "xhigh" };
-  return { model: "sonnet", effort: "xhigh" };
+export function executorPostureForScore(score, { sonnet = false } = {}) {
+  if (sonnet && score < 0.2) return { model: "sonnet", effort: "xhigh" };
+  return { model: "opus", effort: "xhigh" };
 }
 
 /**
- * The PLANNER posture for a difficulty score. Planning is the highest-leverage,
- * lowest-volume reasoning per unit (its output gates the whole unit), so hard
- * units get Fable; everything else gets Opus (plenty, and cheaper):
- *   score >= 0.5  -> fable/high  — worth Fable's reasoning
- *   score <  0.5  -> opus/high   — Opus is a strong planner, saves Fable tokens
- * DEFAULT ONLY: overridable per unit at any time.
+ * The IN-PIPELINE PLANNER posture. **Always Opus.** Fable's reasoning is
+ * leveraged separately, as an external upstream pre-planner (see
+ * fablePlanForScore) whose plan markdown SEEDS this Opus planner. We never run
+ * the token-heavy pipeline subprocess itself on Fable, so this planner — which
+ * lives inside that subprocess — is Opus, always.
  */
-export function plannerPostureForScore(score) {
-  return score >= 0.5
-    ? { model: "fable", effort: "high" }
-    : { model: "opus",  effort: "high" };
+export function plannerPostureForScore(_score) {
+  return { model: "opus", effort: "high" };
+}
+
+/**
+ * Whether a SEPARATE Fable planner runs UPSTREAM of the Opus pipeline agent for
+ * this unit. The Fable planner is its own `claude -p --model claude-fable-5`
+ * subprocess that writes a plan markdown; that markdown is handed to the Opus
+ * pipeline agent as a seed, so we get Fable-grade planning on high-value work
+ * without paying Fable's per-token cost across the whole build.
+ *   --fable flag            -> true for every unit (force it on)
+ *   otherwise               -> true only for high-value units (>= 0.5)
+ *
+ * @param {number} score
+ * @param {object} [opts]
+ * @param {boolean} [opts.fable=false]  Force a Fable pre-plan on every unit.
+ * @returns {boolean}
+ */
+export function fablePlanForScore(score, { fable = false } = {}) {
+  return fable ? true : score >= 0.5;
 }
 
 /**
  * The model the unit's pipeline SUBPROCESS is launched on (`claude -p --model`).
- * bgsd can't spawn a Fable *subagent* in-session (the agent tool only offers
- * opus/sonnet/haiku), so Fable is realized by launching the whole worktree
- * subprocess on it. The thresholds line up so plan and execute share one coherent
- * model: >= 0.5 Fable, >= 0.2 Opus, < 0.2 Sonnet (the easiest, which skip
- * planning anyway). Cheap phase-subagents (scout=Sonnet, review=Opus) are still
- * spawned inside via the agent tool, so "Fable never reads files / reviews diffs"
- * holds even when the pipeline agent itself is on Fable.
+ * It follows the executor: **never Fable** (too token-heavy for the whole
+ * subprocess), Opus by default, Sonnet only on trivial (< 0.2) units when
+ * `--sonnet` is opted in. Fable is leveraged separately as an upstream pre-plan
+ * (fablePlanForScore) that seeds this Opus subprocess, never by running the
+ * subprocess itself on Fable.
+ *
+ * @param {number} score
+ * @param {object} [opts]  Same options as executorPostureForScore ({ sonnet }).
  */
-export function unitSpawnModel(score) {
-  return executorPostureForScore(score).model;
+export function unitSpawnModel(score, opts = {}) {
+  return executorPostureForScore(score, opts).model;
 }
 
 /**
@@ -215,21 +237,25 @@ export function scoutPostureForScore(score) {
  * the Conductor decides per unit and adapts, and the human has the final say and
  * can override any of them on the fly.
  *
- * Planner:    fable/high (>= 0.5) or opus/high (< 0.5) — reasoning, gates the unit.
- * Executor:   fable/xhigh (>= 0.5), opus/xhigh (>= 0.2), or sonnet/xhigh (< 0.2).
+ * Opus is the standard across every role. The two exceptions:
+ *   Executor:  opus/xhigh (sonnet/xhigh only on trivial < 0.2 units with --sonnet).
+ *   fablePlan: whether a separate Fable pre-planner runs upstream (>= 0.5 or --fable).
+ * Planner:    opus/high (the in-pipeline planner; Fable seeds it externally).
  * Researcher: opus (explore floor is Opus latest; high effort, medium if trivial).
- * Verifier:   always haiku/low — cheap, deterministic verification.
+ * Verifier:   opus/medium — Opus is the standard; verification runs on it too.
  *
  * @param {number} score   difficulty score in [0, 1]
- * @returns {{ planner: object, executor: object, researcher: object, verifier: object, spawnModel: string }}
+ * @param {object} [opts]  { fable, sonnet } — from --fable / --sonnet or Conductor.
+ * @returns {{ planner: object, executor: object, researcher: object, verifier: object, fablePlan: boolean, spawnModel: string }}
  */
-export function deriveModelPosture(score) {
+export function deriveModelPosture(score, opts = {}) {
   return {
     planner:    plannerPostureForScore(score),
-    executor:   executorPostureForScore(score),
+    executor:   executorPostureForScore(score, opts),
     researcher: scoutPostureForScore(score),
-    verifier:   { model: "haiku", effort: "low" }, // always haiku/low (Plan Part 11)
-    spawnModel: unitSpawnModel(score),             // the `claude -p --model` for the worktree subprocess
+    fablePlan:  fablePlanForScore(score, opts),
+    verifier:   { model: "opus", effort: "medium" }, // Opus is the standard, verification too
+    spawnModel: unitSpawnModel(score, opts),         // the `claude -p --model` for the worktree subprocess
   };
 }
 
@@ -382,9 +408,12 @@ export function parseDecompositionResponse(rawResponse) {
  *
  * @param {Array<{title, scope?, touched?, deps?}>} rawDescriptors
  *   Array of raw descriptors (from parseDecompositionResponse or a fixture).
+ * @param {object} [opts]  { fable, sonnet } — session flags threaded into every
+ *   unit's posture (--fable forces a Fable pre-plan; --sonnet allows Sonnet on
+ *   trivial units). Per-unit Conductor overrides still win afterward.
  * @returns {Array<UnitObject>}  fully-structured units
  */
-export function buildUnits(rawDescriptors) {
+export function buildUnits(rawDescriptors, opts = {}) {
   if (!Array.isArray(rawDescriptors) || rawDescriptors.length === 0) {
     throw new Error("buildUnits: rawDescriptors must be a non-empty array");
   }
@@ -401,7 +430,7 @@ export function buildUnits(rawDescriptors) {
     const scope   = typeof desc.scope === "string" ? desc.scope.trim() : "";
 
     const score   = difficultyScore({ touched, deps, title, scope });
-    const posture = deriveModelPosture(score);
+    const posture = deriveModelPosture(score, opts);
 
     return { id, title, scope, touched, deps, difficulty: score, model_posture: posture };
   });
