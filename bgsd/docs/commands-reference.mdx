@@ -61,7 +61,8 @@ A `--live` gate protects every irreversible boundary. Real merges and `gh pr cre
 | `--no-usage-verification` | none | Code-only verification: still runs the goal-backward gsd-verifier, but skips the Playwright UI usage testing. Sets `BGSD_USAGE_TESTING=0`. Persist as `verification.usage_testing`. |
 | `--headless-ui` | none | Runs Playwright headless (no visible browser or server window, discreet). Sets `BGSD_HEADLESS_UI=1`. Persist as `verification.headless`. |
 | `--gui` | none | Opens the live web dashboard for the run and prints the URL. See [`/bgsd-gui`](#bgsd-gui). |
-| `--fable` | none | **Largely superseded.** Hard units (`difficulty >= 0.5`) already route their whole per-unit worktree subprocess to **Claude Fable 5** by difficulty, so the flag is rarely needed. `--fable` nudges that threshold so more units qualify. It **cannot** put the Conductor or any in-session subagent on Fable: the agent tool is opus/sonnet/haiku only, Fable runs only as a `claude -p --model claude-fable-5` per-unit subprocess (or as your own session, which bgsd never forces). Override any single unit onto — or off — Fable conversationally, with no restart. |
+| `--fable` | none | Forces a standalone **Fable pre-plan** on *every* unit. By default only high-value units (`difficulty >= 0.5`) get one. The pre-plan is a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that **only plans** (never edits code); it writes `.planning/fable-plan.md` and seeds the Opus pipeline agent via `--seed-plan`. The executor stays **Opus** regardless: `--fable` never puts Fable on the executor, the Conductor, or any in-session subagent (the agent tool is opus/sonnet/haiku only, and bgsd never forces your session model). Override any single unit's pre-plan conversationally, with no restart. |
+| `--sonnet` | none | Lets the **executor** drop from Opus·xhigh to **Sonnet·xhigh**, but *only* on trivial units (`difficulty < 0.2`). Without this flag the executor is always Opus. Affects no other role. |
 | `--plan-only` | none | **Preview only.** Classify and print the depth plan; invoke zero boundaries. Nothing spawns or runs. |
 | `--dry-run` | none | Alias for `--plan-only`. Same preview behavior. |
 
@@ -367,6 +368,25 @@ Engine: `scripts/run.mjs` (dry-run) and `scripts/run-live.mjs` (`--live`).
 
 ---
 
+## /bgsd-plan-unit {#bgsd-plan-unit}
+
+**The standalone Fable pre-planner.** Runs a plan-only pass over a single unit and nothing more: it never edits code. Launched by the Conductor as a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess for high-value units (`difficulty >= 0.5`), or on every unit when you pass `--fable`. It writes a plan to `.planning/fable-plan.md`, which then seeds the Opus pipeline agent (`/bgsd-run-agent`) via `--seed-plan` so the executor builds on Fable's reasoning while staying on Opus. Slogan: **Fable plans; Opus executes.** This is the only per-unit place Fable runs.
+
+### Usage
+
+```
+/bgsd-plan-unit "<unit description>"     # plan-only; writes .planning/fable-plan.md
+```
+
+### Arguments and flags
+
+| Argument / flag | Argument | Required | What it does |
+|---|---|---|---|
+| `--unit` | `"<text>"` | Yes | The unit to pre-plan. Read-only over the codebase; no edits. |
+| `--seed-plan` | `<path>` | No | Where to write the seed plan (default `.planning/fable-plan.md`). The Opus pipeline agent consumes it via its own `--seed-plan`. |
+
+---
+
 ## /bgsd-integrate {#bgsd-integrate}
 
 **Loop 2 live integration.** Takes the assembled `next` integration branch, boots the whole integrated app, runs the Integration Tester end-to-end across feature boundaries, dispatches parallel fix agents on any integration defects, re-merges, and re-verifies in a bounded loop until clean or a stop condition fires. Defaults to `--dry-run`; the live path is human-gated.
@@ -505,7 +525,7 @@ Every escalation item is a selector with 2 to 4 options (the same hard 2-to-4 li
 
 A quick tour of what the Conductor now does, all reflected in the commands above:
 
-- **Role-aware model routing.** Each pipeline role gets a model and effort by role, not one flat band: a unit's per-unit worktree subprocess builds on `sonnet/xhigh` below difficulty 0.2, `opus/xhigh` from 0.2 to 0.5, and a whole `claude -p --model claude-fable-5` subprocess at 0.5 and above; the planner runs `fable/high` on those hard units, else `opus/high`; the scout runs cheaper (`sonnet/low`, Haiku when trivial); the verifier runs `haiku/low`; code review and merge resolution run on a fresh-context Opus. Two hard limits: bgsd never forces the Conductor's model (only nudges, both ways), and the in-session agent tool is opus/sonnet/haiku only, so Fable runs solely as a per-unit subprocess. Defaults only: the Conductor adapts per unit and you can override anywhere (per-unit, per-session, by flag, or in `BGSD.md`). See the full role→model table in [the index](./index.mdx#how-bgsd-picks-models). Every subagent is spawned with a branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
+- **Role-aware model routing.** **Opus is the standard for every role.** The executor (a unit's per-unit worktree subprocess) runs `opus/xhigh` on every unit, dropping to `sonnet/xhigh` only on trivial units (`difficulty < 0.2`) and only with `--sonnet`; it is **never Fable**. The in-pipeline planner runs `opus/high` and builds on a Fable pre-plan when one exists. Fable runs solely as a **standalone upstream pre-planner** (`claude -p /bgsd-plan-unit --model claude-fable-5`) that only plans, writes `.planning/fable-plan.md`, and seeds the Opus agent via `--seed-plan`; it runs for high-value units (`difficulty >= 0.5`) or on every unit with `--fable`. Slogan: Fable plans, Opus executes. The scout runs `opus/high` (`opus/medium` when trivial); the verifier/tester runs `opus/medium`; code review, conflict resolution, and Loop-2 fixes run on Opus too. Two hard limits: bgsd never forces the Conductor's model (only nudges, both ways), and the in-session agent tool is opus/sonnet/haiku only, so Fable runs solely as that per-unit pre-planner subprocess. Defaults only: the Conductor adapts per unit and you can override anywhere (per-unit, per-session, by flag, or in `BGSD.md`). See the full role→model table in [the index](./index.mdx#how-bgsd-picks-models). Every subagent is spawned with a branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
 - **Execution modes.** `fast`, `thorough`, and `adaptive` (the default) for both pipeline agents (`--mode`) and verifiers (`--verify-mode`). Adaptive sizes each unit and gives the hard ones research while trivial ones skip it.
 - **Headless UI.** `--headless-ui` runs Playwright discreetly, with no visible browser or server window.
 - **The backlog loop.** Run `/bgsd-sesh` with no prompt and Kiwi proposes the next queued item; deferred scope is enqueued rather than dropped, and drains across sessions.

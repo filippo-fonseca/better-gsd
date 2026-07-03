@@ -866,7 +866,7 @@
         <span class="hero-eyebrow">
           <!-- lucide: git-fork -->
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
-          Open-source · additive layer on GSD · MIT · v0.8.2
+          Open-source · additive layer on GSD · MIT · v0.9.0
         </span>
 
         <h1 class="hero-title">
@@ -894,7 +894,7 @@
         </div>
 
         <div class="hero-meta">
-          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0.8.2 · pipeline runs end-to-end</span>
+          <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> v0.9.0 · pipeline runs end-to-end</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Conductor codename Kiwi</span>
           <span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> No silent green, ever</span>
         </div>
@@ -1130,14 +1130,14 @@
         </span>
         <div class="card-title">The right model for every role</div>
         <p class="card-body">
-          bgsd spends the priciest, token-hungry model (Fable) only where reasoning-leverage is
-          high and token-volume is low. Two limits shape placement: bgsd can't force the
-          Conductor's model (it's your live session, so bgsd only nudges, both ways), and it
-          can't spawn a Fable subagent in-session. So Fable runs only as your own Conductor
-          session or as a whole per-unit worktree subprocess — which is how hard units
-          (difficulty &ge;0.5) build. Scout never reads on Fable; review is fresh Opus.
+          Opus is the standard for every role, and the per-unit executor is always Opus (it drops
+          to Sonnet only on trivial units, and only with <code>--sonnet</code>). Fable plans; Opus
+          executes. Two limits shape placement: bgsd can't force the Conductor's model (it's your
+          live session, so bgsd only nudges, both ways), and it can't spawn a Fable subagent
+          in-session. So Fable runs only as your own Conductor session or as a standalone upstream
+          pre-planner that seeds Opus on high-value units (difficulty &ge;0.5).
         </p>
-        <span class="card-tag">two-way nudge · Fable on hard units &ge;0.5</span>
+        <span class="card-tag">two-way nudge · Fable plans, Opus executes</span>
       </div>
 
       <div class="card">
@@ -1162,8 +1162,9 @@
         Reasoning-leverage high, token-volume low: spend the priciest model only where it counts.
         These are <strong>defaults</strong>; the Conductor decides per unit and adapts, and you have the
         final say. Override per-unit, per-session, in <code>BGSD.md</code>, or by just telling
-        the Conductor (it adapts on the fly, no restart). Note: hard units (&ge;0.5) build on Fable
-        automatically by difficulty; scout never reads on Fable; review is fresh Opus.
+        the Conductor (it adapts on the fly, no restart). Note: the executor is always Opus (Sonnet
+        only on trivial units with <code>--sonnet</code>); Fable runs only as a standalone pre-planner
+        that seeds Opus on high-value units (&ge;0.5). Fable plans; Opus executes.
       </p>
     </div>
 
@@ -1183,19 +1184,24 @@
             <td class="cmd-ref-desc">your session model — not forced; two-way nudge</td>
           </tr>
           <tr>
-            <td class="cmd-ref-name">Per-unit subprocess (plan+execute)</td>
+            <td class="cmd-ref-name">Per-unit executor (plan+execute)</td>
             <td class="cmd-ref-desc">Loop-1 worktree</td>
-            <td class="cmd-ref-desc">Fable (&ge;0.5) / Opus (0.2&ndash;0.5) / Sonnet (&lt;0.2)</td>
+            <td class="cmd-ref-desc">Opus · xhigh (Sonnet · xhigh on trivial &lt;0.2, only with <code>--sonnet</code>)</td>
           </tr>
           <tr>
-            <td class="cmd-ref-name">Planner</td>
+            <td class="cmd-ref-name">In-pipeline Planner</td>
             <td class="cmd-ref-desc">inside the unit</td>
-            <td class="cmd-ref-desc">Fable &ge;0.5, else Opus</td>
+            <td class="cmd-ref-desc">Opus · high (builds on the Fable pre-plan when present)</td>
+          </tr>
+          <tr>
+            <td class="cmd-ref-name">Fable pre-planner</td>
+            <td class="cmd-ref-desc">standalone, upstream; plans only, never edits</td>
+            <td class="cmd-ref-desc">Fable (&ge;0.5, or all units with <code>--fable</code>) &rarr; seeds Opus</td>
           </tr>
           <tr>
             <td class="cmd-ref-name">Scout / research</td>
             <td class="cmd-ref-desc">reads files</td>
-            <td class="cmd-ref-desc">Sonnet · low (Haiku trivial)</td>
+            <td class="cmd-ref-desc">Opus · high (Opus · medium trivial)</td>
           </tr>
           <tr>
             <td class="cmd-ref-name">Code review</td>
@@ -1205,7 +1211,7 @@
           <tr>
             <td class="cmd-ref-name">Verifier / Tester</td>
             <td class="cmd-ref-desc">verify</td>
-            <td class="cmd-ref-desc">Haiku · low</td>
+            <td class="cmd-ref-desc">Opus · medium</td>
           </tr>
           <tr>
             <td class="cmd-ref-name">Conflict resolver</td>
@@ -1215,16 +1221,18 @@
           <tr>
             <td class="cmd-ref-name">Loop-2 fix</td>
             <td class="cmd-ref-desc">Loop 2</td>
-            <td class="cmd-ref-desc">Sonnet · medium</td>
+            <td class="cmd-ref-desc">Opus · medium</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <p class="cmd-ref-note">
-      Hard units (&ge;0.5) build on Fable automatically by difficulty; scout never reads on Fable;
-      review is fresh Opus. bgsd can't force the Conductor's model or spawn a Fable subagent
-      in-session — Fable runs as your Conductor session or a whole per-unit worktree subprocess.
+      Fable plans; Opus executes. The per-unit executor is always Opus (Sonnet only on trivial
+      units &lt;0.2, and only with <code>--sonnet</code>); Fable runs solely as a standalone upstream
+      pre-planner that seeds Opus on high-value units (&ge;0.5, or all units with <code>--fable</code>).
+      bgsd can't force the Conductor's model or spawn a Fable subagent in-session: Fable runs as your
+      Conductor session or as the standalone per-unit pre-planner.
     </p>
   </div>
 </section>
@@ -1591,7 +1599,7 @@
             <td class="cmd-ref-name">/bgsd-sesh</td>
             <td>
               <span class="cmd-ref-desc">The one front door: classify scale, plan, execute (runs by default).</span><br>
-              <span class="cmd-ref-flags"><code>--quick</code> <code>--feature</code> <code>--project</code> <code>--mode fast|thorough|adaptive</code> <code>--verify-mode fast|thorough|adaptive</code> <code>--no-usage-verification</code> <code>--headless-ui</code> <code>--gui</code> <code>--fable</code> (superseded; hard units &ge;0.5 auto-route to Fable, override any unit conversationally) <code>--plan-only</code> <code>--dry-run</code></span>
+              <span class="cmd-ref-flags"><code>--quick</code> <code>--feature</code> <code>--project</code> <code>--mode fast|thorough|adaptive</code> <code>--verify-mode fast|thorough|adaptive</code> <code>--no-usage-verification</code> <code>--headless-ui</code> <code>--gui</code> <code>--fable</code> (force a Fable pre-plan on every unit; executor stays Opus) <code>--sonnet</code> (let the executor drop to Sonnet on trivial &lt;0.2 units) <code>--plan-only</code> <code>--dry-run</code></span>
             </td>
           </tr>
           <tr>
@@ -2023,16 +2031,18 @@
       <div class="ms-item done">
         <span class="ms-mark done"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
         <div>
-          <div class="ms-ver">v0.8.2 <span class="chip pass">live</span></div>
-          <div class="ms-title">Corrected model routing: Fable by difficulty, not by flag</div>
+          <div class="ms-ver">v0.9.0 <span class="chip pass">live</span></div>
+          <div class="ms-title">Corrected model routing: Fable plans, Opus executes</div>
           <p class="ms-desc">
-            The model doctrine now reflects two hard limits: bgsd can't force the Conductor's
-            model (your live session; bgsd only nudges, both ways) and can't spawn a Fable
-            subagent in-session. So Fable runs only as your own Conductor session or as a whole
-            per-unit worktree subprocess (<code>claude -p --model claude-fable-5</code>) — which is how
-            hard units (difficulty &ge;0.5) build, automatically by difficulty. <code>--fable</code> is
-            superseded; scout never reads on Fable and review stays fresh Opus. Override any unit's
-            model conversationally, anytime.
+            Opus is the standard for every role, and the per-unit executor is always Opus (it drops
+            to Sonnet only on trivial units &lt;0.2, and only with <code>--sonnet</code>). Fable never
+            executes: it runs solely as a standalone upstream pre-planner
+            (<code>claude -p /bgsd-plan-unit --model claude-fable-5</code>) that plans without editing
+            code, writes <code>.planning/fable-plan.md</code>, and seeds the Opus pipeline agent. That
+            pre-plan runs on high-value units (difficulty &ge;0.5), or on every unit with
+            <code>--fable</code>. Two hard limits remain: bgsd can't force the Conductor's model (your
+            live session; bgsd only nudges, both ways) and can't spawn a Fable subagent in-session.
+            Override any unit's model conversationally, anytime.
           </p>
         </div>
       </div>
@@ -2332,7 +2342,7 @@
     <div class="footer-brand">
       <!-- lucide: scan-eye -->
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="1"/><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"/></svg>
-      better-gsd (bgsd) · v0.8.2 · by Filippo Fonseca · MIT license
+      better-gsd (bgsd) · v0.9.0 · by Filippo Fonseca · MIT license
     </div>
     <nav class="footer-links" aria-label="Footer links">
       <a href="https://github.com/filippo-fonseca/better-gsd" class="footer-link" target="_blank" rel="noopener">GitHub</a>

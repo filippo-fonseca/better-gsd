@@ -10,7 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.8.2-informational.svg)](./bgsd/.claude-plugin/plugin.json)
+[![version](https://img.shields.io/badge/version-0.9.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
 [![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
@@ -109,7 +109,8 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
-| `--fable` | Superseded. Hard units (difficulty **≥0.5**) auto-route to **Claude Fable 5** by themselves; you never need to arm it. Override the model for any unit conversationally, anytime, by just telling the Conductor. |
+| `--fable` | Force a standalone **Fable pre-plan** on **every** unit (not just high-value ones). This adds an upstream planner that writes `.planning/fable-plan.md` and seeds the Opus pipeline agent; it never puts Fable on the build. The executor stays Opus. Override the model for any unit conversationally, anytime, by just telling the Conductor. |
+| `--sonnet` | Allow the executor to drop to **Sonnet · xhigh** on trivial units (difficulty **<0.2**) only. Without this flag the executor is always Opus. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
@@ -163,22 +164,23 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 
 ### How bgsd picks models
 
-The guiding principle: spend the priciest, token-hungry model (**Fable**) **only** where reasoning-leverage is high and token-volume is low; keep building and raw-file reading cheap. Two facts constrain how bgsd can place models. First, bgsd **cannot force the Conductor's model**: the Conductor is your live session, so bgsd only **nudges** it (both ways) and you set it. Second, bgsd **cannot spawn a Fable subagent in-session** (the agent tool is opus/sonnet/haiku only). Fable therefore runs only as (1) the Conductor's own session, when *you* are on Fable (bgsd just nudges), or (2) a whole per-unit worktree subprocess launched via `claude -p --model claude-fable-5`, which is how hard units (difficulty **≥0.5**) build.
+The slogan is simple: **Fable plans; Opus executes.** Opus 4.8 is the standard for every role, since it is the workhorse that actually builds. Fable, the priciest and most token-hungry model, is spent **only** as a standalone upstream **pre-planner** where reasoning-leverage is high and token-volume is low; it never touches the build. Two facts constrain how bgsd can place models. First, bgsd **cannot force the Conductor's model**: the Conductor is your live session, so bgsd only **nudges** it (both ways) and you set it. Second, bgsd **cannot spawn a Fable subagent in-session** (the agent tool is opus/sonnet/haiku only). Fable therefore runs only as (1) the Conductor's own session, when *you* are on Fable (bgsd just nudges), or (2) the standalone per-unit pre-planner subprocess launched via `claude -p /bgsd-plan-unit --model claude-fable-5`, which only plans (never edits code), writes `.planning/fable-plan.md`, and seeds the Opus pipeline agent via `--seed-plan`.
 
 | Role | Where | Model · effort |
 |------|-------|----------------|
 | Conductor (live session) | orchestrates; decompose + oracle | your session model — not forced; two-way nudge |
-| Per-unit subprocess (plan+execute) | Loop-1 worktree | Fable (≥0.5) / Opus (0.2–0.5) / Sonnet (<0.2) |
-| Planner | inside the unit | Fable ≥0.5, else Opus |
-| Scout / research | reads files | Sonnet · low (Haiku trivial) |
+| Fable pre-planner (plans only) | standalone `claude -p /bgsd-plan-unit --model claude-fable-5` | Fable, for high-value units (≥0.5) or when `--fable` forces it onto every unit |
+| Executor / per-unit subprocess (builds) | Loop-1 worktree | Opus · xhigh always; Sonnet · xhigh only on trivial units (<0.2) and only with `--sonnet`; never Fable |
+| Planner (in-pipeline) | inside the unit | Opus · high always (builds on the Fable pre-plan when one exists) |
+| Scout / research | reads files | Opus · high (Opus · medium trivial) |
 | Code review | fresh context | Opus · high |
-| Verifier / Tester | verify | Haiku · low |
+| Verifier / Tester | verify | Opus · medium |
 | Conflict resolver | Loop 2 | Opus · high |
-| Loop-2 fix | Loop 2 | Sonnet · medium |
+| Loop-2 fix | Loop 2 | Opus · medium |
 
-Note: hard units (≥0.5) build on Fable automatically by difficulty; scout never reads on Fable; review is fresh Opus.
+Note: high-value units (≥0.5) get a Fable **pre-plan** automatically by difficulty, but the executor still builds on Opus; review is fresh Opus.
 
-These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). Units at difficulty ≥0.5 auto-route to Fable; override the model for any unit conversationally.
+These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). High-value units (≥0.5) get a Fable pre-plan automatically; override the model for any unit conversationally.
 
 ---
 

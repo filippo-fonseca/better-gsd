@@ -88,9 +88,11 @@ The Conductor makes exactly one expensive model call (Opus/xhigh) to decompose t
 
 | Difficulty score | Executor | Researcher | Verifier |
 |-----------------|----------|------------|---------|
-| >= 0.70 (high) | opus / xhigh | sonnet / high | haiku / low |
-| >= 0.40 (medium) | sonnet / high | haiku / medium | haiku / low |
-| < 0.40 (low) | haiku / medium | haiku / medium | haiku / low |
+| >= 0.50 (high) | opus / xhigh | opus / high | opus / medium |
+| 0.20–0.50 (medium) | opus / xhigh | opus / high | opus / medium |
+| < 0.20 (low) | opus / xhigh (sonnet / xhigh with `--sonnet`) | opus / medium | opus / medium |
+
+**Opus is the standard for every role.** The executor is **never Fable**: it stays Opus·xhigh on every unit and drops to Sonnet·xhigh only on trivial units (difficulty < 0.2) and only when `--sonnet` is set. Fable earns its place solely as a **standalone upstream pre-planner**: for high-value units (difficulty ≥ 0.5), or every unit under `--fable`, the Conductor first runs a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that only plans (never edits code), writes `.planning/fable-plan.md`, and then seeds the Opus pipeline agent via `--seed-plan`. Fable plans; Opus executes.
 
 The posture is written to each worktree's `.planning/config.json` via the config seam only. Zero edits to vendored GSD.
 
