@@ -67,8 +67,9 @@ force your model**; you run on whatever the user launched with. Your job is a
 
 Whatever you end up on, you still hold the discipline below — you **never read raw
 files** (scouts do), **never review diffs** (a fresh Opus does), and offload state to
-`.bgsd/` md, so your context stays lean. (The per-unit worktree agents get their own
-model via `--model` — hard units on Fable — independent of your session model.)
+`.bgsd/` md, so your context stays lean. (The per-unit worktree agents run on Opus
+via `--model`, never Fable; high-value units get a separate Fable *pre-plan* that
+seeds them — independent of your session model.)
 
 **Assign a session title.** Right after minting the run,
 give this session a concise, human-readable **title** (3 to 8 words, Title Case,
@@ -142,6 +143,16 @@ a large prompt still forces the quick path. The flag is the contract.
 Passing any two of `--quick`, `--feature`, `--project` together is a usage error.
 A flag never disables verification and never lets bgsd write `main` or any production branch.
 
+**Model flags (orthogonal to scale — combine freely with the above):**
+
+| Flag | Meaning |
+|------|---------|
+| `--fable` | Force a standalone **Fable pre-plan** on **every** unit (not just high-value ≥ 0.5 ones). Fable plans; the executor stays Opus. Never puts Fable on the build. |
+| `--sonnet` | Allow the executor to drop to **Sonnet** on genuinely **trivial** units (difficulty < 0.2). Anything ≥ 0.2 stays Opus. Default without it: Opus everywhere. |
+
+Neither flag ever changes verification, and neither is required — high-value units
+already get a Fable pre-plan by difficulty, and Opus is the standard executor.
+
 ---
 
 ## Verification depth — `--no-usage-verification` (orthogonal)
@@ -200,25 +211,27 @@ unit and **adapt on the fly**, and the human can override any assignment — per
 per-session, by a flag, in `BGSD.md`, or by just telling you (no restart; you adapt
 live). Hold that framing above all else.
 
-The governing principle: spend the **priciest** model (**Fable**, very
-token-hungry) **only** where reasoning-leverage is **high** and token-volume is
-**low**. Keep high-volume **building** and raw-file **reading** cheap. Two hard
-rules that never bend: **Fable never reads raw files** (an Opus scout does), and
-**Fable never reviews diffs** (a fresh Opus does). Those two rules hold even when
-the unit subprocess is on Fable, because scout and review are cheap **nested**
-subagents inside the unit, not the unit's own model.
+The governing principle: **Opus is the standard for every role.** **Fable is NEVER
+the executor** — it is the highest-token-cost model and the executor is the
+highest-VOLUME role, so building on Fable simply guzzles tokens. Fable's reasoning
+is captured **only** as a separate upstream **pre-plan**: a standalone Fable
+subprocess plans, writes a markdown, and hands it to the Opus pipeline agent.
+**Fable plans; Opus executes.** Sonnet appears only on genuinely trivial fixes.
 
-**One correction to hold above the table (v0.8.1).** bgsd **cannot force your
-model** (you are the user's live session — see the nudge-both-ways rule near the
-top), and it **cannot spawn a Fable *subagent* in-session**: the agent tool offers
-only **opus / sonnet / haiku**. **Fable runs in exactly two places, nowhere else:**
-1. **The Conductor's own live session** — but only if the *user* is on Fable. bgsd
-   merely nudges (both ways); it never seeds a model via `.claude/settings.json`
-   and never pins you to Opus.
-2. **A whole per-unit worktree subprocess**, launched with
-   `claude -p --model claude-fable-5`. This is how a hard unit gets Fable: the
-   unit's plan **and** execute phases share that one subprocess model. There is no
-   in-session Fable subagent.
+**How Fable actually runs (three facts).** bgsd **cannot force your model** (you
+are the user's live session — see the nudge-both-ways rule near the top), and it
+**cannot spawn a Fable *subagent* in-session** (the agent tool offers only opus /
+sonnet / haiku). So Fable runs in exactly these places, nowhere else:
+1. **The Conductor's own live session** — only if the *user* is on Fable. bgsd
+   merely nudges, both ways; it never pins you.
+2. **A standalone per-unit pre-planner subprocess**, launched with
+   `claude -p /bgsd-plan-unit --model claude-fable-5`. It **only plans** — writes
+   `.planning/fable-plan.md`, never touches code — and that plan seeds the Opus
+   pipeline agent (`--seed-plan`). This is the only per-unit Fable, and it runs for
+   high-value units (difficulty ≥ 0.5) or when `--fable` is passed.
+
+The executor/pipeline subprocess itself is **always Opus** (or Sonnet on a trivial
+fix). It is **never Fable.**
 
 Per-role routing — where in the pipeline → model · effort:
 
@@ -226,44 +239,45 @@ Per-role routing — where in the pipeline → model · effort:
 |------|-----------------------|----------------|
 | **Conductor** (live session) | orchestrates; runs decompose + oracle **in-session** | **your session model** — NOT forced; two-way nudge (Opus ↔ Fable by prompt weight) |
 | **Conductor-wide explore** | session-level exploration before decompose | **the Conductor's own session model** (explore in-context, don't farm it to a cheap subagent) |
-| **Per-unit worktree subprocess** (plan + execute share it) | Loop 1, via `claude -p --model` | **Fable** (difficulty ≥ 0.5) / **Opus · xhigh** (0.2–0.5) / **Sonnet · xhigh** (< 0.2) |
-| **Planner** | inside the unit | **Fable · high** (≥ 0.5), else **Opus · high** |
+| **Fable pre-planner** (plans only, writes seed markdown) | Loop 1, upstream of the unit, via `claude -p /bgsd-plan-unit --model claude-fable-5` | **Fable · high** — high-value units (≥ 0.5) or `--fable`; the ONLY per-unit Fable |
+| **Per-unit worktree subprocess** (plan + execute share it) | Loop 1, via `claude -p --model` | **Opus · xhigh** — always; **Sonnet · xhigh** only on trivial (< 0.2) with `--sonnet`. **Never Fable.** |
+| **Planner** | inside the unit | **Opus · high** (builds on the Fable seed plan when present) |
 | **Scout / research** (the explore step, reads files) | inside the unit, **nested** subagent | **Opus · high** floor (**Opus · medium** if trivial) — explore quality gates plan quality |
 | **Code review** (diff) | fresh context | **Opus · high** |
-| **Verifier / Tester** | verify | **Haiku · low** |
+| **Verifier / Tester** | verify | **Opus · medium** |
 | **Conflict / merge resolver** | Loop 2 | **Opus · high** |
-| **Loop-2 fix agents** | Loop 2 | **Sonnet · medium** |
+| **Loop-2 fix agents** | Loop 2 | **Opus · medium** |
 
-**Hard units build on Fable automatically.** A unit scored at **difficulty ≥ 0.5**
-by `decompose.mjs` routes its worktree subprocess to Fable **by difficulty alone**
-— there is no per-agent approval gate anymore. The human still has final say and
-can override any unit conversationally (or per-session, by flag, or in `BGSD.md`).
+**High-value units get a Fable PRE-PLAN automatically.** A unit scored at
+**difficulty ≥ 0.5** by `decompose.mjs` gets a standalone Fable pre-planner upstream
+(its plan seeds the Opus agent) — by difficulty alone, no approval gate. The
+**executor is still Opus.** The human has final say and can override any unit
+conversationally (or per-session, by flag, or in `BGSD.md`).
 
 **Phase, persist, clear.** Split a big unit into phases; keep progress in `.bgsd/`
 md (RUN / PLAN / handoff), not the chat; give each phase fresh context.
 
-**`--fable` / `models.fable` — mostly superseded (hard units already run on
-Fable).** As of the routing above, **any unit at difficulty ≥ 0.5 already routes its
-worktree subprocess to Fable automatically**, by difficulty alone. There is no
-per-agent arming ceremony and no AskUserQuestion approval gate before an agent can
-touch Fable — that old flow is gone. So in almost every case you need this flag for
-**nothing**.
+**`--fable` — force a Fable pre-plan on every unit.** By default only high-value
+units (≥ 0.5) get the standalone Fable pre-planner. `--fable` lowers that bar to
+**every** unit in the session: each unit gets a Fable-planned seed before its Opus
+build. It does **not** put Fable on the executor — nothing does. Persist
+`models.fable: on` in `BGSD.md` to keep it on every sesh.
 
-- **What `--fable` still does, if you keep it at all.** It simply **lowers (or
-  forces) the Fable bar for a session** — e.g. treat more units as Fable-worthy, or
-  push borderline units onto Fable even below the 0.5 threshold. It changes *where
-  the line sits*, not *whether Fable is allowed*. Fable is already allowed on hard
-  units without it.
-- **The human always has final say, conversationally.** With or without the flag,
-  the user can override any unit on the fly — "put `payments-core` on Opus, not
-  Fable" / "run this one on Fable too" — and you honor it from that point, no
-  restart, no re-passing a flag. That override, not an up-front per-agent selector,
-  is the control surface now.
-- **Branded label shows the real model.** A unit whose subprocess is on Fable reads
-  its true model in the tag (e.g. `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`),
-  so the token-heavier path is always visible.
-- Persist `models.fable: on` in `BGSD.md` to keep the lowered bar every sesh.
-  Precedence: explicit per-unit choice > flag > `BGSD.md` > the difficulty default.
+**`--sonnet` — allow Sonnet on trivial fixes.** By default the executor is Opus for
+every unit. `--sonnet` lets a **genuinely trivial** unit (difficulty < 0.2) drop its
+executor to Sonnet to save tokens; anything ≥ 0.2 stays Opus regardless. The
+Conductor may also propose Sonnet on its own for an obviously easy one-liner, but
+only ≤ 0.2 — **Opus is the way to go** everywhere else.
+
+- **The human always has final say, conversationally.** With or without a flag, the
+  user can override any unit on the fly — "give `payments-core` a Fable pre-plan
+  too" / "just run this one on Sonnet" — and you honor it from that point, no
+  restart. Precedence: explicit per-unit choice > flag > `BGSD.md` > the difficulty
+  default.
+- **Branded label shows the real model.** A unit reads its true executor model in
+  the tag (e.g. `Agent · 🔧 Pipeline · payments-core (opus)`), and a Fable pre-plan
+  shows as its own `Agent · 🧠 Fable-plan · payments-core (claude-fable-5)` card, so
+  where the tokens go is always visible.
 
 **Ask at the start.** When you open a session (especially at project scale),
 present a short **AskUserQuestion selector** for how thorough to be, before fan-out:
