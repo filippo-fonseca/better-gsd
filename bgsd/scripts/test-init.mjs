@@ -123,25 +123,31 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.git.integration_to_main, "manual");
   assert.equal(c.env.propagate, true);
   assert.ok(Array.isArray(c.env.files) && c.env.files.includes(".env"));
-  assert.equal(c.model_posture.verifier.model, "haiku");
-  assert.equal(c.model_posture.verifier.effort, "low");
+  assert.equal(c.model_posture.verifier.model, "opus");
+  assert.equal(c.model_posture.verifier.effort, "medium");
   // Conductor session model is NOT enforced — whatever you start with.
   assert.equal(c.model_posture.conductor.model, "session");
   assert.equal(c.model_posture.decompose.model, "session"); // in-session reasoning
   assert.equal(c.model_posture.oracle.model, "session");
-  // Executor 3-tier: fable >= 0.5, opus >= 0.2, sonnet < 0.2.
-  assert.equal(c.model_posture.thresholds.fable, 0.5);
-  assert.equal(c.model_posture.thresholds.opus, 0.2);
-  assert.equal(c.model_posture.executor.hard.model, "fable");
+  // Executor is NEVER Fable: opus default, sonnet only on trivial (< 0.2).
+  assert.equal(c.model_posture.thresholds.fable, 0.5);   // Fable pre-plan bar
+  assert.equal(c.model_posture.thresholds.sonnet, 0.2);  // Sonnet-downgrade ceiling
   assert.equal(c.model_posture.executor.default.model, "opus");
   assert.equal(c.model_posture.executor.easiest.model, "sonnet");
-  assert.equal(c.model_posture.planner.hard.model, "fable");
-  assert.equal(c.model_posture.planner.default.model, "opus");
+  assert.equal(c.model_posture.executor.hard, undefined); // no Fable executor tier
+  // Planner is always Opus inline; Fable is a SEPARATE upstream pre-planner.
+  assert.equal(c.model_posture.planner.model, "opus");
+  assert.equal(c.model_posture.fable_plan.model, "fable");
+  assert.equal(c.model_posture.fable_plan.threshold, 0.5);
+  assert.equal(c.model_posture.fable_plan.flag, false);
   assert.equal(c.model_posture.scout.model, "opus");
   assert.equal(c.model_posture.scout.effort, "high");
   assert.equal(c.model_posture.scout.trivial.model, "opus");
   assert.equal(c.model_posture.reviewer.model, "opus");
-  assert.equal(c.model_posture.loop2_fix.model, "sonnet");
+  // Opus across the board now — verifier/tester/loop2_fix bumped off haiku/sonnet.
+  assert.equal(c.model_posture.verifier.model, "opus");
+  assert.equal(c.model_posture.tester.model, "opus");
+  assert.equal(c.model_posture.loop2_fix.model, "opus");
   assert.equal(c.model_posture.loop2_fix.effort, "medium");
   assert.equal(c.conductor.suggest_gate_commands, true);
   // Conductor identity + self-management defaults.
@@ -156,9 +162,9 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
 
 test("I02 — defaultBgsdConfig: fresh deep copy", () => {
   const a = defaultBgsdConfig();
-  a.model_posture.executor.hard.model = "MUTATED";
+  a.model_posture.executor.default.model = "MUTATED";
   const b = defaultBgsdConfig();
-  assert.equal(b.model_posture.executor.hard.model, "fable");
+  assert.equal(b.model_posture.executor.default.model, "opus");
 });
 
 test("I03 — deepMerge: nested merge, scalar replace, no mutation", () => {
@@ -190,7 +196,7 @@ test("I07 — parseBgsdMd: partial override layers over defaults", () => {
   const c = parseBgsdMd(text);
   assert.equal(c.integration_branch, "develop");
   // untouched keys still present from defaults
-  assert.equal(c.model_posture.verifier.model, "haiku");
+  assert.equal(c.model_posture.verifier.model, "opus");
   assert.equal(c.env.propagate, true);
 });
 

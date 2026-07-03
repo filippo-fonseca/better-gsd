@@ -69,38 +69,41 @@ export function defaultBgsdConfig() {
     // and ultimately YOU have the final say: override per-unit, per-session, by
     // flag, in this file, or by just telling the Conductor.
     //
-    // WHERE Fable can actually run (two hard facts):
-    //   - The Conductor is your live session. bgsd does NOT force its model — it's
-    //     whatever you launched with — it only nudges, both ways. So the
-    //     Conductor's in-session reasoning (decompose, oracle, routing) runs on
-    //     YOUR session model: it's Fable only if you're on Fable.
-    //   - The in-session agent spawner offers only opus/sonnet/haiku, so Fable for
-    //     a unit is realized by launching its whole worktree subprocess on
-    //     `claude -p --model claude-fable-5` (hard units). plan+execute share that
-    //     model; cheap phase-subagents (scout, review) run inside on their own.
-    //
-    // Principle: spend Fable only where reasoning-leverage is HIGH and
-    // token-volume is LOW. Keep the high-volume build and raw-file reading cheap.
+    // DOCTRINE: Opus is the standard for every role. Fable is NEVER the executor
+    // (highest-VOLUME role — it guzzles tokens there). Instead:
+    //   - The Conductor is your live session; bgsd does NOT force its model, it
+    //     only nudges both ways. Its in-session reasoning (decompose, oracle,
+    //     routing) runs on YOUR session model — Fable only if you're on Fable.
+    //   - Fable's per-unit value is captured by a SEPARATE upstream pre-planner:
+    //     a standalone `claude -p --model claude-fable-5` that writes a plan
+    //     markdown, which then SEEDS the Opus pipeline agent (--seed-plan). Fable
+    //     plans; Opus executes. The token-heavy build subprocess is never Fable.
+    //   - Sonnet appears only on trivial fixes (< 0.2) and only when opted in
+    //     (--sonnet or a Conductor call).
     model_posture: {
       // The live Conductor session — NOT enforced; whatever you start with. bgsd
       // nudges both ways at start (on Opus for a heavy prompt -> suggest Fable; on
       // Fable for a light one -> suggest Opus to save), and again once it has
       // sized the prompt, asking to confirm before it continues.
       conductor: { model: "session" },
-      // Per-unit build bands (mirror decompose.mjs). Fable bar 0.5, Opus 0.2.
-      thresholds: { fable: 0.5, opus: 0.2 },
+      // Routing bands (mirror decompose.mjs). fable = the bar at/above which a
+      // separate Fable pre-planner runs; sonnet = the ceiling below which a
+      // trivial unit's executor may drop to Sonnet (only with --sonnet).
+      thresholds: { fable: 0.5, sonnet: 0.2 },
       // The unit's worktree subprocess model (= executor tier), passed to
-      // `claude -p --model`. plan + execute share it:
+      // `claude -p --model`. NEVER Fable. plan + execute share it:
       executor: {
-        hard:    { model: "fable",  effort: "xhigh" }, // score >= 0.5
-        default: { model: "opus",   effort: "xhigh" }, // score >= 0.2
-        easiest: { model: "sonnet", effort: "xhigh" }, // score <  0.2
+        default: { model: "opus",   effort: "xhigh" }, // the standard, all units
+        easiest: { model: "sonnet", effort: "xhigh" }, // score < 0.2, only with --sonnet
       },
-      // Planning gates the unit -> Fable on hard units (>= 0.5), Opus below.
-      planner: {
-        hard:    { model: "fable", effort: "high" },
-        default: { model: "opus",  effort: "high" },
-      },
+      // The IN-PIPELINE planner is always Opus. Fable's reasoning arrives as a
+      // seed plan from the separate pre-planner below, not by running here on Fable.
+      planner: { model: "opus", effort: "high" },
+      // The separate upstream Fable pre-planner. Runs for high-value units
+      // (>= threshold) or when --fable forces it on; writes .planning/fable-plan.md
+      // which seeds the Opus pipeline agent. This is the ONLY place Fable runs
+      // per-unit — and it only plans, never builds.
+      fable_plan: { model: "fable", effort: "high", threshold: 0.5, flag: false },
       // Decompose + oracle are the Conductor's OWN in-session reasoning, so they
       // run on your session model (Fable if you're on Fable). Here for clarity.
       decompose: { model: "session", effort: "high" },
@@ -110,14 +113,14 @@ export function defaultBgsdConfig() {
       // one place we do NOT trade reasoning for tokens. Effort eases to medium on
       // trivial units. (Conductor-WIDE exploring uses the session model instead.)
       scout: { model: "opus", effort: "high", trivial: { model: "opus", effort: "medium" } },
-      // Code review, FRESH context — an unbiased second read of the diff. Never Fable.
+      // Code review, FRESH context — an unbiased second read of the diff.
       reviewer:  { model: "opus", effort: "high" },
-      // Goal-backward code verification + Playwright driving — cheap, checkable.
-      verifier:  { model: "haiku", effort: "low" },
-      tester:    { model: "haiku", effort: "low" },
+      // Goal-backward code verification + Playwright driving. Opus is the standard.
+      verifier:  { model: "opus", effort: "medium" },
+      tester:    { model: "opus", effort: "medium" },
       // Loop-2 merge-conflict resolution (bounded) + scoped integration fixes.
       conflict:  { model: "opus", effort: "high" },
-      loop2_fix: { model: "sonnet", effort: "medium" },
+      loop2_fix: { model: "opus", effort: "medium" },
     },
     // How thoroughly bgsd verifies. The goal-backward code verification
     // (gsd-verifier: "did it build what was asked, is everything proper") ALWAYS
@@ -258,9 +261,10 @@ Notes section and Kiwi will respect them.
 - **model_posture** — which model + effort each role runs at. These are
   **defaults only**: the Conductor decides per unit and adapts, and you have the
   final say — override any role, tier, or threshold here, per-session with a
-  flag, or by just telling the Conductor (it adapts on the fly). The principle is
-  to spend the priciest model (**Fable**) only where reasoning-leverage is high
-  and token-volume is low, and keep the rest cheap:
+  flag, or by just telling the Conductor (it adapts on the fly). The principle:
+  **Opus is the standard for every role.** Fable is never the executor (it guzzles
+  tokens on the highest-volume role); its reasoning is leveraged only as a separate
+  upstream pre-plan that seeds Opus. Sonnet shows up only on trivial fixes.
   - **conductor** \`session\` — bgsd does NOT force the Conductor's model; it's
     whatever you launch the session with. It only nudges, both ways: on Opus for a
     heavy prompt it suggests Fable; on Fable for a light one it suggests dropping
@@ -268,17 +272,21 @@ Notes section and Kiwi will respect them.
     confirm before continuing. The Conductor's own reasoning (decompose, oracle)
     therefore runs on your session model.
   - **executor** is the unit's worktree-subprocess model (passed to
-    \`claude -p --model\`): \`fable/xhigh\` on hard units (>= 0.5), \`opus/xhigh\`
-    (>= 0.2), \`sonnet/xhigh\` for the easiest (< 0.2). plan + execute share it.
-  - **planner** \`fable/high\` on hard units (>= 0.5), \`opus/high\` below — a
-    strong Opus planner where Fable isn't worth the tokens.
+    \`claude -p --model\`): \`opus/xhigh\` for every unit — **never Fable** —
+    dropping to \`sonnet/xhigh\` only on trivial units (< 0.2) and only with
+    \`--sonnet\`. plan + execute share it.
+  - **planner** \`opus/high\` always (the in-pipeline planner).
+  - **fable_plan** the separate upstream Fable pre-planner: runs for high-value
+    units (>= \`threshold\`, default 0.5) or when \`--fable\` forces it on. It writes
+    \`.planning/fable-plan.md\`, which seeds the Opus pipeline agent (\`--seed-plan\`).
+    This is the ONLY per-unit place Fable runs — and it only plans, never builds.
   - **scout** (research / explore) \`opus/high\`, \`opus/medium\` when trivial — the
     explore floor is Opus latest, since explore quality gates plan quality.
     Conductor-wide exploring in the session uses the Conductor's own model.
   - **reviewer** \`opus/high\` (fresh context), **verifier**/**tester**
-    \`haiku/low\`, **conflict** \`opus/high\`, **loop2_fix** \`sonnet/medium\`.
-    (Fable can only run as the Conductor session or a whole worktree subprocess —
-    the in-session agent tool offers only opus/sonnet/haiku.)
+    \`opus/medium\`, **conflict** \`opus/high\`, **loop2_fix** \`opus/medium\` —
+    Opus across the board. Fable, when it runs per-unit, is only the standalone
+    pre-planner subprocess; the in-session agent tool offers only opus/sonnet/haiku.
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI
   usage-testing but STILL runs the goal-backward code verification
