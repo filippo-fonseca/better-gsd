@@ -24,11 +24,11 @@
  *   D11 — parseDecompositionResponse: throws on unit missing title
  *   D12 — difficultyScore: returns value in [0, 1]
  *   D13 — difficultyScore: more touched entries -> higher score
- *   D14  — deriveModelPosture: >=0.4 -> opus/xhigh executor
- *   D15  — deriveModelPosture: >=0.4 -> opus/xhigh executor
- *   D16  — deriveModelPosture: <0.4 -> sonnet/xhigh executor
- *   D16b — deriveModelPosture: very low -> still sonnet/xhigh executor
- *   D17  — deriveModelPosture: verifier is always haiku/low
+ *   D14  — deriveModelPosture: >=0.5 -> opus executor + fablePlan (never Fable executor)
+ *   D15  — deriveModelPosture: 0.2..0.5 -> opus/xhigh executor, no fablePlan
+ *   D16  — deriveModelPosture: <0.2 -> opus by default, sonnet only with --sonnet
+ *   D16b — deriveModelPosture: fablePlan bar >=0.5, --fable forces it below
+ *   D17  — deriveModelPosture: verifier is always opus/medium
  *   D18 — serializeUnits: produces non-empty markdown with unit ids
  *   D19 — writeUnitConfig: writes bgsd_unit_posture to config.json (config seam)
  *
@@ -285,37 +285,41 @@ await test("D13: difficultyScore increases with more touched entries", () => {
   assert.ok(high > low, `higher touched count must yield higher score (${high} > ${low})`);
 });
 
-await test("D14: deriveModelPosture(>=0.5) -> executor=fable/xhigh (hard)", () => {
+await test("D14: deriveModelPosture(>=0.5) -> executor=opus/xhigh, fablePlan=true (hard)", () => {
   const posture = deriveModelPosture(0.8);
-  assert.equal(posture.executor.model, "fable");
+  assert.equal(posture.executor.model, "opus"); // NEVER fable
   assert.equal(posture.executor.effort, "xhigh");
-  assert.equal(posture.spawnModel, "fable"); // whole subprocess on Fable
+  assert.equal(posture.spawnModel, "opus");     // subprocess is Opus
+  assert.equal(posture.fablePlan, true);         // high-value -> Fable pre-plan upstream
 });
 
-await test("D15: deriveModelPosture(0.2..0.5) -> executor=opus/xhigh (default)", () => {
+await test("D15: deriveModelPosture(0.2..0.5) -> executor=opus/xhigh, no fablePlan", () => {
   const posture = deriveModelPosture(0.35);
   assert.equal(posture.executor.model, "opus");
   assert.equal(posture.executor.effort, "xhigh");
   assert.equal(posture.spawnModel, "opus");
+  assert.equal(posture.fablePlan, false);
 });
 
-await test("D16: deriveModelPosture(<0.2) -> executor=sonnet/xhigh (easiest)", () => {
+await test("D16: deriveModelPosture(<0.2) -> executor still opus (sonnet only with --sonnet)", () => {
   const posture = deriveModelPosture(0.15);
-  assert.equal(posture.executor.model, "sonnet");
-  assert.equal(posture.executor.effort, "xhigh");
-  assert.equal(posture.spawnModel, "sonnet");
+  assert.equal(posture.executor.model, "opus");  // default: Opus even on trivial
+  assert.equal(posture.spawnModel, "opus");
+  const sonnetOptIn = deriveModelPosture(0.15, { sonnet: true });
+  assert.equal(sonnetOptIn.executor.model, "sonnet"); // opt-in -> Sonnet on trivial
+  assert.equal(sonnetOptIn.spawnModel, "sonnet");
 });
 
-await test("D16b: 0.5 boundary is Fable (>= 0.5), 0.49 is Opus", () => {
-  assert.equal(deriveModelPosture(0.5).executor.model, "fable");
-  assert.equal(deriveModelPosture(0.49).executor.model, "opus");
+await test("D16b: fablePlan boundary is >= 0.5; --fable forces it below the bar", () => {
+  assert.equal(deriveModelPosture(0.5).fablePlan, true);
+  assert.equal(deriveModelPosture(0.49).fablePlan, false);
+  assert.equal(deriveModelPosture(0.1, { fable: true }).fablePlan, true); // forced on
+  assert.equal(deriveModelPosture(0.8).executor.model, "opus"); // executor never Fable
 });
 
-await test("D16c: planner is fable at >= 0.5, opus below (matches executor bands)", () => {
-  assert.equal(deriveModelPosture(0.8).planner.model, "fable");
-  assert.equal(deriveModelPosture(0.5).planner.model, "fable");
-  assert.equal(deriveModelPosture(0.49).planner.model, "opus"); // just under the bar
-  assert.equal(deriveModelPosture(0.25).planner.model, "opus");
+await test("D16c: planner is always opus/high (Fable seeds it externally, never inline)", () => {
+  assert.equal(deriveModelPosture(0.8).planner.model, "opus");
+  assert.equal(deriveModelPosture(0.5).planner.model, "opus");
   assert.equal(deriveModelPosture(0.1).planner.model, "opus");
   assert.equal(deriveModelPosture(0.8).planner.effort, "high");
 });
@@ -328,13 +332,13 @@ await test("D16d: scout/researcher floors at Opus — explore quality gates plan
   assert.equal(deriveModelPosture(0.1).researcher.effort, "medium"); // eased effort
 });
 
-await test("D17: deriveModelPosture always yields verifier=haiku/low regardless of score", () => {
+await test("D17: deriveModelPosture always yields verifier=opus/medium regardless of score", () => {
   for (const score of [0.0, 0.4, 0.7, 1.0]) {
     const posture = deriveModelPosture(score);
-    assert.equal(posture.verifier.model, "haiku",
-      `verifier.model must always be haiku at score=${score}`);
-    assert.equal(posture.verifier.effort, "low",
-      `verifier.effort must always be low at score=${score}`);
+    assert.equal(posture.verifier.model, "opus",
+      `verifier.model must always be opus at score=${score}`);
+    assert.equal(posture.verifier.effort, "medium",
+      `verifier.effort must always be medium at score=${score}`);
   }
 });
 
@@ -358,8 +362,9 @@ await test("D19: writeUnitConfig writes bgsd_unit_posture to config.json (config
     const config = JSON.parse(readFileSync(configPath, "utf8"));
     assert.ok(config.bgsd_unit_posture, "config must have bgsd_unit_posture");
     assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-xx");
-    assert.equal(config.bgsd_unit_posture.executor.model, "fable"); // 0.8 is hard -> fable
-    assert.equal(config.bgsd_unit_posture.verifier.model, "haiku");
+    assert.equal(config.bgsd_unit_posture.executor.model, "opus"); // executor never Fable
+    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // 0.8 -> Fable pre-plan
+    assert.equal(config.bgsd_unit_posture.verifier.model, "opus");
 
     // Confirm it ONLY writes under bgsd_unit_posture — does not touch GSD keys
     const keys = Object.keys(config);

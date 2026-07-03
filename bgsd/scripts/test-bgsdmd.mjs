@@ -25,16 +25,16 @@ function test(name, fn) {
 test("BM01 — setConfigValue deep-sets a dotted path + returns oldValue", () => {
   const cfg = defaultBgsdConfig();
   const { config, oldValue } = setConfigValue(cfg, "model_posture.verifier.model", "sonnet");
-  assert.equal(oldValue, "haiku");
+  assert.equal(oldValue, "opus");
   assert.equal(config.model_posture.verifier.model, "sonnet");
   // original not mutated
-  assert.equal(cfg.model_posture.verifier.model, "haiku");
+  assert.equal(cfg.model_posture.verifier.model, "opus");
 });
 
 test("BM02 — applySetting updates the json block while preserving prose", () => {
   const text = renderBgsdMd(defaultBgsdConfig());
   const res = applySetting(text, "model_posture.verifier.model", "sonnet");
-  assert.equal(res.oldValue, "haiku");
+  assert.equal(res.oldValue, "opus");
   assert.equal(res.newValue, "sonnet");
   // settings round-trip reflects the change
   assert.equal(parseBgsdMd(res.text).model_posture.verifier.model, "sonnet");
