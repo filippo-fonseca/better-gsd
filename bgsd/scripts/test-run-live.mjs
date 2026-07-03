@@ -111,9 +111,12 @@ const UNIT = {
   difficulty: 0.62,
   criteria: ["users can log in", "sessions persist"],
   model_posture: {
+    planner: { model: "opus", effort: "high" },
     executor: { model: "opus", effort: "xhigh" },
-    researcher: { model: "sonnet", effort: "xhigh" },
-    verifier: { model: "haiku", effort: "low" },
+    researcher: { model: "opus", effort: "high" },
+    verifier: { model: "opus", effort: "medium" },
+    fablePlan: true, // difficulty 0.62 >= 0.5 -> a Fable pre-planner runs upstream
+    spawnModel: "opus", // executor is NEVER Fable
   },
 };
 
@@ -181,21 +184,78 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     assert.equal(cf.phase, "plan");
     assert.equal(cf.status, "running");
 
-    // L05 — claude -p /bgsd-run-agent spawned with the EXACT argv
-    assert.equal(spawnImpl.calls.length, 1, "exactly one claude spawn");
-    const call = spawnImpl.calls[0];
+    // L05 — fablePlan unit → TWO spawns: (1) the standalone Fable pre-planner
+    // writing the seed plan, then (2) the Opus Pipeline Agent with --seed-plan.
+    // The executor subprocess is Opus, NEVER Fable.
+    assert.equal(spawnImpl.calls.length, 2, "Fable pre-planner + Pipeline Agent");
+    const seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
+
+    const planCall = spawnImpl.calls[0];
+    assert.equal(planCall.cmd, "claude");
+    assert.deepEqual(planCall.args, [
+      "-p", "/bgsd-plan-unit",
+      "--model", "claude-fable-5", // Fable is the PRE-PLANNER only
+      "--worktree", wtPath,
+      "--unit-id", UNIT.id,
+      "--run-id", runId,
+      "--out", seedPlanPath,
+    ]);
+
+    const call = spawnImpl.calls[1];
     assert.equal(call.cmd, "claude");
     assert.deepEqual(call.args, [
       "-p", "/bgsd-run-agent",
-      "--model", "claude-fable-5", // UNIT.difficulty 0.62 >= 0.5 -> hard -> Fable subprocess
+      "--model", "opus", // executor/pipeline subprocess is Opus, never Fable
       "--worktree", wtPath,
       "--unit-id", UNIT.id,
       "--run-id", runId,
       "--control-file", controlPath,
       "--scale", "feature",
       "--port", "3157",
+      "--seed-plan", seedPlanPath, // Opus planner builds on the Fable pre-plan
     ]);
     assert.equal(call.opts.cwd, wtPath, "spawn cwd must be the worktree");
+  } finally {
+    rmSync(bgsdDir, { recursive: true, force: true });
+    rmSync(wtPath, { recursive: true, force: true });
+  }
+});
+
+await test("L05b: non-fablePlan unit → single Opus spawn, no pre-planner, no --seed-plan", async () => {
+  const bgsdDir = makeTmpDir();
+  const wtPath  = join(makeTmpDir(), "wt");
+  const plan    = { ...PLAN, path: wtPath };
+  const gitImpl = makeGitMock();
+  const spawnImpl = makeSpawnMock();
+  const runId = "bgsd-0002-easy";
+  const easyUnit = {
+    ...UNIT,
+    id: "unit-easy-cd34",
+    difficulty: 0.2,
+    model_posture: {
+      planner: { model: "opus", effort: "high" },
+      executor: { model: "opus", effort: "xhigh" },
+      researcher: { model: "opus", effort: "high" },
+      verifier: { model: "opus", effort: "medium" },
+      fablePlan: false, // below 0.5, no --fable → no upstream Fable planner
+      spawnModel: "opus",
+    },
+  };
+
+  try {
+    await liveSpawnFn(easyUnit.id, plan, {
+      runId, scale: "feature", unit: easyUnit,
+      bgsdDir, repoRoot: bgsdDir, gitImpl, spawnImpl,
+    });
+
+    assert.equal(spawnImpl.calls.length, 1, "exactly one spawn — the Pipeline Agent");
+    const call = spawnImpl.calls[0];
+    assert.ok(call.args.includes("/bgsd-run-agent"), "spawned the Pipeline Agent");
+    assert.ok(!call.args.includes("/bgsd-plan-unit"), "no Fable pre-planner");
+    assert.ok(!call.args.includes("--seed-plan"), "no seed plan when fablePlan is false");
+    assert.ok(!call.args.includes("claude-fable-5"), "Fable never appears");
+    const modelIdx = call.args.indexOf("--model");
+    assert.equal(call.args[modelIdx + 1], "opus", "executor subprocess is Opus");
   } finally {
     rmSync(bgsdDir, { recursive: true, force: true });
     rmSync(wtPath, { recursive: true, force: true });
@@ -250,8 +310,10 @@ await test("L07: liveSpawnFn falls back to reading the unit + scale from disk", 
     assert.equal(brief.title, UNIT.title, "title came from disk-read unit");
     assert.equal(brief.scale, "project", "scale came from disk-read _meta");
 
-    // Spawn argv used the disk-read scale.
-    const call = spawnImpl.calls[0];
+    // Spawn argv used the disk-read scale (check the Pipeline Agent spawn, which
+    // may be preceded by a Fable pre-planner spawn).
+    const call = spawnImpl.calls.find((c) => c.args.includes("/bgsd-run-agent"));
+    assert.ok(call, "the Pipeline Agent must be spawned");
     assert.ok(call.args.includes("project"), "spawn used the disk-read scale");
   } finally {
     rmSync(bgsdDir, { recursive: true, force: true });

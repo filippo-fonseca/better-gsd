@@ -180,7 +180,11 @@ export function requireNotProductionBranch(opts = {}) {
  *   4. Writes the unit's .planning/config.json via the config seams (NFR-04).
  *   5. Writes the unit brief to .planning/bgsd-unit.json.
  *   6. Creates the agent control file under .bgsd/runs/<runId>/control/.
- *   7. Launches a headless `claude -p /bgsd-run-agent` Pipeline Agent.
+ *   7. (optional) Runs a standalone Fable pre-planner (`claude -p /bgsd-plan-unit
+ *      --model claude-fable-5`) when the unit is flagged fablePlan, writing
+ *      .planning/fable-plan.md to seed the Opus agent.
+ *   8. Launches a headless `claude -p /bgsd-run-agent` Opus Pipeline Agent
+ *      (with --seed-plan when a Fable pre-plan was produced).
  *
  * Every child-process step checks status/error and throws on failure — no
  * silent green (NFR-06). The child-process + git boundaries are INJECTABLE so
@@ -278,16 +282,49 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     status:   "running",
   });
 
-  // The REAL Claude Code model for this unit's worktree subprocess. bgsd cannot
-  // spawn a Fable subagent in-session, so Fable is realized by launching the whole
-  // Pipeline Agent on it (hard units, >= 0.5); plan+execute then share it, while
-  // cheap phase-subagents (scout, review) run inside via the agent tool.
+  // The REAL Claude Code model for this unit's worktree subprocess. The executor
+  // is NEVER Fable (too token-heavy on the highest-VOLUME role): this is Opus by
+  // default, or Sonnet on trivial (< 0.2) units when --sonnet is opted in.
   const spawnModel = resolveSpawnModel(
     unit?.model_posture?.spawnModel ??
     unitSpawnModel(typeof unit?.difficulty === "number" ? unit.difficulty : 0)
   );
 
-  // 6. Spawn the headless Pipeline Agent (NFR-06: throw on non-zero/error).
+  // 6. Fable pre-plan (optional). For high-value units (or --fable), run a
+  //    STANDALONE `claude -p --model claude-fable-5` planner that writes a plan
+  //    markdown into the worktree. That markdown seeds the Opus Pipeline Agent
+  //    below, so we get Fable-grade planning without running the whole token-heavy
+  //    subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
+  let seedPlanArgs = [];
+  if (unit?.model_posture?.fablePlan) {
+    const seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
+    log(`liveSpawnFn: running Fable pre-planner for unit "${unitId}" → ${seedPlanPath}`);
+    const planResult = spawnImpl(
+      "claude",
+      [
+        "-p", "/bgsd-plan-unit",
+        "--model", "claude-fable-5",
+        "--worktree", wtPath,
+        "--unit-id", unitId,
+        "--run-id", runId,
+        "--out", seedPlanPath,
+      ],
+      { cwd: wtPath, stdio: "inherit", encoding: "utf8" }
+    );
+    if (planResult?.error) {
+      throw new Error(`Fable pre-planner failed to spawn for unit "${unitId}": ${planResult.error.message}`);
+    }
+    if (planResult?.status !== 0) {
+      throw new Error(
+        `Fable pre-planner exited non-zero for unit "${unitId}" (exit ${planResult?.status}): ${planResult?.stderr ?? ""}`
+      );
+    }
+    seedPlanArgs = ["--seed-plan", seedPlanPath];
+  }
+
+  // 7. Spawn the headless Opus Pipeline Agent (NFR-06: throw on non-zero/error).
+  //    If a Fable pre-plan was written, pass it via --seed-plan so the Opus
+  //    planner builds on it rather than planning from scratch.
   const agentResult = spawnImpl(
     "claude",
     [
@@ -299,6 +336,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
       "--control-file", controlPath,
       "--scale", scale,
       "--port", String(port),
+      ...seedPlanArgs,
     ],
     { cwd: wtPath, stdio: "inherit", encoding: "utf8" }
   );
