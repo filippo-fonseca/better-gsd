@@ -14,7 +14,7 @@
 [![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
-[Landing page](https://site-filippo-fonsecas-projects.vercel.app) · [Docs](./bgsd/docs) · [Contributing](./CONTRIBUTING.md) · [Architecture](./ARCHITECTURE.md)
+[Landing page](https://site-filippo-fonsecas-projects.vercel.app) · [Docs](./bgsd/docs) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [Architecture](./ARCHITECTURE.md)
 
 </div>
 
