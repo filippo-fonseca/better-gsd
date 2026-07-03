@@ -94,7 +94,7 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
-| `--fable` | Force a standalone **Fable pre-plan on every unit**. Fable plans only (it never edits code): it writes `.planning/fable-plan.md`, which seeds the Opus pipeline agent that actually executes. By default this pre-plan runs only on high-value units (difficulty &ge; 0.5); `--fable` extends it to all of them. The executor stays Opus either way. No arming, no per-candidate permission gate. |
+| `--fable` | Turn on a standalone **Fable pre-plan for every unit** (off by default). Difficulty does not trigger it: without the flag, units run the normal GSD workflow on Opus unless the Conductor opts one in. The pre-plan is launched as a `claude -p /bgsd-plan-unit --model claude-fable-5` Bash subprocess (never the in-session agent tool, which can't run Fable); it plans only (never edits code), writes `.planning/fable-plan.md`, and seeds the Opus pipeline agent via `--seed-plan`. The executor stays Opus either way. |
 | `--sonnet` | Let the executor drop from Opus to **Sonnet · xhigh on trivial units only** (difficulty &lt; 0.2). Without this flag every unit executes on Opus · xhigh. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 

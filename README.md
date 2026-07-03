@@ -109,7 +109,7 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
-| `--fable` | Force a standalone **Fable pre-plan** on **every** unit (not just high-value ones). This adds an upstream planner that writes `.planning/fable-plan.md` and seeds the Opus pipeline agent; it never puts Fable on the build. The executor stays Opus. Override the model for any unit conversationally, anytime, by just telling the Conductor. |
+| `--fable` | Turn on a standalone **Fable pre-plan** for **every** unit (it is off by default; without this flag, units run the normal GSD workflow on Opus unless the Conductor opts one in). This adds an upstream planner that writes `.planning/fable-plan.md` and seeds the Opus pipeline agent; it never puts Fable on the build. The executor stays Opus. Override the model for any unit conversationally, anytime, by just telling the Conductor. |
 | `--sonnet` | Allow the executor to drop to **Sonnet · xhigh** on trivial units (difficulty **<0.2**) only. Without this flag the executor is always Opus. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 
@@ -169,7 +169,7 @@ The slogan is simple: **Fable plans; Opus executes.** Opus 4.8 is the standard f
 | Role | Where | Model · effort |
 |------|-------|----------------|
 | Conductor (live session) | orchestrates; decompose + oracle | your session model — not forced; two-way nudge |
-| Fable pre-planner (plans only) | standalone `claude -p /bgsd-plan-unit --model claude-fable-5` | Fable, for high-value units (≥0.5) or when `--fable` forces it onto every unit |
+| Fable pre-planner (plans only) | standalone `claude -p /bgsd-plan-unit --model claude-fable-5` | Fable; off by default, runs only when `--fable` turns it on for every unit (or the Conductor opts a unit in) |
 | Executor / per-unit subprocess (builds) | Loop-1 worktree | Opus · xhigh always; Sonnet · xhigh only on trivial units (<0.2) and only with `--sonnet`; never Fable |
 | Planner (in-pipeline) | inside the unit | Opus · high always (builds on the Fable pre-plan when one exists) |
 | Scout / research | reads files | Opus · high (Opus · medium trivial) |
@@ -178,9 +178,9 @@ The slogan is simple: **Fable plans; Opus executes.** Opus 4.8 is the standard f
 | Conflict resolver | Loop 2 | Opus · high |
 | Loop-2 fix | Loop 2 | Opus · medium |
 
-Note: high-value units (≥0.5) get a Fable **pre-plan** automatically by difficulty, but the executor still builds on Opus; review is fresh Opus.
+Note: the Fable **pre-plan** is off by default. Difficulty does not trigger it; every unit runs the normal GSD workflow on Opus. A pre-plan runs only when you pass `--fable` (or the Conductor opts a specific unit in), and even then the executor still builds on Opus; review is fresh Opus.
 
-These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). High-value units (≥0.5) get a Fable pre-plan automatically; override the model for any unit conversationally.
+These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). The Fable pre-plan is off by default and opt-in via `--fable` or per-unit; override the model for any unit conversationally.
 
 ---
 

@@ -68,8 +68,8 @@ force your model**; you run on whatever the user launched with. Your job is a
 Whatever you end up on, you still hold the discipline below — you **never read raw
 files** (scouts do), **never review diffs** (a fresh Opus does), and offload state to
 `.bgsd/` md, so your context stays lean. (The per-unit worktree agents run on Opus
-via `--model`, never Fable; high-value units get a separate Fable *pre-plan* that
-seeds them — independent of your session model.)
+via `--model`, never Fable; only with `--fable` (or a per-unit opt-in) does a
+separate Fable *pre-plan* run first to seed them — independent of your session model.)
 
 **Assign a session title.** Right after minting the run,
 give this session a concise, human-readable **title** (3 to 8 words, Title Case,
@@ -147,11 +147,11 @@ A flag never disables verification and never lets bgsd write `main` or any produ
 
 | Flag | Meaning |
 |------|---------|
-| `--fable` | Force a standalone **Fable pre-plan** on **every** unit (not just high-value ≥ 0.5 ones). Fable plans; the executor stays Opus. Never puts Fable on the build. |
+| `--fable` | Turn on a standalone **Fable pre-plan** for **every** unit (off by default). Launched as a `claude -p /bgsd-plan-unit --model claude-fable-5` **Bash subprocess** (never the Agent tool), it plans only and seeds the Opus pipeline agent via `--seed-plan`. The executor stays Opus; nothing puts Fable on the build. |
 | `--sonnet` | Allow the executor to drop to **Sonnet** on genuinely **trivial** units (difficulty < 0.2). Anything ≥ 0.2 stays Opus. Default without it: Opus everywhere. |
 
-Neither flag ever changes verification, and neither is required — high-value units
-already get a Fable pre-plan by difficulty, and Opus is the standard executor.
+Neither flag ever changes verification, and neither is required — by default every
+unit runs the normal GSD workflow on Opus, with no Fable pre-plan.
 
 ---
 
@@ -213,10 +213,12 @@ live). Hold that framing above all else.
 
 The governing principle: **Opus is the standard for every role.** **Fable is NEVER
 the executor** — it is the highest-token-cost model and the executor is the
-highest-VOLUME role, so building on Fable simply guzzles tokens. Fable's reasoning
-is captured **only** as a separate upstream **pre-plan**: a standalone Fable
-subprocess plans, writes a markdown, and hands it to the Opus pipeline agent.
-**Fable plans; Opus executes.** Sonnet appears only on genuinely trivial fixes.
+highest-VOLUME role, so building on Fable simply guzzles tokens. **By default a unit
+just runs the normal GSD workflow on Opus — there is no Fable pre-plan.** Fable's
+reasoning is brought in **only when asked** (via `--fable`, or when you opt a
+specific unit in): a standalone Fable subprocess plans, writes a markdown, and hands
+it to the Opus pipeline agent to seed its GSD planning. **Fable plans; Opus
+executes.** Sonnet appears only on genuinely trivial fixes.
 
 **How Fable actually runs (three facts).** bgsd **cannot force your model** (you
 are the user's live session — see the nudge-both-ways rule near the top), and it
@@ -227,11 +229,31 @@ sonnet / haiku). So Fable runs in exactly these places, nowhere else:
 2. **A standalone per-unit pre-planner subprocess**, launched with
    `claude -p /bgsd-plan-unit --model claude-fable-5`. It **only plans** — writes
    `.planning/fable-plan.md`, never touches code — and that plan seeds the Opus
-   pipeline agent (`--seed-plan`). This is the only per-unit Fable, and it runs for
-   high-value units (difficulty ≥ 0.5) or when `--fable` is passed.
+   pipeline agent (`--seed-plan`). This is the only per-unit Fable, and it runs
+   **only** when `--fable` is passed or you opt a unit in — never automatically.
 
 The executor/pipeline subprocess itself is **always Opus** (or Sonnet on a trivial
 fix). It is **never Fable.**
+
+> **CRITICAL — the Fable pre-planner is a Bash SUBPROCESS, not an Agent-tool spawn.**
+> The in-session Agent/Task tool cannot run Fable (it offers only opus/sonnet/haiku),
+> so launching `/bgsd-plan-unit` as a subagent silently no-ops (an empty agent, zero
+> tool uses — that is the failure mode to avoid). When a unit is flagged for a Fable
+> pre-plan, launch it yourself via **Bash**, on the unit's worktree, BEFORE you spawn
+> that unit's Opus pipeline agent:
+>
+> ```bash
+> claude -p /bgsd-plan-unit --model claude-fable-5 \
+>   --worktree "<worktree>" --unit-id "<unit-id>" --run-id "<run-id>" \
+>   --out "<worktree>/.planning/fable-plan.md"
+> ```
+>
+> Then pass `--seed-plan "<worktree>/.planning/fable-plan.md"` to that unit's
+> `claude -p /bgsd-run-agent` (also a Bash subprocess). Register the pre-planner on
+> the live dashboard with `gui-live.mjs agent ... --phase plan` so it shows as its
+> own card. Never route a Fable pre-plan through the Agent tool. (The wiring in
+> `run-live.mjs` `liveSpawnFn` does exactly this when a unit's `model_posture.fablePlan`
+> is set — prefer driving through it over hand-rolling the two spawns.)
 
 Per-role routing — where in the pipeline → model · effort:
 
@@ -239,29 +261,31 @@ Per-role routing — where in the pipeline → model · effort:
 |------|-----------------------|----------------|
 | **Conductor** (live session) | orchestrates; runs decompose + oracle **in-session** | **your session model** — NOT forced; two-way nudge (Opus ↔ Fable by prompt weight) |
 | **Conductor-wide explore** | session-level exploration before decompose | **the Conductor's own session model** (explore in-context, don't farm it to a cheap subagent) |
-| **Fable pre-planner** (plans only, writes seed markdown) | Loop 1, upstream of the unit, via `claude -p /bgsd-plan-unit --model claude-fable-5` | **Fable · high** — high-value units (≥ 0.5) or `--fable`; the ONLY per-unit Fable |
+| **Fable pre-planner** (plans only, writes seed markdown; **Bash subprocess**) | Loop 1, upstream of the unit, via `claude -p /bgsd-plan-unit --model claude-fable-5` | **Fable · high** — **only** with `--fable` or a per-unit opt-in; the ONLY per-unit Fable |
 | **Per-unit worktree subprocess** (plan + execute share it) | Loop 1, via `claude -p --model` | **Opus · xhigh** — always; **Sonnet · xhigh** only on trivial (< 0.2) with `--sonnet`. **Never Fable.** |
-| **Planner** | inside the unit | **Opus · high** (builds on the Fable seed plan when present) |
+| **Planner** | inside the unit | **Opus · high** (builds on the Fable seed plan when one was produced) |
 | **Scout / research** (the explore step, reads files) | inside the unit, **nested** subagent | **Opus · high** floor (**Opus · medium** if trivial) — explore quality gates plan quality |
 | **Code review** (diff) | fresh context | **Opus · high** |
 | **Verifier / Tester** | verify | **Opus · medium** |
 | **Conflict / merge resolver** | Loop 2 | **Opus · high** |
 | **Loop-2 fix agents** | Loop 2 | **Opus · medium** |
 
-**High-value units get a Fable PRE-PLAN automatically.** A unit scored at
-**difficulty ≥ 0.5** by `decompose.mjs` gets a standalone Fable pre-planner upstream
-(its plan seeds the Opus agent) — by difficulty alone, no approval gate. The
-**executor is still Opus.** The human has final say and can override any unit
-conversationally (or per-session, by flag, or in `BGSD.md`).
+**Default is plain Opus GSD — no Fable pre-plan.** Difficulty does **not** trigger
+Fable. A unit just runs the normal GSD workflow on Opus, and the Opus planner plans
+as usual. A Fable pre-plan runs **only** when `--fable` is passed or you decide a
+specific unit genuinely warrants Fable's reasoning and opt it in. The executor is
+always Opus regardless. The human has final say and can add or drop a pre-plan for
+any unit conversationally (or per-session, by flag, or in `BGSD.md`).
 
 **Phase, persist, clear.** Split a big unit into phases; keep progress in `.bgsd/`
 md (RUN / PLAN / handoff), not the chat; give each phase fresh context.
 
-**`--fable` — force a Fable pre-plan on every unit.** By default only high-value
-units (≥ 0.5) get the standalone Fable pre-planner. `--fable` lowers that bar to
-**every** unit in the session: each unit gets a Fable-planned seed before its Opus
-build. It does **not** put Fable on the executor — nothing does. Persist
-`models.fable: on` in `BGSD.md` to keep it on every sesh.
+**`--fable` — turn the Fable pre-plan on.** Off by default. `--fable` makes every
+unit in the session get a standalone Fable-planned seed (launched as the Bash
+subprocess above) before its Opus build. It does **not** put Fable on the executor —
+nothing does; the pre-plan just feeds Fable's reasoning into the GSD workflow.
+Without the flag, you may still opt a single unit in when it's clearly worth it.
+Persist `models.fable: on` in `BGSD.md` to keep it on every sesh.
 
 **`--sonnet` — allow Sonnet on trivial fixes.** By default the executor is Opus for
 every unit. `--sonnet` lets a **genuinely trivial** unit (difficulty < 0.2) drop its
@@ -487,13 +511,21 @@ in the Claude Code UI, so make it: `<emoji> <Role> · <unit> (<model>)`.
 | Role | Emoji | Example description |
 |------|-------|---------------------|
 | Conductor (you) | 🥝 | `🥝 Kiwi · conductor` |
+| Fable pre-planner (**Bash subprocess**) | 🧠 | `🧠 Fable-plan · search-bar (claude-fable-5)` |
 | Pipeline Agent (executor) | 🔧 | `🔧 Pipeline · search-bar (opus/xhigh)` |
-| Researcher | 🔎 | `🔎 Research · search-bar (sonnet)` |
+| Researcher | 🔎 | `🔎 Research · search-bar (opus)` |
 | UI designer | 🎨 | `🎨 UI · header (opus)` |
 | Tester (usage verify) | 🧪 | `🧪 Tester · search-bar` |
 | Verifier (code / gsd) | ⚖️ | `⚖️ Verify · search-bar` |
 | Integrator (Loop 2) | 🔀 | `🔀 Integrator · next` |
 | Reviewer (gate) | 📋 | `📋 Review · next` |
+
+> **The 🧠 Fable pre-planner is the ONE role you never spawn with the Agent tool.**
+> The Agent/Task tool only runs opus/sonnet/haiku, so a Fable pre-plan launched that
+> way silently no-ops (empty agent, zero tool uses). Launch it as a Bash subprocess
+> (`claude -p /bgsd-plan-unit --model claude-fable-5 …`, see the model-doctrine
+> section) and register it on the dashboard with `gui-live.mjs agent …` so it still
+> gets its branded 🧠 card. Everything else in this table can be a normal subagent.
 
 Keep it uniform across the whole fan-out so a wave of agents reads as one branded
 set. (The colored background on the agent tag is Claude Code's own rendering; the

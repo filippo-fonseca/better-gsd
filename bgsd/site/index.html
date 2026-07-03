@@ -1135,7 +1135,7 @@
           executes. Two limits shape placement: bgsd can't force the Conductor's model (it's your
           live session, so bgsd only nudges, both ways), and it can't spawn a Fable subagent
           in-session. So Fable runs only as your own Conductor session or as a standalone upstream
-          pre-planner that seeds Opus on high-value units (difficulty &ge;0.5).
+          pre-planner that seeds Opus, off by default and running only when <code>--fable</code> is passed.
         </p>
         <span class="card-tag">two-way nudge · Fable plans, Opus executes</span>
       </div>
@@ -1164,7 +1164,7 @@
         final say. Override per-unit, per-session, in <code>BGSD.md</code>, or by just telling
         the Conductor (it adapts on the fly, no restart). Note: the executor is always Opus (Sonnet
         only on trivial units with <code>--sonnet</code>); Fable runs only as a standalone pre-planner
-        that seeds Opus on high-value units (&ge;0.5). Fable plans; Opus executes.
+        that seeds Opus, off by default and running only when <code>--fable</code> is passed. Fable plans; Opus executes.
       </p>
     </div>
 
@@ -1196,7 +1196,7 @@
           <tr>
             <td class="cmd-ref-name">Fable pre-planner</td>
             <td class="cmd-ref-desc">standalone, upstream; plans only, never edits</td>
-            <td class="cmd-ref-desc">Fable (&ge;0.5, or all units with <code>--fable</code>) &rarr; seeds Opus</td>
+            <td class="cmd-ref-desc">Fable (off by default; only with <code>--fable</code>, or when the Conductor opts a unit in) &rarr; seeds Opus</td>
           </tr>
           <tr>
             <td class="cmd-ref-name">Scout / research</td>
@@ -1230,7 +1230,7 @@
     <p class="cmd-ref-note">
       Fable plans; Opus executes. The per-unit executor is always Opus (Sonnet only on trivial
       units &lt;0.2, and only with <code>--sonnet</code>); Fable runs solely as a standalone upstream
-      pre-planner that seeds Opus on high-value units (&ge;0.5, or all units with <code>--fable</code>).
+      pre-planner that seeds Opus, off by default and running only when <code>--fable</code> is passed (every unit).
       bgsd can't force the Conductor's model or spawn a Fable subagent in-session: Fable runs as your
       Conductor session or as the standalone per-unit pre-planner.
     </p>
@@ -2039,8 +2039,8 @@
             executes: it runs solely as a standalone upstream pre-planner
             (<code>claude -p /bgsd-plan-unit --model claude-fable-5</code>) that plans without editing
             code, writes <code>.planning/fable-plan.md</code>, and seeds the Opus pipeline agent. That
-            pre-plan runs on high-value units (difficulty &ge;0.5), or on every unit with
-            <code>--fable</code>. Two hard limits remain: bgsd can't force the Conductor's model (your
+            pre-plan is off by default (difficulty does not trigger it; every unit runs the normal
+            GSD workflow on Opus) and runs only when you pass <code>--fable</code>. Two hard limits remain: bgsd can't force the Conductor's model (your
             live session; bgsd only nudges, both ways) and can't spawn a Fable subagent in-session.
             Override any unit's model conversationally, anytime.
           </p>
