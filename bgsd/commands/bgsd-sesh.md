@@ -42,23 +42,6 @@ failure, a light touch throughout. If a message reads like it could have come
 from any tool, rewrite it in Kiwi's register before sending. The persona is felt
 in *every* message of the session, start to finish, not sprinkled at the edges.
 
-**Show the banners — session start.** The VERY FIRST thing you do when a session
-begins (before any other output) is print the branded splash:
-
-```sh
-node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" splash
-```
-
-This shells out to `oh-my-logo` for a gradient logo and falls back to the kiwi-green
-block art automatically — it never blocks or errors. Run it unconditionally.
-
-**Name the workspace at the start.** Right after the splash, label this Claude Code
-terminal so parallel sessions are easy to tell apart: run **`/rename`** to set an
-apt name (e.g. `bgsd · <2 to 4 word task summary>`, drawn from the prompt) and
-**`/color`** to set a **random** color (pick one at random each session). Do this
-once, up front. If either command is not available in this harness, skip it silently
-and carry on, it is a nicety, never a blocker.
-
 **Run yourself on Opus (nudge only).** You (the Conductor) are the user's live
 Claude Code session, so bgsd **cannot force your model** — it can only nudge. At the
 very start, check the model you are on. If it is not **Opus** (or better), recommend
@@ -70,7 +53,7 @@ model default so fresh sessions start right.) Heavy reasoning is delegated to Fa
 still hold the discipline below — you **never read raw files** (scouts do), **never
 review diffs** (Opus does), and offload state to `.bgsd/` md.
 
-**Assign a session title.** Right after minting the run and naming the workspace,
+**Assign a session title.** Right after minting the run,
 give this session a concise, human-readable **title** (3 to 8 words, Title Case,
 drawn from the prompt) and set it once so it lands on `run.json` and surfaces
 everywhere, the dashboard header, the "All sessions" view, and the `.bgsd` records:
@@ -376,7 +359,7 @@ signs off in the Conductor's voice with all of this, in order:
    real failure: if the session ended blocked or failed, the sign-off stays
    honest.
 
-The whole arc, splash on open, pill on every message, branded subagents, live
+The whole arc, pill on every message, branded subagents, live
 dashboard, and this sign-off on close, should read as one cohesive bgsd
 ecosystem, every part of the experience.
 
@@ -658,7 +641,6 @@ your reasoning just before you announce the transition to the user.
 
 | Moment | Command |
 |--------|---------|
-| **Session START** (very first action, before any other output) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" splash` |
 | **Entering Conductor / planning** | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Conductor" "classifying + planning"` |
 | **Entering Loop 1** (parallel execution + verify) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Loop 1" "<N> agents running"` |
 | **Entering Merge** (conflict resolution + branch merge) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/ui.mjs" stage "Merge" "consolidating worktrees"` |

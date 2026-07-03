@@ -45,6 +45,25 @@ function banner() {
   console.log("");
 }
 
+// Big branded splash, shown after a successful install. The npm launcher runs
+// in a real terminal (outside Claude Code), where the full-width block art
+// renders properly — unlike inside a Claude Code session, where it gets clipped.
+function splash() {
+  const art = [
+    "██████╗   ██████╗  ███████╗ ██████╗ ",
+    "██╔══██╗ ██╔════╝  ██╔════╝ ██╔══██╗",
+    "██████╔╝ ██║  ███╗ ███████╗ ██║  ██║",
+    "██╔══██╗ ██║   ██║ ╚════██║ ██║  ██║",
+    "██████╔╝ ╚██████╔╝ ███████║ ██████╔╝",
+    "╚═════╝   ╚═════╝  ╚══════╝ ╚═════╝ ",
+  ];
+  console.log("");
+  for (const line of art) console.log("  " + green(line));
+  console.log("");
+  console.log("  " + bold("better-gsd") + dim("  ·  talk to the Conductor; it handles everything."));
+  console.log("");
+}
+
 function help() {
   banner();
   console.log("Usage: " + bold("npx better-gsd@latest") + " [--dry-run] [--help]");
@@ -88,6 +107,7 @@ function run(step) {
 }
 
 function nextSteps() {
+  splash();
   console.log(green("  bgsd is installed."));
   console.log("");
   console.log("  Next steps:");
