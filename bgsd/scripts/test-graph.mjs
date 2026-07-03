@@ -285,39 +285,38 @@ await test("D13: difficultyScore increases with more touched entries", () => {
   assert.ok(high > low, `higher touched count must yield higher score (${high} > ${low})`);
 });
 
-await test("D14: deriveModelPosture(>=0.7) -> executor=opus/xhigh", () => {
+await test("D14: deriveModelPosture(>=0.5) -> executor=fable/xhigh (hard)", () => {
   const posture = deriveModelPosture(0.8);
+  assert.equal(posture.executor.model, "fable");
+  assert.equal(posture.executor.effort, "xhigh");
+  assert.equal(posture.spawnModel, "fable"); // whole subprocess on Fable
+});
+
+await test("D15: deriveModelPosture(0.2..0.5) -> executor=opus/xhigh (default)", () => {
+  const posture = deriveModelPosture(0.35);
   assert.equal(posture.executor.model, "opus");
   assert.equal(posture.executor.effort, "xhigh");
+  assert.equal(posture.spawnModel, "opus");
 });
 
-await test("D15: deriveModelPosture(>=0.4) -> executor=opus/xhigh", () => {
-  const posture = deriveModelPosture(0.5);
-  assert.equal(posture.executor.model, "opus");
-  assert.equal(posture.executor.effort, "xhigh");
-});
-
-await test("D16: deriveModelPosture(<0.4) -> executor=sonnet/xhigh", () => {
-  const posture = deriveModelPosture(0.3);
+await test("D16: deriveModelPosture(<0.2) -> executor=sonnet/xhigh (easiest)", () => {
+  const posture = deriveModelPosture(0.15);
   assert.equal(posture.executor.model, "sonnet");
   assert.equal(posture.executor.effort, "xhigh");
+  assert.equal(posture.spawnModel, "sonnet");
 });
 
-await test("D16b: deriveModelPosture(very low) -> still sonnet/xhigh", () => {
-  const posture = deriveModelPosture(0.1);
-  assert.equal(posture.executor.model, "sonnet");
-  assert.equal(posture.executor.effort, "xhigh");
+await test("D16b: 0.5 boundary is Fable (>= 0.5), 0.49 is Opus", () => {
+  assert.equal(deriveModelPosture(0.5).executor.model, "fable");
+  assert.equal(deriveModelPosture(0.49).executor.model, "opus");
 });
 
-await test("D16c: planner defaults to fable (hard) and opus (easy-but-planned)", () => {
-  // Planning is the highest-leverage/lowest-volume reasoning per unit, so it
-  // defaults to Fable on hard units (>= 0.4) and drops to Opus below that to
-  // save Fable tokens (still a strong planner). DEFAULTS; overridable per unit.
+await test("D16c: planner is fable at >= 0.5, opus below (matches executor bands)", () => {
   assert.equal(deriveModelPosture(0.8).planner.model, "fable");
-  assert.equal(deriveModelPosture(0.4).planner.model, "fable");
-  assert.equal(deriveModelPosture(0.25).planner.model, "opus"); // easy-but-planned -> opus
-  assert.equal(deriveModelPosture(0.25).executor.model, "sonnet");
-  assert.equal(deriveModelPosture(0.1).planner.model, "opus");  // still opus, not fable
+  assert.equal(deriveModelPosture(0.5).planner.model, "fable");
+  assert.equal(deriveModelPosture(0.49).planner.model, "opus"); // just under the bar
+  assert.equal(deriveModelPosture(0.25).planner.model, "opus");
+  assert.equal(deriveModelPosture(0.1).planner.model, "opus");
   assert.equal(deriveModelPosture(0.8).planner.effort, "high");
 });
 
@@ -359,7 +358,7 @@ await test("D19: writeUnitConfig writes bgsd_unit_posture to config.json (config
     const config = JSON.parse(readFileSync(configPath, "utf8"));
     assert.ok(config.bgsd_unit_posture, "config must have bgsd_unit_posture");
     assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-xx");
-    assert.equal(config.bgsd_unit_posture.executor.model, "opus");
+    assert.equal(config.bgsd_unit_posture.executor.model, "fable"); // 0.8 is hard -> fable
     assert.equal(config.bgsd_unit_posture.verifier.model, "haiku");
 
     // Confirm it ONLY writes under bgsd_unit_posture — does not touch GSD keys

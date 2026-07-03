@@ -47,11 +47,15 @@
  * override any of these on the fly). The principle: spend the priciest model
  * (Fable) only on high-leverage, low-volume reasoning (the plan); keep the
  * high-volume build and the file-reading scout cheap:
- *   planner:    >= 0.4 -> fable/high ; < 0.4 -> opus/high   (reasoning; gates the unit)
- *   executor:   >= 0.4 -> opus/xhigh ; < 0.4 -> sonnet/xhigh (building; high volume)
- *   researcher: < 0.2  -> haiku/low  ; else  -> sonnet/low   (reads files, distills)
+ *   planner:    >= 0.5 -> fable/high  ; < 0.5 -> opus/high      (reasoning; gates the unit)
+ *   executor:   >= 0.5 -> fable/xhigh ; >= 0.2 -> opus/xhigh ; < 0.2 -> sonnet/xhigh
+ *   researcher: < 0.2  -> haiku/low   ; else -> sonnet/low      (reads files, distills)
  *   verifier:   always haiku/low
- * (Fable is never a default executor — it is armed per-agent via `--fable`.)
+ * The worktree subprocess is launched on the executor's model (`--model`), so a
+ * unit's plan+execute share one coherent model; cheap phase-subagents (scout,
+ * review) still run inside via the agent tool. Fable is realized by running the
+ * whole hard-unit (>= 0.5) subprocess on it, since bgsd cannot spawn a Fable
+ * subagent in-session (the agent tool offers only opus/sonnet/haiku).
  *
  * Usage (library):
  *   import { buildUnits, deriveModelPosture, parseDecompositionResponse,
@@ -135,43 +139,47 @@ export function difficultyScore({ touched = [], deps = [], title = "", scope = "
 // ---------------------------------------------------------------------------
 
 /**
- * The executor tier matrix. Executor is the highest-VOLUME role (N parallel
- * agents, long fix loops) and the plan already did the hard reasoning, so it is
- * the cheapest-capable model per band, NOT the priciest:
- *   high (>= 0.4) -> opus/xhigh   — genuinely hard units
- *   base (<  0.4) -> sonnet/xhigh — everyday building
- * (Fable is never a default executor; it is armed only via the per-agent
- * `--fable` gate — see bgsd-sesh.md.)
+ * The EXECUTOR posture for a difficulty score. Three bands, cheapest-capable per
+ * band (the plan already did the hard reasoning, and executor is the highest-
+ * VOLUME role, so we don't over-spend):
+ *   >= 0.5  -> fable/xhigh   — hard units build on Fable ("hard GSD needs Fable executors")
+ *   >= 0.2  -> opus/xhigh    — the default
+ *   <  0.2  -> sonnet/xhigh  — the easiest units only
+ * DEFAULT ONLY: the Conductor and, ultimately, the human can override any unit's
+ * executor on the fly (flag, BGSD.md, or just asking).
  */
-const POSTURE_TIERS = {
-  high: { model: "opus",   effort: "xhigh" },
-  base: { model: "sonnet", effort: "xhigh" },
-};
-
-/**
- * The executor tier for a difficulty score. Two bands (GRAPH-04):
- *   score >= 0.4  -> high (opus/xhigh)
- *   score <  0.4  -> base (sonnet/xhigh)
- */
-export function tierForScore(score) {
-  return score >= 0.4 ? "high" : "base";
+export function executorPostureForScore(score) {
+  if (score >= 0.5) return { model: "fable",  effort: "xhigh" };
+  if (score >= 0.2) return { model: "opus",   effort: "xhigh" };
+  return { model: "sonnet", effort: "xhigh" };
 }
 
 /**
  * The PLANNER posture for a difficulty score. Planning is the highest-leverage,
- * lowest-volume reasoning per unit (its output gates the whole unit), so it
- * DEFAULTS to Fable. Easy-but-still-planned units drop to Opus to save Fable
- * tokens — the Conductor (or a flag) makes that call; the band split here just
- * encodes the sensible default at the executor's hard threshold:
- *   score >= 0.4  -> fable/high  — worth Fable's reasoning
- *   score <  0.4  -> opus/high   — easy-but-planned: Opus is plenty
- * DEFAULT ONLY: the Conductor, and ultimately the human, can override any unit's
- * planner at any time (flag, BGSD.md, or just asking).
+ * lowest-volume reasoning per unit (its output gates the whole unit), so hard
+ * units get Fable; everything else gets Opus (plenty, and cheaper):
+ *   score >= 0.5  -> fable/high  — worth Fable's reasoning
+ *   score <  0.5  -> opus/high   — Opus is a strong planner, saves Fable tokens
+ * DEFAULT ONLY: overridable per unit at any time.
  */
 export function plannerPostureForScore(score) {
-  return score >= 0.4
+  return score >= 0.5
     ? { model: "fable", effort: "high" }
     : { model: "opus",  effort: "high" };
+}
+
+/**
+ * The model the unit's pipeline SUBPROCESS is launched on (`claude -p --model`).
+ * bgsd can't spawn a Fable *subagent* in-session (the agent tool only offers
+ * opus/sonnet/haiku), so Fable is realized by launching the whole worktree
+ * subprocess on it. The thresholds line up so plan and execute share one coherent
+ * model: >= 0.5 Fable, >= 0.2 Opus, < 0.2 Sonnet (the easiest, which skip
+ * planning anyway). Cheap phase-subagents (scout=Sonnet, review=Opus) are still
+ * spawned inside via the agent tool, so "Fable never reads files / reviews diffs"
+ * holds even when the pipeline agent itself is on Fable.
+ */
+export function unitSpawnModel(score) {
+  return executorPostureForScore(score).model;
 }
 
 /**
@@ -192,20 +200,21 @@ export function scoutPostureForScore(score) {
  * the Conductor decides per unit and adapts, and the human has the final say and
  * can override any of them on the fly.
  *
- * Planner:    fable/high (>= 0.4) or opus/high (< 0.4) — reasoning, gates the unit.
- * Executor:   opus/xhigh (>= 0.4) or sonnet/xhigh (< 0.4) — building, high volume.
+ * Planner:    fable/high (>= 0.5) or opus/high (< 0.5) — reasoning, gates the unit.
+ * Executor:   fable/xhigh (>= 0.5), opus/xhigh (>= 0.2), or sonnet/xhigh (< 0.2).
  * Researcher: sonnet/low (haiku/low if trivial) — reads files, distills a brief.
  * Verifier:   always haiku/low — cheap, deterministic verification.
  *
  * @param {number} score   difficulty score in [0, 1]
- * @returns {{ planner: object, executor: object, researcher: object, verifier: object }}
+ * @returns {{ planner: object, executor: object, researcher: object, verifier: object, spawnModel: string }}
  */
 export function deriveModelPosture(score) {
   return {
     planner:    plannerPostureForScore(score),
-    executor:   { ...POSTURE_TIERS[tierForScore(score)] },
+    executor:   executorPostureForScore(score),
     researcher: scoutPostureForScore(score),
     verifier:   { model: "haiku", effort: "low" }, // always haiku/low (Plan Part 11)
+    spawnModel: unitSpawnModel(score),             // the `claude -p --model` for the worktree subprocess
   };
 }
 
