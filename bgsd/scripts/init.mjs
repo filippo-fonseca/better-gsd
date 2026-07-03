@@ -34,7 +34,7 @@
 /**
  * The shipped bgsd defaults. BGSD.md renders these; the user edits the file to
  * override. The model-posture matrix here is the configurable home of what is
- * currently hardcoded in decompose.mjs (deriveModelPosture / POSTURE_TIERS).
+ * currently derived in decompose.mjs (deriveModelPosture).
  *
  * @returns {object} a fresh deep copy of the default config
  */
@@ -66,61 +66,56 @@ export function defaultBgsdConfig() {
       require_remote: true,
     },
     // Model routing — DEFAULTS ONLY. The Conductor decides per unit and adapts,
-    // and ultimately YOU (the human) have the final say: every assignment below
-    // can be overridden per-unit, per-session, by a flag, in this file, or by
-    // just telling the Conductor — it adapts on the fly, no restart.
+    // and ultimately YOU have the final say: override per-unit, per-session, by
+    // flag, in this file, or by just telling the Conductor.
     //
-    // Principle: spend the priciest model (Fable) only where reasoning-leverage
-    // is HIGH and token-volume is LOW (decompose, plan, oracle). Keep the
-    // high-volume build and the raw-file reading cheap. Fable never reads raw
-    // files (the scout does) and never reviews diffs (Opus does).
+    // WHERE Fable can actually run (two hard facts):
+    //   - The Conductor is your live session. bgsd does NOT force its model — it's
+    //     whatever you launched with — it only nudges, both ways. So the
+    //     Conductor's in-session reasoning (decompose, oracle, routing) runs on
+    //     YOUR session model: it's Fable only if you're on Fable.
+    //   - The in-session agent spawner offers only opus/sonnet/haiku, so Fable for
+    //     a unit is realized by launching its whole worktree subprocess on
+    //     `claude -p --model claude-fable-5` (hard units). plan+execute share that
+    //     model; cheap phase-subagents (scout, review) run inside on their own.
     //
-    // bgsd can only GUARANTEE a subagent's model (set at spawn); the Conductor's
-    // own session model it can only nudge (/model) + seed via the
-    // .claude/settings.json default written at init.
+    // Principle: spend Fable only where reasoning-leverage is HIGH and
+    // token-volume is LOW. Keep the high-volume build and raw-file reading cheap.
     model_posture: {
-      // The live Conductor session: routes, narrates, spawns. Opus — the heavy
-      // reasoning is delegated to the Fable subagents below, so the always-on
-      // session (bgsd's biggest context) doesn't carry Fable's burn.
-      conductor: { model: "opus" },
-      // Executor difficulty threshold + the two build tiers (mirrors
-      // decompose.mjs). Executor is the highest-VOLUME role, so it is the
-      // cheapest-capable model per band, never Fable-by-default.
-      thresholds: { high: 0.4, trivial: 0.2 },
-      tiers: {
-        high: { model: "opus", effort: "xhigh" },
-        base: { model: "sonnet", effort: "xhigh" },
+      // The live Conductor session — NOT enforced; whatever you start with. bgsd
+      // nudges both ways at start (on Opus for a heavy prompt -> suggest Fable; on
+      // Fable for a light one -> suggest Opus to save), and again once it has
+      // sized the prompt, asking to confirm before it continues.
+      conductor: { model: "session" },
+      // Per-unit build bands (mirror decompose.mjs). Fable bar 0.5, Opus 0.2.
+      thresholds: { fable: 0.5, opus: 0.2 },
+      // The unit's worktree subprocess model (= executor tier), passed to
+      // `claude -p --model`. plan + execute share it:
+      executor: {
+        hard:    { model: "fable",  effort: "xhigh" }, // score >= 0.5
+        default: { model: "opus",   effort: "xhigh" }, // score >= 0.2
+        easiest: { model: "sonnet", effort: "xhigh" }, // score <  0.2
       },
-      // Top-level, once per sesh (prompt -> unit DAG). Highest leverage in the
-      // whole pipeline, tiny volume -> Fable.
-      decompose: { model: "fable", effort: "high" },
-      // Per-unit reasoning: the plan gates the unit -> Fable on hard units,
-      // Opus on easy-but-still-planned ones (Opus is plenty, saves Fable tokens;
-      // the Conductor or a flag makes that call).
+      // Planning gates the unit -> Fable on hard units (>= 0.5), Opus below.
       planner: {
-        high: { model: "fable", effort: "high" },
-        base: { model: "opus", effort: "high" },
+        hard:    { model: "fable", effort: "high" },
+        default: { model: "opus",  effort: "high" },
       },
+      // Decompose + oracle are the Conductor's OWN in-session reasoning, so they
+      // run on your session model (Fable if you're on Fable). Here for clarity.
+      decompose: { model: "session", effort: "high" },
+      oracle:    { model: "session", effort: "high" },
       // Per-unit scout: reads raw source, distills a brief. Cheap on purpose so
       // raw-file tokens never hit the pricey models. haiku on trivial units.
       scout: { model: "sonnet", effort: "low", trivial: { model: "haiku", effort: "low" } },
-      // Building. Uses the unit's own tier (high/base above). Fable is never a
-      // default here — only via the per-agent `--fable` gate (fable, below).
-      executor: "unit-tier",
       // Code review, FRESH context — an unbiased second read of the diff. Never Fable.
-      reviewer: { model: "opus", effort: "high" },
+      reviewer:  { model: "opus", effort: "high" },
       // Goal-backward code verification + Playwright driving — cheap, checkable.
-      verifier: { model: "haiku", effort: "low" },
-      tester:   { model: "haiku", effort: "low" },
-      // Loop-2 merge-conflict resolution (bounded, high-stakes) + scoped
-      // integration fixes.
+      verifier:  { model: "haiku", effort: "low" },
+      tester:    { model: "haiku", effort: "low" },
+      // Loop-2 merge-conflict resolution (bounded) + scoped integration fixes.
       conflict:  { model: "opus", effort: "high" },
       loop2_fix: { model: "sonnet", effort: "medium" },
-      // Proxy Q&A for a unit's gray-area decisions, only when it can't be
-      // answered deterministically. Stands in for your judgment -> Fable.
-      oracle: { model: "fable", effort: "high" },
-      // Arm Fable-eligibility for the toughest executors (still per-agent gated).
-      fable: false,
     },
     // How thoroughly bgsd verifies. The goal-backward code verification
     // (gsd-verifier: "did it build what was asked, is everything proper") ALWAYS
@@ -264,22 +259,23 @@ Notes section and Kiwi will respect them.
   flag, or by just telling the Conductor (it adapts on the fly). The principle is
   to spend the priciest model (**Fable**) only where reasoning-leverage is high
   and token-volume is low, and keep the rest cheap:
-  - **conductor** \`opus\` — the live session just routes/narrates/spawns; the
-    heavy reasoning is delegated to Fable subagents, so it doesn't need Fable.
-    bgsd can't force the session model, so it also seeds a \`.claude/settings.json\`
-    default at init and nudges with \`/model\`.
-  - **decompose** \`fable/high\` — the one top-level call that turns your prompt
-    into the unit graph; highest leverage in the pipeline.
-  - **planner** \`fable/high\` on hard units (>= 0.4), \`opus/high\` on
-    easy-but-still-planned ones (Opus is plenty and saves Fable tokens).
+  - **conductor** \`session\` — bgsd does NOT force the Conductor's model; it's
+    whatever you launch the session with. It only nudges, both ways: on Opus for a
+    heavy prompt it suggests Fable; on Fable for a light one it suggests dropping
+    to Opus to save. It nudges again once it has sized your prompt, and asks to
+    confirm before continuing. The Conductor's own reasoning (decompose, oracle)
+    therefore runs on your session model.
+  - **executor** is the unit's worktree-subprocess model (passed to
+    \`claude -p --model\`): \`fable/xhigh\` on hard units (>= 0.5), \`opus/xhigh\`
+    (>= 0.2), \`sonnet/xhigh\` for the easiest (< 0.2). plan + execute share it.
+  - **planner** \`fable/high\` on hard units (>= 0.5), \`opus/high\` below — a
+    strong Opus planner where Fable isn't worth the tokens.
   - **scout** (research) \`sonnet/low\`, \`haiku/low\` when trivial — it reads the
-    raw files and distills a brief so Fable/Opus never ingest raw source.
-  - **executor** uses the unit's own build tier — \`opus/xhigh\` (>= 0.4) or
-    \`sonnet/xhigh\` below. Fable is never a default here; arm it per-agent with
-    \`--fable\` (or \`model_posture.fable: true\`), permission-gated.
+    raw files and distills a brief so the pricey models never ingest raw source.
   - **reviewer** \`opus/high\` (fresh context), **verifier**/**tester**
-    \`haiku/low\`, **conflict** \`opus/high\`, **loop2_fix** \`sonnet/medium\`,
-    **oracle** \`fable/high\` (only when a gray-area answer can't be deterministic).
+    \`haiku/low\`, **conflict** \`opus/high\`, **loop2_fix** \`sonnet/medium\`.
+    (Fable can only run as the Conductor session or a whole worktree subprocess —
+    the in-session agent tool offers only opus/sonnet/haiku.)
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI
   usage-testing but STILL runs the goal-backward code verification
@@ -310,8 +306,8 @@ Notes section and Kiwi will respect them.
   them at \`/bgsd-init\`, and can change them any time here, via
   \`/bgsd-modify-memory\` ("rename yourself to Jarvis", "change your emoji to
   🤖"), or by just asking the
-  Conductor. The Conductor's own session model is set under
-  \`model_posture.conductor\` (default \`opus\`), not here.
+  Conductor. The Conductor runs on whatever model you launched the session with
+  (bgsd never forces it — see \`model_posture.conductor\`); it only nudges.
   \`narrate\` streams stage-aware live updates; \`suggest_gate_commands\`
   makes it hand you the exact command at every human gate. \`self_compact_at\` is
   the context fraction (0–1) at which the Conductor — the one human-facing
@@ -488,7 +484,6 @@ export function planInit(state) {
   if (!state.bgsdMdExists) actions.push({ type: "write_bgsd_md" });
   if (!state.gitignoreHasBlock) actions.push({ type: "update_gitignore" });
   if (!state.claudeMdHasBlock) actions.push({ type: "write_claude_md" });
-  if (!state.claudeSettingsHasModel) actions.push({ type: "write_claude_settings" });
   if (!state.planningConfigExists) {
     actions.push({ type: "ensure_gsd_config", integrationBranch: state.integrationBranch });
   }
@@ -516,38 +511,6 @@ export function planInit(state) {
 // ---------------------------------------------------------------------------
 
 /** Compute all init-relevant absolute paths under a target repo root. */
-/**
- * True if .claude/settings.json already pins a `model`. Best-effort: a missing
- * or unparseable file reads as "no model set" (so init will seed one).
- */
-function claudeSettingsHasModel(deps, settingsPath) {
-  try {
-    if (!deps.exists(settingsPath)) return false;
-    const parsed = JSON.parse(deps.readFile(settingsPath));
-    return typeof parsed?.model === "string" && parsed.model.length > 0;
-  } catch (_) {
-    return false;
-  }
-}
-
-/**
- * Merge a default `model` into a .claude/settings.json body WITHOUT clobbering
- * any existing keys or an existing model. Returns the JSON string to write and
- * whether anything changed. Seeds the Conductor's session model so a Claude Code
- * session in this repo starts on the right model (bgsd can only nudge it live).
- */
-export function mergeClaudeSettingsModel(existingText, model) {
-  let obj = {};
-  if (existingText && existingText.trim()) {
-    try { obj = JSON.parse(existingText); } catch (_) { obj = {}; }
-  }
-  if (typeof obj.model === "string" && obj.model.length > 0) {
-    return { content: existingText, changed: false };
-  }
-  obj.model = model;
-  return { content: JSON.stringify(obj, null, 2) + "\n", changed: true };
-}
-
 export function initPaths(root) {
   const j = (...parts) => parts.join("/").replace(/\/+/g, "/");
   return {
@@ -558,8 +521,6 @@ export function initPaths(root) {
     seshsDir: j(root, ".bgsd", "seshs"),
     gitignore: j(root, ".gitignore"),
     claudeMd: j(root, "CLAUDE.md"),
-    claudeDir: j(root, ".claude"),
-    claudeSettings: j(root, ".claude", "settings.json"),
     planningConfig: j(root, ".planning", "config.json"),
   };
 }
@@ -593,7 +554,6 @@ export function detectInitState(deps) {
     claudeMdHasBlock:
       deps.exists(paths.claudeMd) &&
       deps.readFile(paths.claudeMd).includes(CLAUDE_MD_SENTINEL),
-    claudeSettingsHasModel: claudeSettingsHasModel(deps, paths.claudeSettings),
     integrationBranch,
     baseBranch,
     config,
@@ -682,18 +642,6 @@ export function executeInit(deps) {
         if (changed) {
           deps.writeFile(paths.claudeMd, content);
           performed.push("write_claude_md");
-        }
-        break;
-      }
-      case "write_claude_settings": {
-        const model = config.model_posture?.conductor?.model || "opus";
-        const existing = deps.exists(paths.claudeSettings) ? deps.readFile(paths.claudeSettings) : "";
-        const { content, changed } = mergeClaudeSettingsModel(existing, model);
-        if (changed) {
-          deps.mkdirp(paths.claudeDir);
-          deps.writeFile(paths.claudeSettings, content);
-          performed.push("write_claude_settings");
-          log(`seeded .claude/settings.json model default: ${model}`);
         }
         break;
       }

@@ -38,7 +38,6 @@ import {
   parseBgsdMd,
   mergeGitignore,
   mergeClaudeMd,
-  mergeClaudeSettingsModel,
   planInit,
   executeInit,
 } from "./init.mjs";
@@ -124,25 +123,25 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.git.integration_to_main, "manual");
   assert.equal(c.env.propagate, true);
   assert.ok(Array.isArray(c.env.files) && c.env.files.includes(".env"));
-  assert.equal(c.model_posture.tiers.high.model, "opus");
-  assert.equal(c.model_posture.tiers.high.effort, "xhigh");
-  assert.equal(c.model_posture.tiers.base.model, "sonnet");
-  assert.equal(c.model_posture.tiers.base.effort, "xhigh");
   assert.equal(c.model_posture.verifier.model, "haiku");
   assert.equal(c.model_posture.verifier.effort, "low");
-  // Model routing: Fable only on high-leverage/low-volume reasoning.
-  assert.equal(c.model_posture.conductor.model, "opus");
-  assert.equal(c.model_posture.decompose.model, "fable");
-  assert.equal(c.model_posture.decompose.effort, "high");
-  assert.equal(c.model_posture.planner.high.model, "fable");
-  assert.equal(c.model_posture.planner.base.model, "opus");
+  // Conductor session model is NOT enforced — whatever you start with.
+  assert.equal(c.model_posture.conductor.model, "session");
+  assert.equal(c.model_posture.decompose.model, "session"); // in-session reasoning
+  assert.equal(c.model_posture.oracle.model, "session");
+  // Executor 3-tier: fable >= 0.5, opus >= 0.2, sonnet < 0.2.
+  assert.equal(c.model_posture.thresholds.fable, 0.5);
+  assert.equal(c.model_posture.thresholds.opus, 0.2);
+  assert.equal(c.model_posture.executor.hard.model, "fable");
+  assert.equal(c.model_posture.executor.default.model, "opus");
+  assert.equal(c.model_posture.executor.easiest.model, "sonnet");
+  assert.equal(c.model_posture.planner.hard.model, "fable");
+  assert.equal(c.model_posture.planner.default.model, "opus");
   assert.equal(c.model_posture.scout.model, "sonnet");
   assert.equal(c.model_posture.scout.effort, "low");
   assert.equal(c.model_posture.reviewer.model, "opus");
-  assert.equal(c.model_posture.oracle.model, "fable");
   assert.equal(c.model_posture.loop2_fix.model, "sonnet");
   assert.equal(c.model_posture.loop2_fix.effort, "medium");
-  assert.equal(c.model_posture.fable, false);
   assert.equal(c.conductor.suggest_gate_commands, true);
   // Conductor identity + self-management defaults.
   assert.equal(c.conductor.name, "Kiwi");
@@ -156,9 +155,9 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
 
 test("I02 — defaultBgsdConfig: fresh deep copy", () => {
   const a = defaultBgsdConfig();
-  a.model_posture.tiers.high.model = "MUTATED";
+  a.model_posture.executor.hard.model = "MUTATED";
   const b = defaultBgsdConfig();
-  assert.equal(b.model_posture.tiers.high.model, "opus");
+  assert.equal(b.model_posture.executor.hard.model, "fable");
 });
 
 test("I03 — deepMerge: nested merge, scalar replace, no mutation", () => {
@@ -239,22 +238,6 @@ test("I07e — BGSD.md documents + round-trips the verification knob", () => {
 // ---------------------------------------------------------------------------
 // .gitignore merge
 // ---------------------------------------------------------------------------
-
-test("I-settings — mergeClaudeSettingsModel seeds model, never clobbers", () => {
-  // Empty → seeds the model.
-  const seeded = mergeClaudeSettingsModel("", "opus");
-  assert.equal(seeded.changed, true);
-  assert.equal(JSON.parse(seeded.content).model, "opus");
-  // Existing model → untouched (no clobber).
-  const kept = mergeClaudeSettingsModel(JSON.stringify({ model: "sonnet", theme: "dark" }), "opus");
-  assert.equal(kept.changed, false);
-  // Existing settings without a model → merged in, other keys preserved.
-  const merged = mergeClaudeSettingsModel(JSON.stringify({ theme: "dark" }), "opus");
-  assert.equal(merged.changed, true);
-  const obj = JSON.parse(merged.content);
-  assert.equal(obj.model, "opus");
-  assert.equal(obj.theme, "dark");
-});
 
 test("I08 — mergeGitignore: empty gains block", () => {
   const { content, changed } = mergeGitignore("");
@@ -337,7 +320,6 @@ test("I12 — planInit: initialized repo only ensures dir + syncs", () => {
     planningConfigExists: true,
     gitignoreHasBlock: true,
     claudeMdHasBlock: true,
-    claudeSettingsHasModel: true,
   });
   const { alreadyInitialized, actions } = planInit(state);
   const types = actions.map((a) => a.type);
