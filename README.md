@@ -10,7 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.8.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
+[![version](https://img.shields.io/badge/version-0.8.1-informational.svg)](./bgsd/.claude-plugin/plugin.json)
 [![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
@@ -109,7 +109,7 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 | `--no-usage-verification` | Code-only verify. Runs the goal-backward verifier but skips Playwright UI testing (good for non-UI changes). |
 | `--headless-ui` | Run Playwright headless: no visible browser or server window pops up (discreet). |
 | `--gui` | Open the live web dashboard of all agents by lane and GSD substage. |
-| `--fable` | Arm **Claude Fable 5** eligibility for your toughest **executor** agents only (permission-gated). The Conductor **asks permission per candidate** before putting any executor on Fable; you can keep it on Opus (token-heavy) for any agent, or drop Fable, anytime by telling the Conductor. It does **not** put the Conductor or planner on Fable, and Fable is never used silently. |
+| `--fable` | Superseded. Hard units (difficulty **≥0.5**) auto-route to **Claude Fable 5** by themselves; you never need to arm it. Override the model for any unit conversationally, anytime, by just telling the Conductor. |
 | `--plan-only` / `--dry-run` | Preview only. Classify and print the plan; nothing runs. |
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
@@ -163,22 +163,22 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 
 ### How bgsd picks models
 
-The guiding principle: spend the priciest, token-hungry model (**Fable**) **only** where reasoning-leverage is high and token-volume is low; keep building and raw-file reading cheap. Fable never reads raw files (a Sonnet scout does) and never reviews diffs (Opus does). bgsd can only guarantee a *subagent's* model (set at spawn); the Conductor is your live session, so bgsd nudges it via `/model` and seeds a `.claude/settings.json` model default at init.
+The guiding principle: spend the priciest, token-hungry model (**Fable**) **only** where reasoning-leverage is high and token-volume is low; keep building and raw-file reading cheap. Two facts constrain how bgsd can place models. First, bgsd **cannot force the Conductor's model**: the Conductor is your live session, so bgsd only **nudges** it (both ways) and you set it. Second, bgsd **cannot spawn a Fable subagent in-session** (the agent tool is opus/sonnet/haiku only). Fable therefore runs only as (1) the Conductor's own session, when *you* are on Fable (bgsd just nudges), or (2) a whole per-unit worktree subprocess launched via `claude -p --model claude-fable-5`, which is how hard units (difficulty **≥0.5**) build.
 
 | Role | Where | Model · effort |
 |------|-------|----------------|
-| Conductor (live session) | orchestrates the run | Opus (nudge + `settings.json`) |
-| Decompose | top-level, before Loop 1 | Fable · high |
-| Scout / research | Loop-1 unit, reads files | Sonnet · low (Haiku if trivial) |
-| Planner | Loop-1 unit | Fable · high (hard); Opus · high (easy) |
-| Executor | Loop-1 unit, builds | Sonnet · xhigh; Opus (hard); Fable · medium only if `--fable`-armed |
+| Conductor (live session) | orchestrates; decompose + oracle | your session model — not forced; two-way nudge |
+| Per-unit subprocess (plan+execute) | Loop-1 worktree | Fable (≥0.5) / Opus (0.2–0.5) / Sonnet (<0.2) |
+| Planner | inside the unit | Fable ≥0.5, else Opus |
+| Scout / research | reads files | Sonnet · low (Haiku trivial) |
 | Code review | fresh context | Opus · high |
 | Verifier / Tester | verify | Haiku · low |
 | Conflict resolver | Loop 2 | Opus · high |
-| Oracle (proxy Q&A) | in-unit decisions | Fable · high (when not deterministic) |
 | Loop-2 fix | Loop 2 | Sonnet · medium |
 
-These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, by flag, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). `--fable` (or `models.fable`) arms Fable-**eligibility for the toughest executors only** (permission-gated); it does not put the Conductor or planner on Fable.
+Note: hard units (≥0.5) build on Fable automatically by difficulty; scout never reads on Fable; review is fresh Opus.
+
+These are **defaults only.** The Conductor decides per unit and adapts as it runs, and you always have the final say: override per-unit, per-session, in `BGSD.md`, or by just telling the Conductor (it adapts on the fly, no restart). Units at difficulty ≥0.5 auto-route to Fable; override the model for any unit conversationally.
 
 ---
 

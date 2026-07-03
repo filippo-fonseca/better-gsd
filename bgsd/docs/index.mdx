@@ -34,27 +34,26 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ## New in this release
 
-Recent additions to how the Conductor runs and talks to you (bgsd 0.8.0). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
+Recent additions to how the Conductor runs and talks to you (bgsd 0.8.1). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
 
 ### How bgsd picks models
 
-bgsd assigns a model and effort to each pipeline role. The guiding principle: spend the priciest model (**Claude Fable 5**, very token-hungry) **only where reasoning-leverage is high and token-volume is low**, and keep building and raw-file reading cheap. So Fable never reads raw files (a Sonnet scout does that) and never reviews diffs (a fresh-context Opus does). One structural limit: bgsd can only *guarantee* a subagent's model, which it sets at spawn. The Conductor is your own live session, so bgsd can only nudge it via `/model` and seed a `.claude/settings.json` model default at `/bgsd-init`.
+bgsd assigns a model and effort to each pipeline role. The guiding principle: spend the priciest model (**Claude Fable 5**, very token-hungry) **only where reasoning-leverage is high and token-volume is low**, and keep building and raw-file reading cheap. So the scout never reads raw files on Fable (a Sonnet scout does that) and review is never Fable (a fresh-context Opus does it). Two structural limits shape everything below. First, bgsd **cannot force the Conductor's model**: the Conductor is your own live session, so bgsd only *nudges* it via `/model` (both ways) and honors whatever you're on. Second, the in-session agent tool is **opus/sonnet/haiku only** — bgsd **cannot spawn a Fable subagent in-session**. Fable therefore runs in exactly two places: (1) as the Conductor's own session, if you happen to be on Fable, or (2) as a whole **per-unit worktree subprocess** launched via `claude -p --model claude-fable-5` for hard units (difficulty ≥ 0.5). There is no `settings.json` model seed and no per-agent Fable approval gate.
 
 Everything below is a **default**. The Conductor decides per unit and adapts as a run unfolds, and you always have the final say: override per-unit or per-session, by flag, in `BGSD.md`, or by just telling the Conductor, and it re-plans on the fly.
 
-| Role | Where in the pipeline | Model · effort |
+| Role | Where | Model · effort |
 |---|---|---|
-| **Conductor** (live session) | orchestrates the whole run | Opus (nudge + `settings.json`; can't force) |
-| **Decompose** | top-level, once, before Loop 1 | Fable · high |
-| **Scout / research** | inside each Loop-1 unit (reads files) | Sonnet · low (Haiku if trivial) |
-| **Planner** | inside each Loop-1 unit | Fable · high (hard ≥ 0.4); Opus · high (easy-but-planned) |
-| **Executor** | inside each Loop-1 unit (builds) | Sonnet · xhigh default; Opus · xhigh (hard); Fable · medium only when `--fable`-armed |
-| **Code review** | after execute, fresh context | Opus · high |
-| **Verifier / Tester** | verify each unit | Haiku · low (Sonnet if subtle) |
-| **Conflict / merge resolver** | Loop 2 merge | Opus · high (Fable on low-confidence) |
-| **Decision oracle** (proxy Q&A) | inside a unit's discuss/plan | Fable · high (only when not deterministic) |
-| **Loop-2 fix agents** | Loop 2 | Sonnet · medium |
-| **doc-agg / changelog / PR / feedback routing / classify** | throughout | deterministic (no model) |
+| **Conductor** (live session) | orchestrates; decompose + oracle in-session | your session model — not forced; two-way nudge |
+| **Per-unit subprocess** (plan+execute) | Loop 1 worktree | Fable (≥ 0.5) / Opus · xhigh (0.2–0.5) / Sonnet · xhigh (< 0.2) |
+| **Planner** | inside the unit | Fable · high (≥ 0.5), else Opus · high |
+| **Scout / research** | inside the unit, reads files | Sonnet · low (Haiku trivial) |
+| **Code review** | fresh context | Opus · high |
+| **Verifier / Tester** | verify | Haiku · low |
+| **Conflict resolver** | Loop 2 | Opus · high |
+| **Loop-2 fix** | Loop 2 | Sonnet · medium |
+
+**Principle:** Fable only where reasoning-leverage is high and token-volume low; hard units (≥ 0.5) build on Fable automatically by difficulty; the scout never reads on Fable, and review is a fresh Opus.
 
 - **Brief a past session for the next one (`/bgsd-generate-brief`).** A new history/utility command that synthesizes a clean, comprehensive markdown brief of a completed session (what was requested, what was done per unit, the agents, what changed, outstanding items, and a ready-to-paste "how to continue" `/bgsd-sesh` line) and writes it to `.bgsd/briefs/<run-id>-brief.md`. Defaults to the last session; pass a `<run-id>` for a specific one. The narrative synthesis runs on Sonnet (cheap summarization, no Fable/Opus) and is read-only over history — it never modifies past records. See [`/bgsd-generate-brief`](./commands-reference.mdx#bgsd-generate-brief).
 - **The dashboard opens on its own.** The `--gui` web dashboard now opens automatically for feature- and project-scale sessions (never for quick fixes), so you get the full-pipeline view without asking. Controlled by the new `gui.auto` knob in `BGSD.md` (default `true`); `--no-gui` suppresses it for a session, and `--gui` forces it on even for a quick fix. It also no longer flickers or re-animates on its ~1.5s refresh: the page only re-renders when the run state actually changes.
@@ -72,7 +71,7 @@ Everything below is a **default**. The Conductor decides per unit and adapts as 
 
 - **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and the Conductor proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), the Conductor enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
 - **Execution modes (`--mode` / `--verify-mode`).** Pipeline agents and verifiers each run in one of three modes: `fast` (skip research; code-only quick checks), `thorough` (research every unit; full driver ladder), or `adaptive` (the default: the Conductor decides per unit). Override per-session with `--mode fast|thorough|adaptive` (pipeline) and `--verify-mode fast|thorough|adaptive` (verifiers), or persist under `modes` in `BGSD.md`.
-- **Role-aware model routing and branded subagents.** Each role gets a model and effort by the doctrine above (executors default to `sonnet/xhigh`, escalating to `opus/xhigh` on hard units; scouts run cheaper than executors; verifiers run `haiku/low`). Every subagent is spawned with a consistent branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
+- **Role-aware model routing and branded subagents.** Each role gets a model and effort by the doctrine above (per-unit subprocesses build on `sonnet/xhigh` below difficulty 0.2, `opus/xhigh` from 0.2–0.5, and a whole Fable subprocess at ≥ 0.5; scouts run cheaper than that; verifiers run `haiku/low`). Every subagent is spawned with a consistent branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
 - **Headless UI (`--headless-ui`).** Runs Playwright headless, with no visible browser or server window popping up on your machine (discreet). Orthogonal to `--no-usage-verification`; persist as `verification.headless` in `BGSD.md`.
 - **Selector questions.** Every question the Conductor asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with a hard maximum of 4 concrete options plus an always-available "type your own", never a wall of prose.
 - **Per-subagent context management.** Each worktree Pipeline Agent runs in its own large (~1M-token) window. The Conductor watches each agent's usage and proactively compacts it (default at 0.70 of the window) or relaunches it from a handoff manifest (default 0.90) before it overflows. Tune it with the `context` block in `BGSD.md`.
@@ -82,7 +81,7 @@ Everything below is a **default**. The Conductor decides per unit and adapts as 
 - **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
 - **The name pill, splash, and terminal identity.** Every conversational message the Conductor sends is prefixed with a name pill — `🥝 Kiwi:` by default (the name is customizable in `BGSD.md`) — a colored Markdown badge in front of each message, so you always know the Conductor is speaking. A session opens with the splash banner and, right after it, a terminal `/rename` (an apt task name) plus a random `/color`, so parallel sessions are easy to tell apart. Structured outputs (verdict lines, report JSON) stay literal.
 - **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and the Conductor opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress, with per-agent GSD-flow steppers, a pipeline-stage timeline, and a sessions tab. It reads the run's control files, refreshes on its own, and the Conductor can open or close it at any point (the `/bgsd-gui` command). The terminal narration already keeps things legible for most runs; the dashboard gives you an animated full-pipeline view when you are running many agents at once and want unparalleled visibility into every agent's state at a glance.
-- **Permission-gated `--fable` (Claude Fable 5 for the toughest executors).** Pass `--fable` to arm Fable-*eligibility* for the toughest **executor** agents only (high-difficulty, difficulty ≥ 0.4). It does **not** put the Conductor or the planner on Fable; it only makes a hard executor a Fable candidate. The Conductor asks your permission per candidate before that agent runs on Fable, never silently. Declining keeps that executor on Opus. You can override any agent or drop Fable entirely conversationally; no restart needed. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Scouts, verifiers, and Testers are never Fable candidates.
+- **`--fable` (largely superseded).** The flag is now mostly redundant: hard units (difficulty ≥ 0.5) already route their whole per-unit worktree subprocess to **Claude Fable 5** by difficulty, so you rarely need to ask. `--fable` nudges the difficulty threshold so more units qualify, but it can't put the Conductor or any in-session subagent on Fable (the agent tool is opus/sonnet/haiku only, and bgsd never forces your session model). You can also just tell the Conductor to run any specific unit on Fable — or drop it — conversationally, with no restart.
 
 ---
 

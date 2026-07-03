@@ -204,56 +204,65 @@ The governing principle: spend the **priciest** model (**Fable**, very
 token-hungry) **only** where reasoning-leverage is **high** and token-volume is
 **low**. Keep high-volume **building** and raw-file **reading** cheap. Two hard
 rules that never bend: **Fable never reads raw files** (a Sonnet scout does), and
-**Fable never reviews diffs** (Opus does, in fresh context).
+**Fable never reviews diffs** (a fresh Opus does). Those two rules hold even when
+the unit subprocess is on Fable, because scout and review are cheap **nested**
+subagents inside the unit, not the unit's own model.
 
-Per-role routing — model · effort → where in the pipeline → why:
+**One correction to hold above the table (v0.8.1).** bgsd **cannot force your
+model** (you are the user's live session — see the nudge-both-ways rule near the
+top), and it **cannot spawn a Fable *subagent* in-session**: the agent tool offers
+only **opus / sonnet / haiku**. **Fable runs in exactly two places, nowhere else:**
+1. **The Conductor's own live session** — but only if the *user* is on Fable. bgsd
+   merely nudges (both ways); it never seeds a model via `.claude/settings.json`
+   and never pins you to Opus.
+2. **A whole per-unit worktree subprocess**, launched with
+   `claude -p --model claude-fable-5`. This is how a hard unit gets Fable: the
+   unit's plan **and** execute phases share that one subprocess model. There is no
+   in-session Fable subagent.
 
-| Role | Model · effort | Where / why |
-|------|----------------|-------------|
-| **Conductor** (live session) | **Opus** · — | Routes, narrates, spawns; heavy reasoning is delegated to Fable subagents, so the always-on session never carries Fable's burn. Nudge-only + `settings.json` seed. |
-| **Decompose** (prompt → unit DAG) | **Fable** · high | Top-level, once per sesh, before Loop 1. Highest leverage; errors cascade. |
-| **Scout / research** (reads codebase, distills brief) | **Sonnet** · low (**Haiku** if trivial) | Inside each Loop-1 unit. Keeps raw-file tokens off pricey models. |
-| **Planner** (brief → PLAN.md) | **Fable** · high on hard units (difficulty ≥ 0.4); **Opus** · high on easy-but-still-planned units | Inside each Loop-1 unit. Opus on easy units saves Fable tokens; you or a flag decide. |
-| **Executor** (builds code) | **Sonnet** · xhigh default; **Opus** · xhigh on hard (≥ 0.4); **Fable** · medium **only** when armed per-agent via `--fable` | Highest-volume role; the plan already did the thinking. Fable is permission-gated, toughest units only. |
-| **Code review** (diff) | **Opus** · high, **fresh** context | Never Fable. |
-| **Goal-backward verifier** | **Haiku** · low | — |
-| **Tester** (Playwright / integration) | **Haiku** · low (**Sonnet** if the verdict is subtle) | — |
-| **Conflict / merge resolver** | **Opus** · high (**Fable** only on a low-confidence gnarly conflict) | Loop 2. |
-| **Decision oracle** (proxy Q&A) | **Fable** · high, **only** when not resolvable deterministically | Inside a unit's discuss/plan phase; answered by you as the user's proxy. |
-| **Loop-2 fix agents** | **Sonnet** · medium | — |
-| **Loop-2 coordinator / doc-agg / changelog / feedback-routing** | deterministic, **no model** | — |
+Per-role routing — where in the pipeline → model · effort:
+
+| Role | Where in the pipeline | Model · effort |
+|------|-----------------------|----------------|
+| **Conductor** (live session) | orchestrates; runs decompose + oracle **in-session** | **your session model** — NOT forced; two-way nudge (Opus ↔ Fable by prompt weight) |
+| **Per-unit worktree subprocess** (plan + execute share it) | Loop 1, via `claude -p --model` | **Fable** (difficulty ≥ 0.5) / **Opus · xhigh** (0.2–0.5) / **Sonnet · xhigh** (< 0.2) |
+| **Planner** | inside the unit | **Fable · high** (≥ 0.5), else **Opus · high** |
+| **Scout / research** (reads files) | inside the unit, **nested** subagent | **Sonnet · low** (**Haiku** if trivial) |
+| **Code review** (diff) | fresh context | **Opus · high** |
+| **Verifier / Tester** | verify | **Haiku · low** |
+| **Conflict / merge resolver** | Loop 2 | **Opus · high** |
+| **Loop-2 fix agents** | Loop 2 | **Sonnet · medium** |
+
+**Hard units build on Fable automatically.** A unit scored at **difficulty ≥ 0.5**
+by `decompose.mjs` routes its worktree subprocess to Fable **by difficulty alone**
+— there is no per-agent approval gate anymore. The human still has final say and
+can override any unit conversationally (or per-session, by flag, or in `BGSD.md`).
 
 **Phase, persist, clear.** Split a big unit into phases; keep progress in `.bgsd/`
 md (RUN / PLAN / handoff), not the chat; give each phase fresh context.
 
-**`--fable` / `models.fable` — arming Fable for the toughest executors
-(permission-gated).** This flag arms **Fable-eligibility for the toughest EXECUTORS
-only**. It does **not** move planning, the oracle, or the Conductor onto Fable — it
-touches building agents alone. It is armed two ways: the user passes **`--fable`**,
-or you (the Conductor) decide a unit is tough enough. Either way it is **opt-in per
-agent** — get the user's explicit go before any executor runs on it.
+**`--fable` / `models.fable` — mostly superseded (hard units already run on
+Fable).** As of the routing above, **any unit at difficulty ≥ 0.5 already routes its
+worktree subprocess to Fable automatically**, by difficulty alone. There is no
+per-agent arming ceremony and no AskUserQuestion approval gate before an agent can
+touch Fable — that old flow is gone. So in almost every case you need this flag for
+**nothing**.
 
-- **Who is a candidate.** Only **executor agents on the hard tier** — the units
-  `decompose.mjs` scores at `difficulty >= 0.4`, preferring the toughest.
-  Sonnet-default executors and Haiku-tier units are never fable candidates. Scouts,
-  planners, reviewers, and verifiers keep their doctrine model above; Fable is
-  executors-only.
-- **Always ask permission first (mandatory — no silent fable).** For **each**
-  candidate executor, ask via an **AskUserQuestion selector** — e.g. *"`payments-core`
-  scores tough (0.82). Build it on **claude-fable-5** (heavier, pricier) or stay on
-  **Opus**?"* with **Fable** / **Opus** (+ "type your own"). Batch candidates into
-  one selector when several qualify. Never put an agent on fable without an explicit
-  yes.
-- **On approval → fable (medium effort); on decline → Opus (xhigh).** An approved
-  agent is spawned on `claude-fable-5` and its **branded label shows the real model**
-  (e.g. `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`). Note that Fable is
-  token-heavy, so it is the pricier path — always the user's call.
-- **Override / revert anytime, conversationally.** The user can say "put
-  `payments-core` on Opus, not fable" (or "drop fable") and you honor it from that
-  point — no restart, no re-passing a flag.
-- Persist `models.fable: on` in `BGSD.md` to arm fable-eligibility every sesh; the
-  per-agent permission gate still applies. Precedence: explicit per-agent choice >
-  flag > `BGSD.md` > default.
+- **What `--fable` still does, if you keep it at all.** It simply **lowers (or
+  forces) the Fable bar for a session** — e.g. treat more units as Fable-worthy, or
+  push borderline units onto Fable even below the 0.5 threshold. It changes *where
+  the line sits*, not *whether Fable is allowed*. Fable is already allowed on hard
+  units without it.
+- **The human always has final say, conversationally.** With or without the flag,
+  the user can override any unit on the fly — "put `payments-core` on Opus, not
+  Fable" / "run this one on Fable too" — and you honor it from that point, no
+  restart, no re-passing a flag. That override, not an up-front per-agent selector,
+  is the control surface now.
+- **Branded label shows the real model.** A unit whose subprocess is on Fable reads
+  its true model in the tag (e.g. `Agent · 🔧 Pipeline · payments-core (claude-fable-5)`),
+  so the token-heavier path is always visible.
+- Persist `models.fable: on` in `BGSD.md` to keep the lowered bar every sesh.
+  Precedence: explicit per-unit choice > flag > `BGSD.md` > the difficulty default.
 
 **Ask at the start.** When you open a session (especially at project scale),
 present a short **AskUserQuestion selector** for how thorough to be, before fan-out:
