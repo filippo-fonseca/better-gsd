@@ -49,7 +49,7 @@
  * high-volume build and the file-reading scout cheap:
  *   planner:    >= 0.5 -> fable/high  ; < 0.5 -> opus/high      (reasoning; gates the unit)
  *   executor:   >= 0.5 -> fable/xhigh ; >= 0.2 -> opus/xhigh ; < 0.2 -> sonnet/xhigh
- *   researcher: < 0.2  -> haiku/low   ; else -> sonnet/low      (reads files, distills)
+ *   researcher: opus (explore floor); high effort, medium if trivial (< 0.2)
  *   verifier:   always haiku/low
  * The worktree subprocess is launched on the executor's model (`--model`), so a
  * unit's plan+execute share one coherent model; cheap phase-subagents (scout,
@@ -194,16 +194,20 @@ export function resolveSpawnModel(name) {
 }
 
 /**
- * The SCOUT / researcher posture. It reads raw source and distills a brief, so
- * it is deliberately cheap — keeping raw-file tokens off the pricey models is
- * the whole point (Fable/Opus reason over the brief, never the raw files):
- *   trivial (< 0.2) -> haiku/low
- *   otherwise       -> sonnet/low
+ * The SCOUT / researcher posture — the explore step. Exploration quality gates
+ * plan quality, so the floor is Opus (latest) regardless of difficulty: a weak
+ * scout brief poisons every downstream phase, and that is the one place we do
+ * NOT trade reasoning for tokens. Opus is also the ceiling here, since the scout
+ * runs as an in-session nested subagent and the agent tool only offers
+ * opus/sonnet/haiku (Fable can't be a subagent). Effort scales with difficulty:
+ * trivial units explore at medium, everything else at high.
+ * Conductor-WIDE exploring (the session-level explore the Conductor runs before
+ * decompose) is separate: it uses the Conductor's own session model, not this.
  */
 export function scoutPostureForScore(score) {
   return score < 0.2
-    ? { model: "haiku",  effort: "low" }
-    : { model: "sonnet", effort: "low" };
+    ? { model: "opus", effort: "medium" }
+    : { model: "opus", effort: "high" };
 }
 
 /**
@@ -213,7 +217,7 @@ export function scoutPostureForScore(score) {
  *
  * Planner:    fable/high (>= 0.5) or opus/high (< 0.5) — reasoning, gates the unit.
  * Executor:   fable/xhigh (>= 0.5), opus/xhigh (>= 0.2), or sonnet/xhigh (< 0.2).
- * Researcher: sonnet/low (haiku/low if trivial) — reads files, distills a brief.
+ * Researcher: opus (explore floor is Opus latest; high effort, medium if trivial).
  * Verifier:   always haiku/low — cheap, deterministic verification.
  *
  * @param {number} score   difficulty score in [0, 1]

@@ -203,7 +203,7 @@ live). Hold that framing above all else.
 The governing principle: spend the **priciest** model (**Fable**, very
 token-hungry) **only** where reasoning-leverage is **high** and token-volume is
 **low**. Keep high-volume **building** and raw-file **reading** cheap. Two hard
-rules that never bend: **Fable never reads raw files** (a Sonnet scout does), and
+rules that never bend: **Fable never reads raw files** (an Opus scout does), and
 **Fable never reviews diffs** (a fresh Opus does). Those two rules hold even when
 the unit subprocess is on Fable, because scout and review are cheap **nested**
 subagents inside the unit, not the unit's own model.
@@ -225,9 +225,10 @@ Per-role routing — where in the pipeline → model · effort:
 | Role | Where in the pipeline | Model · effort |
 |------|-----------------------|----------------|
 | **Conductor** (live session) | orchestrates; runs decompose + oracle **in-session** | **your session model** — NOT forced; two-way nudge (Opus ↔ Fable by prompt weight) |
+| **Conductor-wide explore** | session-level exploration before decompose | **the Conductor's own session model** (explore in-context, don't farm it to a cheap subagent) |
 | **Per-unit worktree subprocess** (plan + execute share it) | Loop 1, via `claude -p --model` | **Fable** (difficulty ≥ 0.5) / **Opus · xhigh** (0.2–0.5) / **Sonnet · xhigh** (< 0.2) |
 | **Planner** | inside the unit | **Fable · high** (≥ 0.5), else **Opus · high** |
-| **Scout / research** (reads files) | inside the unit, **nested** subagent | **Sonnet · low** (**Haiku** if trivial) |
+| **Scout / research** (the explore step, reads files) | inside the unit, **nested** subagent | **Opus · high** floor (**Opus · medium** if trivial) — explore quality gates plan quality |
 | **Code review** (diff) | fresh context | **Opus · high** |
 | **Verifier / Tester** | verify | **Haiku · low** |
 | **Conflict / merge resolver** | Loop 2 | **Opus · high** |

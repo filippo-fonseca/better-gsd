@@ -105,9 +105,11 @@ export function defaultBgsdConfig() {
       // run on your session model (Fable if you're on Fable). Here for clarity.
       decompose: { model: "session", effort: "high" },
       oracle:    { model: "session", effort: "high" },
-      // Per-unit scout: reads raw source, distills a brief. Cheap on purpose so
-      // raw-file tokens never hit the pricey models. haiku on trivial units.
-      scout: { model: "sonnet", effort: "low", trivial: { model: "haiku", effort: "low" } },
+      // Per-unit scout (the explore step): reads raw source, distills a brief.
+      // Explore quality gates plan quality, so the floor is Opus (latest) — the
+      // one place we do NOT trade reasoning for tokens. Effort eases to medium on
+      // trivial units. (Conductor-WIDE exploring uses the session model instead.)
+      scout: { model: "opus", effort: "high", trivial: { model: "opus", effort: "medium" } },
       // Code review, FRESH context — an unbiased second read of the diff. Never Fable.
       reviewer:  { model: "opus", effort: "high" },
       // Goal-backward code verification + Playwright driving — cheap, checkable.
@@ -270,8 +272,9 @@ Notes section and Kiwi will respect them.
     (>= 0.2), \`sonnet/xhigh\` for the easiest (< 0.2). plan + execute share it.
   - **planner** \`fable/high\` on hard units (>= 0.5), \`opus/high\` below — a
     strong Opus planner where Fable isn't worth the tokens.
-  - **scout** (research) \`sonnet/low\`, \`haiku/low\` when trivial — it reads the
-    raw files and distills a brief so the pricey models never ingest raw source.
+  - **scout** (research / explore) \`opus/high\`, \`opus/medium\` when trivial — the
+    explore floor is Opus latest, since explore quality gates plan quality.
+    Conductor-wide exploring in the session uses the Conductor's own model.
   - **reviewer** \`opus/high\` (fresh context), **verifier**/**tester**
     \`haiku/low\`, **conflict** \`opus/high\`, **loop2_fix** \`sonnet/medium\`.
     (Fable can only run as the Conductor session or a whole worktree subprocess —

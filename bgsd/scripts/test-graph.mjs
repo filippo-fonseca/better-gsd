@@ -320,12 +320,12 @@ await test("D16c: planner is fable at >= 0.5, opus below (matches executor bands
   assert.equal(deriveModelPosture(0.8).planner.effort, "high");
 });
 
-await test("D16d: scout/researcher is cheap — sonnet/low, haiku/low when trivial", () => {
-  assert.equal(deriveModelPosture(0.8).researcher.model, "sonnet");
-  assert.equal(deriveModelPosture(0.8).researcher.effort, "low");
-  assert.equal(deriveModelPosture(0.3).researcher.model, "sonnet");
-  assert.equal(deriveModelPosture(0.1).researcher.model, "haiku"); // trivial -> haiku
-  assert.equal(deriveModelPosture(0.1).researcher.effort, "low");
+await test("D16d: scout/researcher floors at Opus — explore quality gates plan quality", () => {
+  assert.equal(deriveModelPosture(0.8).researcher.model, "opus");
+  assert.equal(deriveModelPosture(0.8).researcher.effort, "high");
+  assert.equal(deriveModelPosture(0.3).researcher.model, "opus");
+  assert.equal(deriveModelPosture(0.1).researcher.model, "opus"); // trivial still Opus
+  assert.equal(deriveModelPosture(0.1).researcher.effort, "medium"); // eased effort
 });
 
 await test("D17: deriveModelPosture always yields verifier=haiku/low regardless of score", () => {

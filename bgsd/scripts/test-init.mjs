@@ -137,8 +137,9 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.equal(c.model_posture.executor.easiest.model, "sonnet");
   assert.equal(c.model_posture.planner.hard.model, "fable");
   assert.equal(c.model_posture.planner.default.model, "opus");
-  assert.equal(c.model_posture.scout.model, "sonnet");
-  assert.equal(c.model_posture.scout.effort, "low");
+  assert.equal(c.model_posture.scout.model, "opus");
+  assert.equal(c.model_posture.scout.effort, "high");
+  assert.equal(c.model_posture.scout.trivial.model, "opus");
   assert.equal(c.model_posture.reviewer.model, "opus");
   assert.equal(c.model_posture.loop2_fix.model, "sonnet");
   assert.equal(c.model_posture.loop2_fix.effort, "medium");
