@@ -42,6 +42,7 @@ import {
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 // Phase 2 imports — classifier and router (ROUTE-01..04)
 // These are loaded lazily inside runPlaceholderPipeline so that Phase-1-only
@@ -63,10 +64,25 @@ async function loadPhase2Modules() {
 // Paths
 // ---------------------------------------------------------------------------
 
-const __dir = dirname(fileURLToPath(import.meta.url));
-// Repo root is two directories up from bgsd/scripts/
-const REPO_ROOT = resolve(__dir, "../../");
-const QUEUE_DIR = join(REPO_ROOT, ".bgsd", "queue");
+// The queue is PER-REPO. It must live under the .bgsd/ of the repo the command
+// is invoked in, NOT under the plugin's install location. queue.mjs runs from
+// the shared plugin cache (~/.claude/plugins/cache/...), so resolving paths from
+// import.meta.url would collapse every project onto one global queue. Resolve
+// from the invoking repo instead: git top-level, falling back to cwd. Matches
+// bgsdmd.mjs / brief.mjs. Env override (BGSD_QUEUE_DIR) wins for tests.
+function resolveRepoRoot() {
+  try {
+    const r = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" });
+    if (r.status === 0 && r.stdout) return r.stdout.trim();
+  } catch (_) {
+    /* fall through */
+  }
+  return process.cwd();
+}
+
+const QUEUE_DIR = process.env.BGSD_QUEUE_DIR
+  ? resolve(process.env.BGSD_QUEUE_DIR)
+  : join(resolveRepoRoot(), ".bgsd", "queue");
 const QUEUE_FILE = join(QUEUE_DIR, "queue.json");
 const QUEUE_FILE_TMP = join(QUEUE_DIR, "queue.json.tmp");
 
