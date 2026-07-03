@@ -1,7 +1,7 @@
 ---
 name: bgsd-run-agent
 description: "The pipeline-agent brain: inside one worktree, read the unit's per-unit phase config and run the tailored GSD flow (or a direct fix for quick units), proxying human questions to the oracle. Spawned by the Conductor, one per unit."
-argument-hint: "--worktree <path> --unit-id <id> --run-id <id> --control-file <path> [--scale <quick|feature|project>]"
+argument-hint: "--worktree <path> --unit-id <id> --run-id <id> --control-file <path> [--scale <quick|feature|project>] [--seed-plan <path>]"
 allowed-tools:
   - Read
   - Write
@@ -40,6 +40,7 @@ architecture actually run GSD — dynamically tailored per unit, not one-size-fi
 | `--control-file <path>` | Yes | **Absolute** path to `<repo>/.bgsd/runs/<run-id>/control/<unit-id>.json` in the MAIN repo (worktrees don't carry the gitignored `.bgsd/runs/`, so the Conductor passes the absolute path). |
 | `--scale <quick\|feature\|project>` | No | Session scale. `quick` forces the direct-fix path regardless of config. |
 | `--port <n>` | No | The unit's isolated dev-server port (for any in-agent verification). |
+| `--seed-plan <path>` | No | Path to a **Fable-produced** plan markdown (usually `.planning/fable-plan.md`). When present, the plan phase treats it as the **authoritative starting plan** — this Opus agent reviews and augments it rather than planning from scratch. The costly Fable reasoning already ran upstream; do not re-do it. |
 
 ---
 
@@ -152,6 +153,31 @@ phase not in the list — that is the per-unit tailoring working as designed.
 
 ---
 
+### Step 3B-seed: If a Fable pre-plan exists, build on it — don't re-plan
+
+If `--seed-plan <path>` was passed and the file exists, a **Fable planner already
+did the deep, high-value planning** for this unit and wrote it as markdown. You are
+on Opus; your job at the plan phase is to **review, validate, and augment** that
+plan, not to regenerate it from scratch (that would waste the tokens we spent on
+Fable precisely to avoid).
+
+```bash
+test -n "<seed-plan>" && test -f "<seed-plan>" && cat "<seed-plan>"
+```
+
+1. Read the seed plan in full. Treat its task breakdown, sequencing, and design
+   decisions as the **authoritative starting point**.
+2. Reconcile it against the unit brief (`.planning/bgsd-unit.json`) and the live
+   codebase. Only change the plan where it is wrong, stale, or missing a concrete
+   step — and note *why* when you do.
+3. Carry the reconciled plan into `/gsd-plan-phase` as its basis (write it through
+   to `PLAN.md`), so execute runs against the Fable-grade plan. Do **not** discard
+   it and start over.
+
+If `--seed-plan` was not passed (or the file is absent), plan normally on Opus.
+
+---
+
 ### Step 3B-oracle: Answer GSD's human questions as the user's proxy
 
 GSD phases (discuss / plan) raise questions that normally block on a human. **Do
@@ -244,4 +270,5 @@ Conductor's Loop 1 then runs verify→fix on this worktree before any merge.
 | `bgsd/scripts/control.mjs` | Agent control-file protocol + CLI |
 | `bgsd/scripts/oracle.mjs` | Decision oracle — auto-answers discuss questions from sealed context |
 | `bgsd/scripts/run-live.mjs` | `liveSpawnFn` — creates the worktree + config + brief and spawns this command |
+| `bgsd/commands/bgsd-plan-unit.md` | The Fable pre-planner whose markdown arrives here as `--seed-plan` (Step 3B-seed) |
 | `bgsd/scripts/decompose.mjs` | `writeUnitWorktreeConfig` — writes the two per-unit config seams |
