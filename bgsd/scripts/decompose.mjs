@@ -52,7 +52,7 @@
  *   executor:   opus/xhigh ; sonnet/xhigh only on trivial (< 0.2) with --sonnet
  *   researcher: opus (explore floor); high effort, medium if trivial (< 0.2)
  *   verifier:   opus/medium
- *   fablePlan:  bool — run a separate Fable pre-planner upstream (>= 0.5 or --fable)
+ *   fablePlan:  bool — run a separate Fable pre-planner upstream (OFF by default; --fable turns it on)
  * The worktree subprocess is launched on the executor's model (`--model`) — Opus
  * or, for trivial fixes, Sonnet, never Fable. When fablePlan is set, a standalone
  * `claude -p --model claude-fable-5` planner writes a plan markdown first; that
@@ -175,18 +175,22 @@ export function plannerPostureForScore(_score) {
  * Whether a SEPARATE Fable planner runs UPSTREAM of the Opus pipeline agent for
  * this unit. The Fable planner is its own `claude -p --model claude-fable-5`
  * subprocess that writes a plan markdown; that markdown is handed to the Opus
- * pipeline agent as a seed, so we get Fable-grade planning on high-value work
- * without paying Fable's per-token cost across the whole build.
- *   --fable flag            -> true for every unit (force it on)
- *   otherwise               -> true only for high-value units (>= 0.5)
+ * pipeline agent as a seed, so we get Fable-grade planning without paying Fable's
+ * per-token cost across the whole build.
  *
- * @param {number} score
+ * DEFAULT OFF — difficulty does NOT auto-trigger it. The plain path is normal GSD
+ * on Opus. A Fable pre-plan runs only when:
+ *   --fable flag            -> true for every unit (turn it on for the session)
+ *   otherwise               -> false; the Conductor MAY still opt a specific unit
+ *                              in by setting model_posture.fablePlan = true itself.
+ *
+ * @param {number} _score  (unused — kept for signature symmetry)
  * @param {object} [opts]
- * @param {boolean} [opts.fable=false]  Force a Fable pre-plan on every unit.
+ * @param {boolean} [opts.fable=false]  Turn the Fable pre-plan on for every unit.
  * @returns {boolean}
  */
-export function fablePlanForScore(score, { fable = false } = {}) {
-  return fable ? true : score >= 0.5;
+export function fablePlanForScore(_score, { fable = false } = {}) {
+  return !!fable;
 }
 
 /**
@@ -239,7 +243,7 @@ export function scoutPostureForScore(score) {
  *
  * Opus is the standard across every role. The two exceptions:
  *   Executor:  opus/xhigh (sonnet/xhigh only on trivial < 0.2 units with --sonnet).
- *   fablePlan: whether a separate Fable pre-planner runs upstream (>= 0.5 or --fable).
+ *   fablePlan: whether a separate Fable pre-planner runs upstream (OFF by default; --fable turns it on).
  * Planner:    opus/high (the in-pipeline planner; Fable seeds it externally).
  * Researcher: opus (explore floor is Opus latest; high effort, medium if trivial).
  * Verifier:   opus/medium — Opus is the standard; verification runs on it too.

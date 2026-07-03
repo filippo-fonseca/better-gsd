@@ -99,11 +99,13 @@ export function defaultBgsdConfig() {
       // The IN-PIPELINE planner is always Opus. Fable's reasoning arrives as a
       // seed plan from the separate pre-planner below, not by running here on Fable.
       planner: { model: "opus", effort: "high" },
-      // The separate upstream Fable pre-planner. Runs for high-value units
-      // (>= threshold) or when --fable forces it on; writes .planning/fable-plan.md
-      // which seeds the Opus pipeline agent. This is the ONLY place Fable runs
-      // per-unit — and it only plans, never builds.
-      fable_plan: { model: "fable", effort: "high", threshold: 0.5, flag: false },
+      // The separate upstream Fable pre-planner. OFF by default (the plain path
+      // is normal GSD on Opus). Turned on for the whole session by --fable, or
+      // opted in per-unit by the Conductor. It is launched as a standalone
+      // `claude -p /bgsd-plan-unit --model claude-fable-5` SUBPROCESS (never via
+      // the in-session agent tool, which can't run Fable); it writes
+      // .planning/fable-plan.md, which seeds the Opus pipeline agent. Plans only.
+      fable_plan: { model: "fable", effort: "high", default: false },
       // Decompose + oracle are the Conductor's OWN in-session reasoning, so they
       // run on your session model (Fable if you're on Fable). Here for clarity.
       decompose: { model: "session", effort: "high" },
@@ -276,10 +278,12 @@ Notes section and Kiwi will respect them.
     dropping to \`sonnet/xhigh\` only on trivial units (< 0.2) and only with
     \`--sonnet\`. plan + execute share it.
   - **planner** \`opus/high\` always (the in-pipeline planner).
-  - **fable_plan** the separate upstream Fable pre-planner: runs for high-value
-    units (>= \`threshold\`, default 0.5) or when \`--fable\` forces it on. It writes
-    \`.planning/fable-plan.md\`, which seeds the Opus pipeline agent (\`--seed-plan\`).
-    This is the ONLY per-unit place Fable runs — and it only plans, never builds.
+  - **fable_plan** the separate upstream Fable pre-planner: **off by default** (the
+    plain path is normal GSD on Opus). \`--fable\` turns it on for the session, or the
+    Conductor can opt a specific unit in. It is launched as a standalone
+    \`claude -p /bgsd-plan-unit --model claude-fable-5\` **subprocess** (never the
+    in-session agent tool, which can't run Fable); it writes \`.planning/fable-plan.md\`,
+    which seeds the Opus pipeline agent (\`--seed-plan\`). It only plans, never builds.
   - **scout** (research / explore) \`opus/high\`, \`opus/medium\` when trivial — the
     explore floor is Opus latest, since explore quality gates plan quality.
     Conductor-wide exploring in the session uses the Conductor's own model.

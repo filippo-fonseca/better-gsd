@@ -290,11 +290,12 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     unitSpawnModel(typeof unit?.difficulty === "number" ? unit.difficulty : 0)
   );
 
-  // 6. Fable pre-plan (optional). For high-value units (or --fable), run a
-  //    STANDALONE `claude -p --model claude-fable-5` planner that writes a plan
-  //    markdown into the worktree. That markdown seeds the Opus Pipeline Agent
-  //    below, so we get Fable-grade planning without running the whole token-heavy
-  //    subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
+  // 6. Fable pre-plan (opt-in). OFF by default — the plain path is normal GSD on
+  //    Opus. When the unit is flagged fablePlan (via --fable or a Conductor opt-in),
+  //    run a STANDALONE `claude -p --model claude-fable-5` planner that writes a plan
+  //    markdown into the worktree. That markdown seeds the Opus Pipeline Agent below,
+  //    so Fable-grade planning feeds the GSD workflow without running the whole
+  //    token-heavy subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
   let seedPlanArgs = [];
   if (unit?.model_posture?.fablePlan) {
     const seedPlanPath = join(wtPath, ".planning", "fable-plan.md");

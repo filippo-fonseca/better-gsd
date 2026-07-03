@@ -24,10 +24,10 @@
  *   D11 — parseDecompositionResponse: throws on unit missing title
  *   D12 — difficultyScore: returns value in [0, 1]
  *   D13 — difficultyScore: more touched entries -> higher score
- *   D14  — deriveModelPosture: >=0.5 -> opus executor + fablePlan (never Fable executor)
+ *   D14  — deriveModelPosture: >=0.5 -> opus executor, NO fablePlan by default (--fable turns it on)
  *   D15  — deriveModelPosture: 0.2..0.5 -> opus/xhigh executor, no fablePlan
  *   D16  — deriveModelPosture: <0.2 -> opus by default, sonnet only with --sonnet
- *   D16b — deriveModelPosture: fablePlan bar >=0.5, --fable forces it below
+ *   D16b — deriveModelPosture: fablePlan OFF by default at all difficulties, --fable turns it on
  *   D17  — deriveModelPosture: verifier is always opus/medium
  *   D18 — serializeUnits: produces non-empty markdown with unit ids
  *   D19 — writeUnitConfig: writes bgsd_unit_posture to config.json (config seam)
@@ -285,12 +285,14 @@ await test("D13: difficultyScore increases with more touched entries", () => {
   assert.ok(high > low, `higher touched count must yield higher score (${high} > ${low})`);
 });
 
-await test("D14: deriveModelPosture(>=0.5) -> executor=opus/xhigh, fablePlan=true (hard)", () => {
+await test("D14: deriveModelPosture(>=0.5) -> executor=opus/xhigh, NO fablePlan by default", () => {
   const posture = deriveModelPosture(0.8);
   assert.equal(posture.executor.model, "opus"); // NEVER fable
   assert.equal(posture.executor.effort, "xhigh");
   assert.equal(posture.spawnModel, "opus");     // subprocess is Opus
-  assert.equal(posture.fablePlan, true);         // high-value -> Fable pre-plan upstream
+  assert.equal(posture.fablePlan, false);        // default is plain Opus GSD, no pre-plan
+  // --fable turns the pre-plan on for the session:
+  assert.equal(deriveModelPosture(0.8, { fable: true }).fablePlan, true);
 });
 
 await test("D15: deriveModelPosture(0.2..0.5) -> executor=opus/xhigh, no fablePlan", () => {
@@ -310,10 +312,12 @@ await test("D16: deriveModelPosture(<0.2) -> executor still opus (sonnet only wi
   assert.equal(sonnetOptIn.spawnModel, "sonnet");
 });
 
-await test("D16b: fablePlan boundary is >= 0.5; --fable forces it below the bar", () => {
-  assert.equal(deriveModelPosture(0.5).fablePlan, true);
-  assert.equal(deriveModelPosture(0.49).fablePlan, false);
-  assert.equal(deriveModelPosture(0.1, { fable: true }).fablePlan, true); // forced on
+await test("D16b: fablePlan is OFF by default at every difficulty; --fable turns it on", () => {
+  assert.equal(deriveModelPosture(0.8).fablePlan, false);  // high difficulty, still off
+  assert.equal(deriveModelPosture(0.5).fablePlan, false);
+  assert.equal(deriveModelPosture(0.1).fablePlan, false);
+  assert.equal(deriveModelPosture(0.1, { fable: true }).fablePlan, true); // flag turns it on
+  assert.equal(deriveModelPosture(0.8, { fable: true }).fablePlan, true);
   assert.equal(deriveModelPosture(0.8).executor.model, "opus"); // executor never Fable
 });
 
@@ -356,14 +360,14 @@ await test("D19: writeUnitConfig writes bgsd_unit_posture to config.json (config
   const tmpDir = mkdtempSync(join(tmpdir(), "bgsd-test-"));
   const planningDir = join(tmpDir, ".planning");
   try {
-    const posture = deriveModelPosture(0.8);
+    const posture = deriveModelPosture(0.8, { fable: true }); // exercise fablePlan serialization
     const configPath = writeUnitConfig(planningDir, posture, "unit-test-xx");
 
     const config = JSON.parse(readFileSync(configPath, "utf8"));
     assert.ok(config.bgsd_unit_posture, "config must have bgsd_unit_posture");
     assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-xx");
     assert.equal(config.bgsd_unit_posture.executor.model, "opus"); // executor never Fable
-    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // 0.8 -> Fable pre-plan
+    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // --fable -> Fable pre-plan
     assert.equal(config.bgsd_unit_posture.verifier.model, "opus");
 
     // Confirm it ONLY writes under bgsd_unit_posture — does not touch GSD keys

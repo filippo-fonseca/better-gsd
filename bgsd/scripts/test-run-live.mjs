@@ -115,7 +115,7 @@ const UNIT = {
     executor: { model: "opus", effort: "xhigh" },
     researcher: { model: "opus", effort: "high" },
     verifier: { model: "opus", effort: "medium" },
-    fablePlan: true, // difficulty 0.62 >= 0.5 -> a Fable pre-planner runs upstream
+    fablePlan: true, // --fable (or Conductor opt-in) -> a Fable pre-planner runs upstream
     spawnModel: "opus", // executor is NEVER Fable
   },
 };

@@ -138,8 +138,7 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   // Planner is always Opus inline; Fable is a SEPARATE upstream pre-planner.
   assert.equal(c.model_posture.planner.model, "opus");
   assert.equal(c.model_posture.fable_plan.model, "fable");
-  assert.equal(c.model_posture.fable_plan.threshold, 0.5);
-  assert.equal(c.model_posture.fable_plan.flag, false);
+  assert.equal(c.model_posture.fable_plan.default, false); // OFF by default; --fable turns it on
   assert.equal(c.model_posture.scout.model, "opus");
   assert.equal(c.model_posture.scout.effort, "high");
   assert.equal(c.model_posture.scout.trivial.model, "opus");

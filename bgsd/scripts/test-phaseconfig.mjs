@@ -173,7 +173,7 @@ test("P10: writeUnitPhaseConfig PRESERVES an existing bgsd_unit_posture key", ()
   const planningDir = join(tmpDir, ".planning");
   try {
     // 1. Write posture first via decompose's writeUnitConfig.
-    const posture = deriveModelPosture(0.8);
+    const posture = deriveModelPosture(0.8, { fable: true });
     writeUnitConfig(planningDir, posture, "unit-test-bb");
 
     // 2. Write phase config next.
@@ -185,7 +185,7 @@ test("P10: writeUnitPhaseConfig PRESERVES an existing bgsd_unit_posture key", ()
     assert.ok(config.bgsd_unit_posture, "bgsd_unit_posture must be preserved");
     assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-bb");
     assert.equal(config.bgsd_unit_posture.executor.model, "opus"); // executor never Fable
-    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // 0.8 -> Fable pre-plan
+    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // --fable -> Fable pre-plan
     assert.ok(config.bgsd_phase_config, "bgsd_phase_config must be present");
     assert.equal(config.bgsd_phase_config.unit_id, "unit-test-bb");
     assert.equal(config.bgsd_phase_config.ai_integration_phase, true);
