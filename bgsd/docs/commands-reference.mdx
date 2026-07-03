@@ -21,6 +21,7 @@ In day-to-day use you only ever type one command, `/bgsd-sesh` (plus `/bgsd-init
 | [`/bgsd-resume`](#bgsd-resume) | recovery | Pick up an interrupted session from `.bgsd/runs/`. |
 | [`/bgsd-modify-memory`](#bgsd-modify-memory) | settings | Save a preference or knob to `BGSD.md` in natural language. |
 | [`/bgsd-recall`](#bgsd-recall) | history | Search past session records and answer conversationally. |
+| [`/bgsd-generate-brief`](#bgsd-generate-brief) | history | Synthesize a clean markdown brief of a past session for the next one. |
 | [`/bgsd-clean`](#bgsd-clean) | maintenance | Prune merged bgsd branches and their stale git worktrees. |
 | [`/bgsd-status`](#bgsd-status) | observability | The always-on, read-only live status view. |
 | [`/bgsd-queue`](#bgsd-queue) | backlog | Manage the fix-stream queue and the cross-session backlog. |
@@ -200,6 +201,36 @@ If no resumable session exists, `/bgsd-resume` is not blocked: it reports "no in
 | `"<search terms>"` | Free-text query. Matched against all `.md/.mdx/.json/.txt` files under `.bgsd/seshs/` by term frequency. |
 
 Engine: `scripts/kb.mjs --query "<terms>"`. Corpus: `.bgsd/seshs/<run-id>/` (archived sessions only; not in-flight runs). For live run state use `/bgsd-status`.
+
+---
+
+## /bgsd-generate-brief {#bgsd-generate-brief}
+
+**Brief a past session for the next one.** Synthesizes a comprehensive, easy-to-interpret markdown brief of a completed bgsd session so you can hand clean context to the next one (for example, `/bgsd-sesh "based on the last sesh, do X, Y, Z"`). It reads the archived `.bgsd/` history for the run and writes the brief to `.bgsd/briefs/<run-id>-brief.md`. Defaults to the most recent session; pass a `<run-id>` to brief a specific one. Read-only over history — it never modifies any past record.
+
+The brief covers: **what was requested**; **what was done** (per unit); the **agents** that ran; **what changed** (branches / PR); **outstanding / deferred** items; and a **how to continue** section that ends with a ready-to-paste `/bgsd-sesh "based on the brief at .bgsd/briefs/<id>-brief.md, do ..."` line.
+
+### Usage
+
+```
+/bgsd-generate-brief               # brief the last session (auto-pick)
+/bgsd-generate-brief <run-id>      # brief a specific run
+```
+
+### Arguments and flags
+
+| Argument / flag | Argument | What it does |
+|---|---|---|
+| `<run-id>` | optional | Target a specific run. Omit (or pass `--last`) to brief the most recent session. |
+| `--run-id` | `<id>` | Explicit form of the positional `<run-id>` argument. |
+| `--last` | none | Brief the most recent session (the default when no run is given). |
+| `--out` | `<path>` | Write the brief to a custom path instead of the default `.bgsd/briefs/<run-id>-brief.md`. |
+| `--stdout` | none | Print the brief to stdout instead of (or in addition to) writing the file. |
+| `--bgsd-dir` | `<dir>` | Read history from a non-default `.bgsd/` directory. |
+
+**What it reads:** the per-session record under `.bgsd/seshs/<run-id>/` (`RUN.md`, `AGENTS.md`, the aggregated planning markdown), the session index at `.bgsd/ledger.md`, and the run's `run.json`. **What it writes:** the brief file at `.bgsd/briefs/<run-id>-brief.md` (or `--out <path>`); nothing under `.bgsd/seshs/` is ever touched.
+
+**Model note.** The narrative synthesis runs on **Sonnet** — cheap summarization, no Fable or Opus — consistent with bgsd's model doctrine (spend the priciest models only where reasoning-leverage is high). CLI: `node "${CLAUDE_PLUGIN_ROOT}/scripts/brief.mjs" --last`. Engine: `scripts/brief.mjs`.
 
 ---
 

@@ -26,7 +26,7 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 - **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor. Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
 
-- **[Commands Reference](./commands-reference.mdx):** **every command, every flag.** The canonical one-page reference: a section per `/bgsd-*` command (all 17) with a purpose line, a usage block, and a full flags/subcommands table. Start here when you want the exact flag for anything, including `/bgsd-gui`, `/bgsd-resume`, `/bgsd-modify-memory`, `/bgsd-recall`, and `/bgsd-clean`.
+- **[Commands Reference](./commands-reference.mdx):** **every command, every flag.** The canonical one-page reference: a section per `/bgsd-*` command (all 18) with a purpose line, a usage block, and a full flags/subcommands table. Start here when you want the exact flag for anything, including `/bgsd-gui`, `/bgsd-resume`, `/bgsd-modify-memory`, `/bgsd-recall`, `/bgsd-generate-brief`, and `/bgsd-clean`.
 
 - **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Run this once after installing.
 
@@ -34,7 +34,7 @@ All pages are valid standalone Mintlify MDX. They are intentionally kept outside
 
 ## New in this release
 
-Recent additions to how the Conductor runs and talks to you (bgsd 0.7.0). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
+Recent additions to how the Conductor runs and talks to you (bgsd 0.8.0). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
 
 ### How bgsd picks models
 
@@ -56,6 +56,7 @@ Everything below is a **default**. The Conductor decides per unit and adapts as 
 | **Loop-2 fix agents** | Loop 2 | Sonnet · medium |
 | **doc-agg / changelog / PR / feedback routing / classify** | throughout | deterministic (no model) |
 
+- **Brief a past session for the next one (`/bgsd-generate-brief`).** A new history/utility command that synthesizes a clean, comprehensive markdown brief of a completed session (what was requested, what was done per unit, the agents, what changed, outstanding items, and a ready-to-paste "how to continue" `/bgsd-sesh` line) and writes it to `.bgsd/briefs/<run-id>-brief.md`. Defaults to the last session; pass a `<run-id>` for a specific one. The narrative synthesis runs on Sonnet (cheap summarization, no Fable/Opus) and is read-only over history — it never modifies past records. See [`/bgsd-generate-brief`](./commands-reference.mdx#bgsd-generate-brief).
 - **The dashboard opens on its own.** The `--gui` web dashboard now opens automatically for feature- and project-scale sessions (never for quick fixes), so you get the full-pipeline view without asking. Controlled by the new `gui.auto` knob in `BGSD.md` (default `true`); `--no-gui` suppresses it for a session, and `--gui` forces it on even for a quick fix. It also no longer flickers or re-animates on its ~1.5s refresh: the page only re-renders when the run state actually changes.
 - **Walk-away notifications.** When a pipeline unit parks and needs your input (a `needs_input` escalation), the Conductor now fires a native macOS notification, so you can step away from the terminal and still get pinged. Opt out with the new `notifications.os` knob in `BGSD.md` (default `true`). macOS only; a silent no-op everywhere else.
 - **Kiwi always tells you why it sized the job the way it did.** Every session now prints a one-line explanation of the scale decision (e.g. "auto-scaled to feature — route 'multi-file', ~3 units, 2 surfaces, length band medium"), so the auto-scale is never a black box. Forced scale (via `--quick` / `--feature` / `--project`) and clarify-instead-of-guess cases are narrated the same way.
@@ -134,6 +135,7 @@ These pages document what the Conductor runs internally. You never call these co
 | Resume an interrupted session | [/bgsd-resume](./commands-reference.mdx#bgsd-resume) |
 | Modify a setting in plain language | [/bgsd-modify-memory](./commands-reference.mdx#bgsd-modify-memory) |
 | Search past session history | [/bgsd-recall](./commands-reference.mdx#bgsd-recall) |
+| Brief a past session for the next one | [/bgsd-generate-brief](./commands-reference.mdx#bgsd-generate-brief) |
 | Understand the verdict contract | [/bgsd-verify — report schema](./bgsd-verify.mdx#the-report-schema) |
 | Understand Loop 1 mechanics | [/bgsd-queue — Loop 1 controller](./bgsd-queue.mdx) |
 | Understand the full orchestration state machine | [/bgsd-run](./bgsd-run.mdx) |

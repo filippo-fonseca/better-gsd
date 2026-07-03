@@ -10,8 +10,8 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.7.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
-[![tests](https://img.shields.io/badge/tests-47%20passing-brightgreen.svg)](#architecture-at-a-glance)
+[![version](https://img.shields.io/badge/version-0.8.0-informational.svg)](./bgsd/.claude-plugin/plugin.json)
+[![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](#architecture-at-a-glance)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [Landing page](https://site-filippo-fonsecas-projects.vercel.app) · [Docs](./bgsd/docs) · [Contributing](./CONTRIBUTING.md) · [Architecture](./ARCHITECTURE.md)
@@ -114,7 +114,7 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
-You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), **`/bgsd-clean`** (prune merged bgsd branches and their stale worktrees), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
+You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), **`/bgsd-generate-brief`** (write a comprehensive brief of the last sesh to hand the next one clean context), **`/bgsd-clean`** (prune merged bgsd branches and their stale worktrees), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
 
 ---
 
@@ -159,6 +159,7 @@ The terminal is already kept legible by the Conductor's per-message narration, s
 | Cleanup | `/bgsd-clean` prunes merged bgsd branches and their stale worktrees; plan-first, and it never touches `next`/`main`. |
 | Settings as a file | `BGSD.md` holds your knobs; tell the Conductor a preference in chat and it self-edits the file. |
 | Memory and recall | Every session is recorded under `.bgsd/`; ask `/bgsd-recall "..."` for a conversational answer about past work. |
+| Session briefs | `/bgsd-generate-brief` writes a comprehensive md recap of a past sesh so the next `/bgsd-sesh` starts with clean context. |
 
 ### How bgsd picks models
 
@@ -186,7 +187,7 @@ These are **defaults only.** The Conductor decides per unit and adapts as it run
 - The plugin lives in [`bgsd/`](./bgsd): commands in [`bgsd/commands`](./bgsd/commands), the tester agent in [`bgsd/agents`](./bgsd/agents), the engine in [`bgsd/scripts`](./bgsd/scripts), docs in [`bgsd/docs`](./bgsd/docs), and the landing page in [`bgsd/site`](./bgsd/site).
 - A thin npm launcher lives in [`installer/`](./installer).
 - The engine is written as **pure, dependency-injected** modules (`bgsd/scripts/*.mjs`) paired with a `*-live.mjs` seam that wires real git and filesystem access and guards every mutation behind `--live` and a not-production-branch check.
-- Tests are home-grown `bgsd/scripts/test-*.mjs` files (`node:assert/strict`, a local `test()` runner). There are **47** of them today, and all must exit 0. Run the suite with:
+- Tests are home-grown `bgsd/scripts/test-*.mjs` files (`node:assert/strict`, a local `test()` runner). There are **48** of them today, and all must exit 0. Run the suite with:
 
   ```sh
   for t in bgsd/scripts/test-*.mjs; do node "$t"; done
