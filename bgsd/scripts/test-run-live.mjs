@@ -187,6 +187,7 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     assert.equal(call.cmd, "claude");
     assert.deepEqual(call.args, [
       "-p", "/bgsd-run-agent",
+      "--model", "claude-fable-5", // UNIT.difficulty 0.62 >= 0.5 -> hard -> Fable subprocess
       "--worktree", wtPath,
       "--unit-id", UNIT.id,
       "--run-id", runId,

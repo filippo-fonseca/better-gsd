@@ -70,7 +70,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { writeUnitWorktreeConfig } from "./decompose.mjs";
+import { writeUnitWorktreeConfig, unitSpawnModel, resolveSpawnModel } from "./decompose.mjs";
 import { createControlFile } from "./control.mjs";
 import { propagateEnvLive } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
@@ -278,11 +278,21 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     status:   "running",
   });
 
+  // The REAL Claude Code model for this unit's worktree subprocess. bgsd cannot
+  // spawn a Fable subagent in-session, so Fable is realized by launching the whole
+  // Pipeline Agent on it (hard units, >= 0.5); plan+execute then share it, while
+  // cheap phase-subagents (scout, review) run inside via the agent tool.
+  const spawnModel = resolveSpawnModel(
+    unit?.model_posture?.spawnModel ??
+    unitSpawnModel(typeof unit?.difficulty === "number" ? unit.difficulty : 0)
+  );
+
   // 6. Spawn the headless Pipeline Agent (NFR-06: throw on non-zero/error).
   const agentResult = spawnImpl(
     "claude",
     [
       "-p", "/bgsd-run-agent",
+      "--model", spawnModel,
       "--worktree", wtPath,
       "--unit-id", unitId,
       "--run-id", runId,

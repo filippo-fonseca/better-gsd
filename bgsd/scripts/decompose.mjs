@@ -183,6 +183,17 @@ export function unitSpawnModel(score) {
 }
 
 /**
+ * Map a posture model name (opus/sonnet/haiku/fable) to the real value passed to
+ * `claude --model`. Fable's alias resolves to its full model id; the others are
+ * accepted as aliases by Claude Code as-is.
+ */
+export function resolveSpawnModel(name) {
+  if (name === "fable") return "claude-fable-5";
+  if (name === "opus" || name === "sonnet" || name === "haiku") return name;
+  return name || "sonnet";
+}
+
+/**
  * The SCOUT / researcher posture. It reads raw source and distills a brief, so
  * it is deliberately cheap — keeping raw-file tokens off the pricey models is
  * the whole point (Fable/Opus reason over the brief, never the raw files):
