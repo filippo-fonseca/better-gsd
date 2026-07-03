@@ -8,6 +8,24 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-03
+
+### Fixed
+- **The Fable pre-planner is launched as a Bash subprocess, never the Agent tool.**
+  It was no-opping (empty agent, zero tool uses) because the Conductor spawned
+  `/bgsd-plan-unit` via the in-session Agent tool, which only offers
+  opus/sonnet/haiku and cannot run Fable. `bgsd-sesh.md` now instructs launching it
+  via `claude -p /bgsd-plan-unit --model claude-fable-5` on the worktree and passing
+  `--seed-plan` to the Opus agent, and adds a 🧠 branded role that is never an
+  Agent-tool subagent.
+
+### Changed
+- **The Fable pre-plan is now off by default and opt-in only.** Difficulty no longer
+  auto-triggers it (previously units at ≥ 0.5 got one automatically). Plain units run
+  the normal GSD workflow on Opus; a pre-plan runs only when `--fable` is passed or
+  the Conductor opts a specific unit in. `fablePlanForScore` is flag-driven;
+  `fable_plan.default` is `false`.
+
 ## [0.9.0] - 2026-07-03
 
 Model-routing overhaul: **Opus is the standard for every role; Fable is never the
@@ -30,21 +48,11 @@ upstream pre-planner that seeds the Opus pipeline.
 - **Standalone Fable pre-planner (`/bgsd-plan-unit`).** A `claude -p --model
   claude-fable-5` subprocess that plans only (never edits code), writes
   `.planning/fable-plan.md`, and seeds the Opus pipeline agent. Slogan: *Fable
-  plans; Opus executes.* It is **off by default** and runs only when `--fable` is
-  passed, or when the Conductor opts a specific unit in. Difficulty does not trigger
-  it — plain units just run the normal GSD workflow on Opus.
+  plans; Opus executes.* (Made opt-in / off-by-default in 0.9.1.)
 - `/bgsd-run-agent` gained `--seed-plan`: when present, the Opus plan phase reviews
   and augments the Fable plan instead of planning from scratch.
 - `--fable` flag: turn the Fable pre-plan on for every unit in a session.
 - `--sonnet` flag: allow the executor to drop to Sonnet on trivial (< 0.2) units.
-
-### Fixed
-- The Fable pre-planner was no-opping (empty agent, zero tool uses) because the
-  Conductor spawned `/bgsd-plan-unit` via the in-session Agent tool, which only
-  offers opus/sonnet/haiku and cannot run Fable. It must be launched as a Bash
-  `claude -p --model claude-fable-5` subprocess; `bgsd-sesh.md` now documents this
-  explicitly (a CRITICAL callout plus a 🧠 branded role that is never an Agent-tool
-  subagent).
 
 ## [0.8.2] - 2026-07-03
 
@@ -85,7 +93,8 @@ upstream pre-planner that seeds the Opus pipeline.
 
 Versions prior to 0.8.0 predate this changelog; see the git history for details.
 
-[Unreleased]: https://github.com/filippo-fonseca/better-gsd/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/filippo-fonseca/better-gsd/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.9.1
 [0.9.0]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.9.0
 [0.8.2]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.8.2
 [0.8.1]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.8.1
