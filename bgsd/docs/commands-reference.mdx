@@ -385,6 +385,19 @@ Engine: `scripts/run.mjs` (dry-run) and `scripts/run-live.mjs` (`--live`).
 | `--unit` | `"<text>"` | Yes | The unit to pre-plan. Read-only over the codebase; no edits. |
 | `--seed-plan` | `<path>` | No | Where to write the seed plan (default `.planning/fable-plan.md`). The Opus pipeline agent consumes it via its own `--seed-plan`. |
 
+### How to turn the Fable pre-planner on
+
+You do not call `/bgsd-plan-unit` by hand in a normal session; you tell the Conductor to use it. Three ways:
+
+1. **Per session:** pass `--fable` to `/bgsd-sesh` (every unit gets a Fable pre-plan).
+   ```
+   /bgsd-sesh "fix the checkout flow" --fable
+   ```
+2. **Conversationally:** tell the Conductor, for the whole run or one unit: "run a Fable pre-plan on the payments unit first." It opts that unit in with no restart.
+3. **Repo default:** persist `models.fable: on` in `BGSD.md` so every session gets it.
+
+Two conditions must hold for it to actually reach Fable rather than silently no-op: the session must be on a bgsd build with this wiring (run `/reload-plugins` after updating), and `claude -p --model claude-fable-5` must resolve to Fable in your environment (test with `claude -p "hi" --model claude-fable-5`). If either fails, the Conductor cannot produce a real Fable pre-plan; the unit still builds correctly on Opus.
+
 ---
 
 ## /bgsd-integrate {#bgsd-integrate}

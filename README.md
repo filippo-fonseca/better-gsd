@@ -115,6 +115,19 @@ That is the whole loop: open repo, run `/bgsd-sesh "..."`, review, ship. Repeat 
 
 A manual flag always wins: **flag > `BGSD.md` > default**. Scale flags bypass the auto-scale thresholds unconditionally.
 
+### Using the Fable pre-planner
+
+By default every unit runs the normal GSD workflow on **Opus**, with **no Fable pre-plan** (difficulty does not trigger one). Fable is brought in only when you ask for it, and only as a plan-only pre-pass that seeds the Opus pipeline agent. Three ways to turn it on:
+
+1. **Per session:** pass `--fable` to give every unit a Fable pre-plan.
+   ```
+   /bgsd-sesh "fix the checkout flow" --fable
+   ```
+2. **Conversationally:** just tell the Conductor, for the whole run or one unit: "run a Fable pre-plan on the payments unit first." It opts that unit in with no restart.
+3. **Repo default:** persist `models.fable: on` in `BGSD.md` (or tell the Conductor to save it) so every session gets it.
+
+When it runs, the Conductor launches the pre-planner as a Bash subprocess (`claude -p /bgsd-plan-unit --model claude-fable-5 … --out .planning/fable-plan.md`), then passes `--seed-plan` to the Opus pipeline agent. The executor stays Opus; Fable only plans. Two things must hold for it to actually reach Fable: the session must be on a bgsd build that has this wiring (run `/reload-plugins` after updating), and `claude -p --model claude-fable-5` must resolve to Fable in your environment (test with `claude -p "hi" --model claude-fable-5`). It is never spawned through the in-session Agent tool, which cannot select Fable.
+
 You mostly just use `/bgsd-sesh`, but a few other commands are useful directly: **`/bgsd-resume`** (pick up an interrupted session), **`/bgsd-gui`** (open the live dashboard), **`/bgsd-modify-memory "..."`** (save a setting or preference to `BGSD.md` in plain English), **`/bgsd-recall "..."`** (search past session history conversationally), **`/bgsd-generate-brief`** (write a comprehensive brief of the last sesh to hand the next one clean context), **`/bgsd-clean`** (prune merged bgsd branches and their stale worktrees), `/bgsd-init`, `/bgsd-queue` (backlog: add/status/peek/done/start), `/bgsd-verify`, and `/bgsd-status`. The Conductor orchestrates the rest for you (`/bgsd-user-eval`, `/bgsd-integrate`, `/bgsd-feedback`, `/bgsd-changelog`, `/bgsd-run`). **Every command and every flag is in the [Commands Reference](./bgsd/docs/commands-reference.mdx).**
 
 ---
