@@ -35,6 +35,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { liveSpawnFn, liveMergeFn } from "./run-live.mjs";
+import { LATEST_OPUS } from "./decompose.mjs";
 import { persistRunUnits } from "./run-units.mjs";
 
 // ---------------------------------------------------------------------------
@@ -205,7 +206,7 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     assert.equal(call.cmd, "claude");
     assert.deepEqual(call.args, [
       "-p", "/bgsd-run-agent",
-      "--model", "opus", // executor/pipeline subprocess is Opus, never Fable
+      "--model", LATEST_OPUS, // executor/pipeline subprocess is Opus (latest), never Fable
       "--worktree", wtPath,
       "--unit-id", UNIT.id,
       "--run-id", runId,
@@ -255,7 +256,7 @@ await test("L05b: non-fablePlan unit → single Opus spawn, no pre-planner, no -
     assert.ok(!call.args.includes("--seed-plan"), "no seed plan when fablePlan is false");
     assert.ok(!call.args.includes("claude-fable-5"), "Fable never appears");
     const modelIdx = call.args.indexOf("--model");
-    assert.equal(call.args[modelIdx + 1], "opus", "executor subprocess is Opus");
+    assert.equal(call.args[modelIdx + 1], LATEST_OPUS, "executor subprocess is Opus (latest)");
   } finally {
     rmSync(bgsdDir, { recursive: true, force: true });
     rmSync(wtPath, { recursive: true, force: true });

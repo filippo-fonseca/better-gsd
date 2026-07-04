@@ -209,13 +209,25 @@ export function unitSpawnModel(score, opts = {}) {
 }
 
 /**
+ * The concrete latest-Opus model id. The bare `opus` CLI alias resolves to an
+ * OLDER Opus (4.7), so passing `--model opus` does NOT get you the newest Opus —
+ * and since it's the same price, there's no reason to run anything but the
+ * latest. We therefore pin the posture name `opus` to this explicit id at the
+ * CLI seam. Bump this one constant when a newer Opus ships.
+ */
+export const LATEST_OPUS = "claude-opus-4-8";
+
+/**
  * Map a posture model name (opus/sonnet/haiku/fable) to the real value passed to
- * `claude --model`. Fable's alias resolves to its full model id; the others are
- * accepted as aliases by Claude Code as-is.
+ * `claude --model`. Posture names stay semantic (`opus`) everywhere else (the
+ * Agent-tool model enum needs them); this is the ONE place they resolve to a
+ * concrete model id. `opus` -> the LATEST Opus (never the stale alias); Fable ->
+ * its full id; sonnet/haiku pass through as aliases.
  */
 export function resolveSpawnModel(name) {
   if (name === "fable") return "claude-fable-5";
-  if (name === "opus" || name === "sonnet" || name === "haiku") return name;
+  if (name === "opus") return LATEST_OPUS;
+  if (name === "sonnet" || name === "haiku") return name;
   return name || "sonnet";
 }
 
