@@ -374,6 +374,33 @@ it degrades silently to "no recall" on a fresh repo with no history yet.
 
 ---
 
+## Env preflight — your app's env, in every worktree, confirmed when unsure
+
+Git worktrees don't carry gitignored files, so bgsd copies this repo's env files
+into every worktree Pipeline Agent, every Loop 2 fix worktree, and the
+integration checkout before booting anything (patterns come from `env.files` in
+`BGSD.md`; toggle with `env.propagate`). Without this, spawned apps don't boot
+and Testers fail spuriously.
+
+**When it's unsure which env files, Kiwi asks — it never silently guesses.** At
+sesh start Kiwi runs the env preflight check:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/envprop.mjs" detect --json
+```
+
+This reports `covered` (env files matched by your `env.files` globs — these
+propagate) and `uncovered` (env-looking files at the repo root, e.g.
+`.env.production`, that the globs DON'T match). If `uncovered` is non-empty, Kiwi
+surfaces an **AskUserQuestion selector** — *"I found `.env.production` and
+`.env.staging` at the root that aren't in `env.files`. Propagate them too?"* —
+with options to **propagate them this sesh**, **add them to `env.files`
+permanently** (Kiwi edits `BGSD.md`), or **leave them out**. When everything is
+covered, it proceeds silently. This is how you avoid the classic "the app won't
+boot in the worktree because it was missing `.env.production`" debugging spiral.
+
+---
+
 ## Starting with no prompt — the backlog
 
 You don't always have to type what to build. bgsd keeps a persistent, **per-repo

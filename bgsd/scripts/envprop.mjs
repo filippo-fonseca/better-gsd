@@ -100,6 +100,46 @@ export function resolveEnvConfig(repoRoot, readFileFn, existsFn) {
   return { propagate: env.propagate !== false, files };
 }
 
+/** An env-looking filename at the repo root: `.env`, `.env.local`, `.env.production`, … */
+export const ENV_LIKE_RE = /^\.env(\..+)?$/;
+
+/**
+ * Inspect the repo root for env files and split them by whether the configured
+ * `env.files` globs already cover them. This is what lets the Conductor CONFIRM
+ * WHEN UNSURE: if there are env-looking files at the root that the globs miss
+ * (e.g. `.env.production` when the config only lists `.env`/`.env.local`), it can
+ * ask the user whether to propagate them too, instead of silently skipping env
+ * the app may need.
+ *
+ * @param {string} repoRoot
+ * @param {object} [opts]
+ * @param {(p:string)=>string}  [opts.readFileFn]  injectable reader (tests)
+ * @param {(p:string)=>boolean} [opts.existsFn]    injectable existence check (tests)
+ * @param {()=>string[]}        [opts.listRootFn]  injectable root lister (tests)
+ * @returns {{ propagate: boolean, patterns: string[], covered: string[], uncovered: string[] }}
+ *   covered   — env files at root matched by the configured globs (will propagate)
+ *   uncovered — env-looking files at root NOT matched (the ambiguity to confirm)
+ */
+export function detectEnvFiles(repoRoot, { readFileFn, existsFn, listRootFn } = {}) {
+  const { propagate, files } = resolveEnvConfig(repoRoot, readFileFn, existsFn);
+  const listRoot =
+    listRootFn ??
+    (() =>
+      readdirSync(repoRoot, { withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => d.name));
+  let rootFiles = [];
+  try {
+    rootFiles = listRoot();
+  } catch (_) {
+    rootFiles = [];
+  }
+  const covered = matchEnvFiles(rootFiles, files);
+  const coveredSet = new Set(covered);
+  const uncovered = rootFiles.filter((f) => ENV_LIKE_RE.test(f) && !coveredSet.has(f));
+  return { propagate, patterns: files, covered, uncovered };
+}
+
 /**
  * Config-driven propagation: read env.propagate/env.files from the repo's
  * BGSD.md and copy the matching root env files into destDir. This is the seam
@@ -129,4 +169,41 @@ export function propagateEnvForConfig({ repoRoot, destDir, log, readFileFn, exis
     return { copied: [], skipped: "same-dir" };
   }
   return propagateEnvLive({ repoRoot, destDir, patterns: files, log: _log });
+}
+
+// ---------------------------------------------------------------------------
+// CLI — env preflight check for the Conductor (confirm-when-unsure)
+// ---------------------------------------------------------------------------
+
+const invokedDirectly =
+  typeof process.argv[1] === "string" && /[\\/]envprop\.mjs$/.test(process.argv[1]);
+if (invokedDirectly) {
+  const argv = process.argv.slice(2);
+  const sub = argv[0];
+  const json = argv.includes("--json");
+  const repoRoot = process.cwd();
+
+  if (sub === "detect" || sub === "check") {
+    const { propagate, patterns, covered, uncovered } = detectEnvFiles(repoRoot);
+    if (json) {
+      process.stdout.write(JSON.stringify({ propagate, patterns, covered, uncovered }) + "\n");
+    } else {
+      process.stdout.write(`\nenv preflight — repo: ${repoRoot}\n`);
+      process.stdout.write(`  propagate:  ${propagate ? "on" : "off (env.propagate=false)"}\n`);
+      process.stdout.write(`  patterns:   ${patterns.join(", ")}\n`);
+      process.stdout.write(`  covered:    ${covered.join(", ") || "(none)"}\n`);
+      process.stdout.write(`  uncovered:  ${uncovered.join(", ") || "(none)"}\n`);
+      if (uncovered.length) {
+        process.stdout.write(
+          `\n  ⚠ ${uncovered.length} env-looking file(s) are NOT covered by env.files.\n` +
+          `    Confirm with the user whether to propagate them, or add them to env.files in BGSD.md.\n`
+        );
+      }
+      process.stdout.write("\n");
+    }
+    process.exit(uncovered.length ? 2 : 0);
+  }
+
+  process.stderr.write('Usage: node envprop.mjs detect [--json]\n');
+  process.exit(1);
 }

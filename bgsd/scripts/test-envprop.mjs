@@ -16,6 +16,7 @@ import {
   propagateEnvLive,
   resolveEnvConfig,
   propagateEnvForConfig,
+  detectEnvFiles,
 } from "./envprop.mjs";
 
 let passed = 0;
@@ -145,6 +146,42 @@ test("EP09 — propagateEnvForConfig no-ops when destDir === repoRoot", () => {
     const res = propagateEnvForConfig({ repoRoot: root, destDir: join(root, ".", "") });
     assert.equal(res.skipped, "same-dir");
     assert.equal(res.copied.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EP10 — detectEnvFiles splits covered vs uncovered env-looking files", () => {
+  const root = mkdtempSync(join(tmpdir(), "bgsd-detect-"));
+  try {
+    writeFileSync(join(root, ".env"), "A=1\n");
+    writeFileSync(join(root, ".env.local"), "B=2\n");
+    writeFileSync(join(root, ".env.production"), "C=3\n"); // env-looking, NOT in default globs
+    writeFileSync(join(root, "package.json"), "{}\n");     // not env-looking
+    // No BGSD.md → default globs [".env", ".env.local", ".env.*.local"].
+    const r = detectEnvFiles(root);
+    assert.equal(r.propagate, true);
+    assert.deepEqual(r.covered.sort(), [".env", ".env.local"].sort());
+    assert.deepEqual(r.uncovered, [".env.production"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EP11 — detectEnvFiles reports no ambiguity when globs cover everything", () => {
+  const root = mkdtempSync(join(tmpdir(), "bgsd-detect2-"));
+  try {
+    writeFileSync(join(root, ".env"), "A=1\n");
+    writeFileSync(
+      join(root, "BGSD.md"),
+      "```json bgsd-settings\n" +
+        JSON.stringify({ env: { propagate: true, files: [".env", ".env.*"] } }) +
+        "\n```\n"
+    );
+    writeFileSync(join(root, ".env.production"), "C=3\n");
+    const r = detectEnvFiles(root);
+    assert.deepEqual(r.uncovered, []); // ".env.*" covers .env.production
+    assert.ok(r.covered.includes(".env.production"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
