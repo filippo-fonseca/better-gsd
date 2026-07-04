@@ -97,6 +97,21 @@
   .tab:hover { color: var(--ink); }
   .tab.active { background: var(--surface); color: var(--kiwi); font-weight: 700; box-shadow: var(--raise-sm); }
   .lock { color: var(--kiwi); }
+  /* Session strip — each concurrent sesh gets its own distinct chip; the active
+     one is highlighted. Clicking a chip deep-links to that sesh. */
+  .sessline { display: flex; gap: 8px; align-items: center; overflow-x: auto; padding: 4px 2px 10px; scrollbar-width: thin; }
+  .sessline .sl-label { color: var(--muted-2); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; flex: 0 0 auto; margin-right: 2px; }
+  .schip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; max-width: 260px; border: 0; cursor: pointer; font: inherit; font-size: 12px; color: var(--ink-2); background: var(--surface); border-radius: 10px; padding: 6px 11px; box-shadow: var(--inset-sm); transition: color .2s, box-shadow .2s; }
+  .schip:hover { color: var(--ink); }
+  .schip.active { color: var(--kiwi); font-weight: 700; box-shadow: var(--raise-sm); }
+  .schip .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--muted); }
+  .schip.st-running .dot { background: var(--run); box-shadow: 0 0 7px rgba(88,166,255,.6); }
+  .schip.st-done .dot { background: var(--done); }
+  .schip.st-blocked .dot, .schip.st-failed .dot { background: var(--bad); }
+  .schip.st-needs_input .dot { background: var(--warn); }
+  .schip .sl-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .schip .sl-stage { color: var(--muted); font-size: 10.5px; flex: 0 0 auto; }
+  .sessline .sl-empty { color: var(--muted); font-size: 12px; }
 
   /* ---- The hero pipeline stepper ------------------------------------- */
   .hero {
@@ -336,6 +351,7 @@
 </header>
 
 <div class="view" id="view-current">
+  <div class="sessline" id="sessline"></div>
   <section class="hero">
     <div class="hero-label"><b>pipeline</b> · <span>one sesh, end to end</span> · <span id="hero-scope" class="muted" style="color:var(--muted)"></span></div>
     <div class="stepper-wrap">
@@ -832,6 +848,56 @@
       });
   }
 
+  // Session strip (Current view): one chip per concurrent/recent sesh so each is
+  // shown distinctly, with the viewed one highlighted. Clicking a chip deep-links
+  // to that sesh via selectRun(). Rebuilt only when the payload changes.
+  var lastSessLineSig = null;
+  function renderSessLine(list) {
+    var wrap = document.getElementById("sessline");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    wrap.appendChild(el("span", "sl-label", "seshs"));
+    if (!list || !list.length) {
+      wrap.appendChild(el("span", "sl-empty", "no sessions yet"));
+      return;
+    }
+    // Keep the strip scannable: show the most recent seshs (the list arrives
+    // recent-first), plus the viewed one if it fell outside the window, and a
+    // "+N more" chip that jumps to the full All-sessions list.
+    var MAX = 12;
+    var shown = list.slice(0, MAX);
+    if (viewingRun && !shown.some(function (s) { return s.run_id === viewingRun; })) {
+      var pinned = list.filter(function (s) { return s.run_id === viewingRun; });
+      shown = pinned.concat(shown).slice(0, MAX);
+    }
+    shown.forEach(function (s) {
+      var chip = el("button", "schip st-" + s.status);
+      if (viewingRun && s.run_id === viewingRun) chip.className += " active";
+      chip.appendChild(el("span", "dot"));
+      chip.appendChild(el("span", "sl-title", s.title || s.run_id || "(unknown)"));
+      chip.appendChild(el("span", "sl-stage", s.stage || "—"));
+      chip.title = (s.title ? s.title + " · " : "") + (s.run_id || "") + " · " + (STATUS_LABEL[s.status] || s.status);
+      chip.addEventListener("click", function () { selectRun(s.run_id); showTab("current"); });
+      wrap.appendChild(chip);
+    });
+    if (list.length > shown.length) {
+      var more = el("button", "schip", "+" + (list.length - shown.length) + " more");
+      more.addEventListener("click", function () { showTab("sessions"); });
+      wrap.appendChild(more);
+    }
+  }
+  function refreshSessLine() {
+    fetch("/api/sessions", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+      .then(function (list) {
+        var sig = JSON.stringify([viewingRun, (list || []).map(function (s) { return [s.run_id, s.status, s.stage, s.title]; })]);
+        if (sig === lastSessLineSig) return;
+        lastSessLineSig = sig;
+        renderSessLine(list);
+      })
+      .catch(function () { /* strip is best-effort; leave the last render up */ });
+  }
+
   function showTab(tab) {
     activeTab = tab;
     var isCurrent = tab === "current";
@@ -839,7 +905,7 @@
     document.getElementById("tab-sessions").className = "tab" + (isCurrent ? "" : " active");
     document.getElementById("view-current").hidden = !isCurrent;
     document.getElementById("view-sessions").hidden = isCurrent;
-    if (isCurrent) tick();
+    if (isCurrent) { tick(); refreshSessLine(); }
     else loadSessions();
   }
 
@@ -897,7 +963,7 @@
       .catch(function () { tick(); });
   })();
   setInterval(function () {
-    if (activeTab === "current") tick();
+    if (activeTab === "current") { tick(); refreshSessLine(); }
     else loadSessions();
   }, POLL_MS);
 </script>
