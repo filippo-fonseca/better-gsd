@@ -35,6 +35,12 @@ Only verified work converges onto the `next` branch. No agent ever writes to `ma
 
 Gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline the Conductor is at a glance.
 
+## Harness-agnostic: Claude Code or Codex
+
+bgsd is LLM/CLI agnostic. A sesh runs identically under **Claude Code** or **Codex**, and you can switch between them mid-project (e.g. to dodge one provider's usage limits) with zero friction — all durable state lives in harness-independent `.bgsd/` files, so a sesh started under one picks up seamlessly under the other.
+
+At sesh start Kiwi detects the harness (`harness.active: "auto"` — `AGENT=codex` → Codex, else Claude Code; pin in `BGSD.md` or via `BGSD_HARNESS`). The semantic model tiers (opus/sonnet/haiku/fable) resolve to the active harness's equivalents via `harness.models` (Claude: `claude-opus-4-8`, …; Codex: `gpt-5-codex`, `gpt-5`, `gpt-5-mini`), and each pipeline agent spawns on that harness's CLI, so switching moves the work — and the quota — to that provider.
+
 ## Session memory: recall + the backlog
 
 bgsd sessions remember each other, and all of it is **per-repo** (stored under the invoking repo's `.bgsd/`).

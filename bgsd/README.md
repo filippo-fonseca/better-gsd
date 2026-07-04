@@ -194,6 +194,12 @@ bgsd sessions are not amnesiac, and everything here is **per-repo** (kept under 
 
 **The backlog — leave ideas for the next sesh.** While a session runs you keep thinking of what to do next. Bank each one with `/bgsd-queue "<idea>"` (or just tell Kiwi "queue that for next sesh"); they pile up in this repo's queue. When you're done, run a bare `/bgsd-sesh` and the Conductor shows the whole queued batch in a selector, so you multi-pick what to pull into the next session, or ignore it and type a fresh prompt. Deferred scope is never lost and never re-typed. (This queue at `.bgsd/queue` is bgsd's one canonical backlog — not any `.planning/` file.)
 
+## Harness-agnostic: Claude Code or Codex, switch anytime
+
+bgsd is **LLM/CLI agnostic**. A sesh runs identically whether you drive it from **Claude Code** or **Codex** (OpenAI's CLI), and you can switch between them mid-project — if one provider's usage runs out, work under the other for a few hours and switch back — with zero friction. All durable state lives in harness-independent `.bgsd/` files, so a sesh started under one picks up seamlessly under the other; you shouldn't have to notice anything.
+
+Kiwi detects the harness at sesh start (`harness.active: "auto"` — `AGENT=codex` → Codex, else Claude Code; pin it in `BGSD.md` or via `BGSD_HARNESS`). bgsd's semantic model tiers (opus/sonnet/haiku/fable) resolve to the active harness's equivalents via `harness.models` (Claude: `claude-opus-4-8`, …; Codex: `gpt-5-codex`, `gpt-5`, `gpt-5-mini`), and every pipeline agent spawns on that harness's CLI — so switching actually moves the work, and the quota, to that provider. Each unit records which harness ran it; the state itself is shared.
+
 ## GSD on steroids: GSD runs inside every agent
 
 Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.

@@ -401,6 +401,36 @@ boot in the worktree because it was missing `.env.production`" debugging spiral.
 
 ---
 
+## Harness-agnostic — Claude Code or Codex, switch anytime
+
+bgsd is **LLM/CLI agnostic**. A sesh runs identically whether you drive it from
+**Claude Code** or **Codex** (OpenAI's CLI). This matters for a real workflow: if
+one provider's usage runs out, switch to the other for a few hours and back again
+— everything persists and nothing breaks. All durable state lives in `.bgsd/`
+files that are harness-independent, so a sesh you started under Claude Code picks
+up seamlessly under Codex and vice-versa; you shouldn't have to notice anything.
+
+Kiwi resolves the active harness at sesh start:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/harness.mjs" detect --json
+```
+
+- **Detection.** `harness.active: "auto"` (in `BGSD.md`) detects from the
+  environment — `AGENT=codex` → Codex; otherwise Claude Code. Pin it to
+  `"claude"`/`"codex"` to force one, or set `BGSD_HARNESS` for a one-off.
+- **Model equivalents.** bgsd's semantic tiers (opus/sonnet/haiku/fable) resolve
+  to the active harness's models via `harness.models` (Claude: `claude-opus-4-8`,
+  … ; Codex: `gpt-5-codex`, `gpt-5`, `gpt-5-mini`). Every pipeline agent spawns on
+  the active harness's CLI (`claude -p …` or `codex exec …`) with the right model,
+  so switching harnesses actually moves the work — and the quota — to that
+  provider. Retune the model names in `BGSD.md` if a provider's names drift.
+- **Seamless persistence.** The run ledger, seshs corpus, queue, and per-unit
+  control files are plain files under `.bgsd/`. Each unit records which harness
+  ran it, but the state itself is shared, so a switch mid-project is invisible.
+
+---
+
 ## Starting with no prompt — the backlog
 
 You don't always have to type what to build. bgsd keeps a persistent, **per-repo
