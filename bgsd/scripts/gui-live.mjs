@@ -516,10 +516,14 @@ export async function main() {
     );
     process.exit(1);
   }
-  out(`\nbgsd-gui live at ${url}\n`);
+  // Hand back a DEEP-LINK to the specific sesh, not the bare root, so clicking
+  // it opens straight to this session (the dashboard reads ?run=<id>). Falls
+  // back to the bare url when there's no run yet.
+  const deepLink = r ? `${url}?run=${encodeURIComponent(r)}` : url;
+  out(`\nbgsd-gui live at ${deepLink}\n`);
   out(`  tracking run: ${r ?? "(none yet — will show agents as they start)"}\n`);
   out(`  daemon pid ${pid} on port ${actualPort} (detached; survives this shell).\n`);
-  out(`  open ${url} in your browser. Stop it with: node gui-live.mjs stop\n\n`);
+  out(`  open ${deepLink} in your browser. Stop it with: node gui-live.mjs stop\n\n`);
   // The `start` process exits here; the detached daemon keeps serving.
 }
 

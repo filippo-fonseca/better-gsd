@@ -745,9 +745,27 @@
 
   function selectRun(id) {
     viewingRun = id || null;
+    // Persist the selection in the URL bar so the view is a proper, shareable
+    // deep-link (?run=<id>). Without this, copying the URL loses the sesh.
+    try {
+      var target = viewingRun
+        ? location.pathname + "?run=" + encodeURIComponent(viewingRun)
+        : location.pathname;
+      history.pushState({ run: viewingRun }, "", target);
+    } catch (_) {}
     setViewingNote();
     tick();
   }
+
+  // Back/forward should move between sessions, not leave the app.
+  window.addEventListener("popstate", function () {
+    var r = "";
+    try { r = new URLSearchParams(location.search).get("run") || ""; } catch (_) {}
+    viewingRun = r.trim() || null;
+    setViewingNote();
+    if (viewingRun) { showTab("current"); }
+    tick();
+  });
 
   function stateUrl() {
     return viewingRun ? "/api/state?run=" + encodeURIComponent(viewingRun) : "/api/state";
@@ -854,16 +872,27 @@
   ]);
 
   setViewingNote();
-  // First load: if there is no active/current run, land on the All-sessions view.
-  // Opening the dashboard without a running sesh shows the session list (or a
-  // friendly empty state), never an empty pipeline. A ?run deep-link pins Current.
+  // First load: default to the LATEST sesh. With an explicit ?run deep-link we
+  // pin that sesh. Otherwise we fetch /api/state (which the server resolves to
+  // the latest run), and if a run exists we pin it — setting viewingRun and
+  // rewriting the URL to ?run=<id> so the default view is itself a proper,
+  // shareable deep-link. Only when there is no run at all do we fall back to the
+  // All-sessions list (never a blank pipeline).
   (function firstLoad() {
-    if (viewingRun) { tick(); return; }
+    if (viewingRun) { showTab("current"); tick(); return; }
     fetch("/api/state", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function (model) {
-        if (!model || !model.run || !model.run.run_id) { showTab("sessions"); }
-        else { setLive("", "live"); renderIfChanged(model); }
+        if (!model || !model.run || !model.run.run_id) { showTab("sessions"); return; }
+        viewingRun = model.run.run_id;
+        try {
+          history.replaceState({ run: viewingRun }, "",
+            location.pathname + "?run=" + encodeURIComponent(viewingRun));
+        } catch (_) {}
+        setViewingNote();
+        showTab("current");
+        setLive("", "live");
+        renderIfChanged(model);
       })
       .catch(function () { tick(); });
   })();
