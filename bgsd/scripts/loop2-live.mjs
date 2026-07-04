@@ -87,6 +87,7 @@
 import { spawnSync }         from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { integrationBranchForRun, isProductionBranch } from "./integration.mjs";
+import { propagateEnvForConfig } from "./envprop.mjs";
 import { resolve, join, dirname }   from "node:path";
 import { fileURLToPath }            from "node:url";
 
@@ -276,6 +277,16 @@ export async function liveVerify({
 
   let booted = false;
   try {
+    // Step 0: propagate env files onto the integration/rehearsal checkout before
+    // booting — a rehearsal worktree (appDir) does not carry gitignored env files,
+    // so without this the integrated app fails to boot and the Tester fails
+    // spuriously. No-op when appDir IS the repo root (env already present).
+    propagateEnvForConfig({
+      repoRoot: root,
+      destDir: appDir,
+      log: (m) => process.stderr.write(`[loop2-live] ${m}\n`),
+    });
+
     // Step 1: boot the integrated rehearsal app via runtime-isolate.sh (LOOP2-01).
     // runtime-isolate.sh prints `PORT:`/`DATABASE_URL:`/`READY` on stdout.
     const isoResult = spawn(
@@ -490,6 +501,14 @@ export async function liveFix(defects, opts = {}) {
         `liveFix: git worktree add exited non-zero for "${group.key}" (${wtResult?.status}): ${wtResult?.stderr ?? ""}`
       );
     }
+
+    // 1b. Propagate env files into the fix worktree (worktrees skip gitignored
+    //     files) so the fix agent can boot the app it is repairing.
+    propagateEnvForConfig({
+      repoRoot: root,
+      destDir: wtPath,
+      log: (m) => process.stderr.write(`[loop2-live] ${m}\n`),
+    });
 
     // 2. Spawn the fix agent in the worktree (NFR-06: throw on failure).
     const fixResult = spawn(

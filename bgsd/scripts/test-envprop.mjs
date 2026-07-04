@@ -9,7 +9,14 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "no
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { globToRegex, matchEnvFiles, propagateEnv, propagateEnvLive } from "./envprop.mjs";
+import {
+  globToRegex,
+  matchEnvFiles,
+  propagateEnv,
+  propagateEnvLive,
+  resolveEnvConfig,
+  propagateEnvForConfig,
+} from "./envprop.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -66,6 +73,80 @@ test("EP04 — propagateEnvLive copies real files into a destination", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("EP05 — resolveEnvConfig falls back to defaults when no BGSD.md", () => {
+  const cfg = resolveEnvConfig("/no/such/repo", undefined, () => false);
+  assert.equal(cfg.propagate, true);
+  assert.deepEqual(cfg.files, [".env", ".env.local", ".env.*.local"]);
+});
+
+test("EP06 — resolveEnvConfig reads env.files + env.propagate from BGSD.md", () => {
+  const bgsdMd =
+    "# BGSD\n```json bgsd-settings\n" +
+    JSON.stringify({ env: { propagate: false, files: [".env", ".env.staging"] } }) +
+    "\n```\n";
+  const cfg = resolveEnvConfig(
+    "/repo",
+    (p) => (p.endsWith("BGSD.md") ? bgsdMd : ""),
+    (p) => p.endsWith("BGSD.md")
+  );
+  assert.equal(cfg.propagate, false);
+  assert.deepEqual(cfg.files, [".env", ".env.staging"]);
+});
+
+test("EP07 — propagateEnvForConfig copies configured files into a worktree", () => {
+  const root = mkdtempSync(join(tmpdir(), "bgsd-cfg-root-"));
+  const dest = mkdtempSync(join(tmpdir(), "bgsd-cfg-dest-"));
+  try {
+    writeFileSync(join(root, ".env"), "A=1\n");
+    writeFileSync(join(root, ".env.staging"), "B=2\n");
+    writeFileSync(join(root, ".env.other"), "C=3\n");
+    writeFileSync(
+      join(root, "BGSD.md"),
+      "```json bgsd-settings\n" +
+        JSON.stringify({ env: { propagate: true, files: [".env", ".env.staging"] } }) +
+        "\n```\n"
+    );
+    const res = propagateEnvForConfig({ repoRoot: root, destDir: dest });
+    assert.deepEqual(res.copied.sort(), [".env", ".env.staging"].sort());
+    assert.ok(existsSync(join(dest, ".env.staging")));
+    assert.ok(!existsSync(join(dest, ".env.other")), "unconfigured env file not copied");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("EP08 — propagateEnvForConfig no-ops when propagate=false", () => {
+  const root = mkdtempSync(join(tmpdir(), "bgsd-off-root-"));
+  const dest = mkdtempSync(join(tmpdir(), "bgsd-off-dest-"));
+  try {
+    writeFileSync(join(root, ".env"), "A=1\n");
+    writeFileSync(
+      join(root, "BGSD.md"),
+      "```json bgsd-settings\n" + JSON.stringify({ env: { propagate: false } }) + "\n```\n"
+    );
+    const res = propagateEnvForConfig({ repoRoot: root, destDir: dest });
+    assert.equal(res.skipped, "disabled");
+    assert.equal(res.copied.length, 0);
+    assert.ok(!existsSync(join(dest, ".env")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("EP09 — propagateEnvForConfig no-ops when destDir === repoRoot", () => {
+  const root = mkdtempSync(join(tmpdir(), "bgsd-same-root-"));
+  try {
+    writeFileSync(join(root, ".env"), "A=1\n");
+    const res = propagateEnvForConfig({ repoRoot: root, destDir: join(root, ".", "") });
+    assert.equal(res.skipped, "same-dir");
+    assert.equal(res.copied.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

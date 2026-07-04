@@ -72,7 +72,7 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { writeUnitWorktreeConfig, unitSpawnModel, resolveSpawnModel } from "./decompose.mjs";
 import { createControlFile } from "./control.mjs";
-import { propagateEnvLive } from "./envprop.mjs";
+import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -246,12 +246,8 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   }
 
   // 2. Propagate env files into the worktree (worktrees skip gitignored files).
-  propagateEnvLive({
-    repoRoot,
-    destDir: wtPath,
-    patterns: [".env", ".env.*"],
-    log,
-  });
+  //    Patterns + on/off come from BGSD.md (env.files / env.propagate).
+  propagateEnvForConfig({ repoRoot, destDir: wtPath, log });
 
   // 3. Write the per-unit config seams (posture + phase config) into .planning/.
   const planningDir = join(wtPath, ".planning");
