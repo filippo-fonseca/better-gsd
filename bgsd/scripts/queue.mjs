@@ -449,6 +449,56 @@ export function printNext() {
 }
 
 /**
+ * Return ALL items still in `queued` state (enqueued, not yet started), in the
+ * order they were added. This is the batch a bare /bgsd-sesh offers up in a
+ * selector so you can pick which queued ideas to pull into THIS session. Unlike
+ * peekNext (one item), this is the whole waiting batch. Read-only.
+ *
+ * @returns {object[]}
+ */
+export function listQueued() {
+  const store = loadStore();
+  return (store.items ?? []).filter((i) => i.state === "queued");
+}
+
+/**
+ * Print the full queued batch for the sesh-start selector. Human-readable by
+ * default (matches printStatus discipline); pass json=true for a machine
+ * payload the Conductor can hand straight to a selector.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.json=false]
+ */
+export function printQueued({ json = false } = {}) {
+  const items = listQueued();
+  if (json) {
+    process.stdout.write(
+      JSON.stringify(
+        items.map((i) => ({ id: i.id, title: i.title, body: i.body, source: i.source, created_at: i.created_at })),
+        null,
+        2
+      ) + "\n"
+    );
+    return;
+  }
+  process.stdout.write(`\nqueued for the next sesh (${items.length})\n`);
+  if (items.length === 0) {
+    process.stdout.write(`  (empty — nothing waiting in the queue)\n\n`);
+    return;
+  }
+  for (const item of items) {
+    const ageMs = Date.now() - new Date(item.created_at).getTime();
+    const ageMins = Math.max(0, Math.floor(ageMs / 60000));
+    const ageStr = ageMins >= 60 ? `${Math.floor(ageMins / 60)}h ${ageMins % 60}m` : `${ageMins}m`;
+    process.stdout.write(`  ${item.id}  "${item.title}"  (${item.source}, age ${ageStr})\n`);
+    if (item.body) {
+      for (const line of item.body.split("\n")) process.stdout.write(`      ${line}\n`);
+    }
+  }
+  process.stdout.write("\n");
+}
+
+/**
  * Manually resolve a backlog item to a terminal state. Used by the Conductor
  * when it pulls an item from the backlog into a full session and that session
  * completes — it marks the item `done` (or `failed`) so the backlog drains
@@ -705,6 +755,7 @@ if (
         "Usage:",
         "  node bgsd/scripts/queue.mjs add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>]",
         "  node bgsd/scripts/queue.mjs status",
+        "  node bgsd/scripts/queue.mjs list [--json]             # all queued items (sesh-start selector)",
         "  node bgsd/scripts/queue.mjs peek                      # next queued backlog item, or empty",
         "  node bgsd/scripts/queue.mjs done <id> [--note \"...\"]   # mark a pulled item resolved",
         "  node bgsd/scripts/queue.mjs start [--dry-run]",
@@ -753,6 +804,12 @@ if (
 
   if (subcommand === "status") {
     printStatus();
+    process.exit(0);
+  }
+
+  if (subcommand === "list" || subcommand === "queued") {
+    const flags = parseFlags(argv.slice(1));
+    printQueued({ json: flags.json === true });
     process.exit(0);
   }
 

@@ -60,6 +60,7 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { classifyHeuristic } from "./classify-item.mjs";
+import { recallLive } from "./recall.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -598,6 +599,7 @@ export async function startSession(opts = {}) {
     mode = "auto",
     planOnly = false,
     preflightFn,
+    recallFn,
     bgsdDir = join(REPO_ROOT, ".bgsd"),
     verifyFn,
     fixFn,
@@ -633,6 +635,23 @@ export async function startSession(opts = {}) {
   const scale = classification.scale;
   const plan = buildDepthPlan(scale, { prompt });
 
+  // --- recall (R1): glance back at past sessions BEFORE work fans out.
+  // Read-only + repo-specific (this repo's .bgsd/). Surfaces the most recent
+  // session and any past sessions relevant to this prompt, and flags explicit
+  // "based on the last sesh" references. Injectable for tests; the default
+  // reads live from disk. Any failure degrades to null — recall never blocks.
+  let recall = null;
+  if (recallFn !== false) {
+    try {
+      recall =
+        typeof recallFn === "function"
+          ? await recallFn({ prompt, bgsdDir })
+          : recallLive(bgsdDir, prompt);
+    } catch (_) {
+      recall = null;
+    }
+  }
+
   const sessionId = mintSessionId({ idFn });
   const seshDir = sessionDir(bgsdDir, sessionId);
   const inboxDir = join(seshDir, "session-inbox");
@@ -647,6 +666,7 @@ export async function startSession(opts = {}) {
     discuss: plan.discuss,
     verified: plan.verified,
     created_at: clockFn().toISOString(),
+    recall,
     pointers: {
       session_dir: seshDir,
       inbox_dir: inboxDir,
@@ -665,6 +685,7 @@ export async function startSession(opts = {}) {
       planOnly: true,
       plan,
       classification,
+      recall,
       session: sessionRecord,
       // No boundary invoked, nothing written for plan-only beyond the in-memory record.
     };
@@ -730,6 +751,7 @@ export async function startSession(opts = {}) {
     action: "run",
     plan,
     classification,
+    recall,
     session: sessionRecord,
     liveFrames,
     ingestedMessages,
