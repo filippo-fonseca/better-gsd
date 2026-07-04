@@ -344,32 +344,79 @@ deterministic heuristic is always computed first and is the floor.
 
 ---
 
+## Recall — every sesh remembers the last one
+
+bgsd sessions are not amnesiac. At the very start of every `/bgsd-sesh`, before
+any work fans out, Kiwi glances back at what already happened in **this repo**
+and factors it in. This is built in — you don't ask for it. It reads, purely
+read-only, from this repo's own history:
+
+- `.bgsd/ledger.md` — the append-only index of every past session (title,
+  outcome, date, prompt). The **last row is the most recent session**, and Kiwi
+  always surfaces it.
+- `.bgsd/seshs/<run-id>/` — the archived per-session corpus, searched (via
+  `kb.mjs`) for sessions **relevant to your current prompt**.
+
+Kiwi opens the session with a one-line recall — e.g. *"Last sesh: 'Env
+propagation fix' [done]. Relevant: 'Auth middleware rewrite'."* — so the context
+is on the table before planning starts. If your prompt explicitly points back —
+**"based on the last sesh, let's fix such-and-such"**, "continue the previous
+run", "pick up where we left off" — Kiwi detects that and carries the prior
+session's context forward as the starting point, rather than treating your
+request as net-new.
+
+This is the automatic, lightweight glance. For a deliberate, deep search of the
+whole history ("what did we build last week?", "when did we touch auth?"), use
+the dedicated **`/bgsd-recall`** command.
+
+The recall is powered by `scripts/recall.mjs` and is wired into `startSession()`;
+it degrades silently to "no recall" on a fresh repo with no history yet.
+
+---
+
 ## Starting with no prompt — the backlog
 
-You don't always have to type what to build. bgsd keeps a persistent **backlog**
-(the queue at `.bgsd/queue/queue.json`) so scope you defer is never lost, and so
-you can open a session with nothing to say and let Kiwi pull the next thing.
+You don't always have to type what to build. bgsd keeps a persistent, **per-repo
+backlog** (the queue at `<this repo>/.bgsd/queue/queue.json`) so scope you defer
+is never lost, and so you can open a session with nothing to say and let Kiwi
+pull the next things. Because the queue lives under the invoking repo's `.bgsd/`,
+each repo has its own backlog — ideas you bank in one project never bleed into
+another.
 
-**Run `/bgsd-sesh` with no prompt.** Kiwi looks at the backlog first:
+**The workflow this is built for:** while a session is running you keep thinking
+of things you want to do next. Bank each one with `/bgsd-queue "<idea>"` (or ask
+Kiwi to "queue that for next sesh"). They all pile up in *this repo's* queue.
+Then, when you're done, just run `/bgsd-sesh` and pick up the batch — no
+re-typing.
+
+**Run `/bgsd-sesh` with no prompt.** Kiwi reads the whole queued batch first:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" peek   # the next queued item, or "(empty …)"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" list   # every queued item (--json for a machine payload)
 ```
 
-- **Backlog has a next item** → Kiwi proposes it with an AskUserQuestion selector:
-  **Start «title»** / **Pick a different backlog item** / *(type a new prompt)*.
-  On confirm, Kiwi runs a normal, properly-scaled session using that item's
-  title + body as the prompt. When that session reaches `done`, Kiwi marks the
-  item resolved so the backlog drains and never re-proposes it:
+- **Backlog has items** → Kiwi presents them in a GSD-style **AskUserQuestion
+  selector** so you pick which to pull into *this* session. Because
+  AskUserQuestion allows multi-select, you can tick **several** items and Kiwi
+  runs them as one session's scope (decomposed into units). The selector always
+  includes an escape hatch — **None — I'll type a prompt** — so you can ignore
+  the queue and just describe something new instead. On confirm, Kiwi runs a
+  normal, properly-scaled session using the selected items' titles + bodies as
+  the prompt. When that session reaches `done`, Kiwi marks each pulled item
+  resolved so the backlog drains and never re-proposes it:
 
   ```sh
   node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --note "ran sesh <id>"
   ```
 
-  If the session fails or is abandoned, Kiwi leaves the item `queued` so it
-  surfaces again next time.
+  If the session fails or is abandoned, Kiwi leaves the items `queued` so they
+  surface again next time.
 - **Backlog is empty** → Kiwi asks (selector) what you'd like to build, with a
   free-text option to just type it.
+
+The same batch selector appears whenever you **reference the queue** — e.g.
+"let's work the queue" or "start on what I banked earlier" — even if you also
+typed a prompt.
 
 **Deferring scope mid-session.** Whenever you and Kiwi agree to push a piece of
 scope to later ("scope #165's filter/sort later, not urgent"), Kiwi **enqueues
@@ -384,8 +431,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add \
 ```
 
 **At the end of every session.** When a session reaches its terminal state, if
-the backlog is non-empty Kiwi proposes the next item the same way — **Start
-next: «title»** / **Stop here** / *(something else)* — so the queue drains
+the backlog is non-empty Kiwi surfaces the batch selector again — **Start next:
+«pick items»** / **Stop here** / *(something else)* — so the queue drains
 naturally across sessions without you re-typing anything. The full loop: defer →
 backlog → next sesh (or end-of-sesh) picks it up.
 

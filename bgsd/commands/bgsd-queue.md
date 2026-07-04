@@ -22,6 +22,16 @@ The queue is durable (atomic JSON writes), resumable (re-running `start` picks
 up where it left off), and single-stream (exactly one item active at a time,
 no parallelism, no second worktree).
 
+**This queue is the ONE canonical bgsd backlog.** It is **per-repo** — it lives
+under the invoking repo's `.bgsd/queue/queue.json`, so every project has its own.
+Whenever you say "queue that", "leave it for the next sesh", "add it to the
+backlog", or "remember this for later", that means **`queue.mjs add`** here — NOT
+a `.planning/BACKLOG.md` file. `.planning/` belongs to GSD, not to bgsd; bgsd's
+backlog is `.bgsd/queue`. The workflow it's built for: while a sesh runs you keep
+banking next-sesh ideas with `/bgsd-queue "<idea>"`; they pile up in this repo's
+queue; then a bare `/bgsd-sesh` shows the batch in a selector so you pick what to
+pull in — no re-typing.
+
 ---
 
 ## Subcommands
@@ -30,6 +40,7 @@ no parallelism, no second worktree).
 |---|---|
 | `add` | Enqueue a fix or feature item. Returns the item's stable id. |
 | `status` | Print a compact, read-only view of the queue (per-state counts, current item, last verdict). |
+| `list` | Print **all** queued items — the whole next-sesh batch (`--json` for a machine payload). What the sesh-start selector reads so you can multi-pick. |
 | `peek` | Print the next queued **backlog** item (read-only), or an empty marker. What the Conductor proposes on a no-prompt sesh and at sesh end. |
 | `done <id>` | Mark a Conductor-pulled backlog item resolved (`done`, or `--failed`/`--blocked`), out-of-band of the drainer. |
 | `start` | Drain the queue through the pipeline. Resumes in-flight items; skips done items. |

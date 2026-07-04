@@ -35,6 +35,14 @@ Only verified work converges onto the `next` branch. No agent ever writes to `ma
 
 Gradient banners print at session start, between each stage, at finish, and on init — so you always know exactly where in the pipeline the Conductor is at a glance.
 
+## Session memory: recall + the backlog
+
+bgsd sessions remember each other, and all of it is **per-repo** (stored under the invoking repo's `.bgsd/`).
+
+**Recall.** At the start of every `/bgsd-sesh`, before work fans out, the Conductor reads this repo's history — the most recent session from `.bgsd/ledger.md` plus any past sessions relevant to your prompt (searched over `.bgsd/seshs/` via `kb.mjs`) — and opens with a one-line recall. Say *"based on the last sesh, let's fix X"* and it carries that prior context forward instead of starting cold. For a deliberate deep search of the whole history, use `/bgsd-recall`.
+
+**The backlog.** Ideas you think of mid-session don't get lost. Bank them with `/bgsd-queue "<idea>"` (or "queue that for next sesh") and they pile up in this repo's queue (`.bgsd/queue` — bgsd's one canonical backlog, never a `.planning/` file). A bare `/bgsd-sesh` then shows the whole queued batch in a selector so you multi-pick what to pull into the next session, or ignore it and type a new prompt.
+
 ## Install
 
 bgsd is an installable, standalone Claude Code plugin:

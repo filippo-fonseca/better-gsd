@@ -186,6 +186,14 @@ You pick how big the job is with a scope flag:
 
 From there you talk to one entity: the Conductor. It asks you a short set of scoping questions, breaks the work into units, and orchestrates everything else. One prompt in, one reviewable branch out.
 
+## Session memory: recall + the backlog
+
+bgsd sessions are not amnesiac, and everything here is **per-repo** (kept under the invoking repo's `.bgsd/`, so projects never bleed into each other).
+
+**Recall — every sesh remembers the last one.** At the start of every `/bgsd-sesh`, before any work fans out, the Conductor glances back at this repo's history: the most recent session (from `.bgsd/ledger.md`) plus any past sessions relevant to your prompt (searched over `.bgsd/seshs/`). It opens with a one-line recall, and if you say *"based on the last sesh, let's fix such-and-such"* it carries that prior context forward instead of treating the request as new. For a deliberate, deep search of the whole history, there's the dedicated `/bgsd-recall`.
+
+**The backlog — leave ideas for the next sesh.** While a session runs you keep thinking of what to do next. Bank each one with `/bgsd-queue "<idea>"` (or just tell Kiwi "queue that for next sesh"); they pile up in this repo's queue. When you're done, run a bare `/bgsd-sesh` and the Conductor shows the whole queued batch in a selector, so you multi-pick what to pull into the next session, or ignore it and type a fresh prompt. Deferred scope is never lost and never re-typed. (This queue at `.bgsd/queue` is bgsd's one canonical backlog — not any `.planning/` file.)
+
 ## GSD on steroids: GSD runs inside every agent
 
 Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.
