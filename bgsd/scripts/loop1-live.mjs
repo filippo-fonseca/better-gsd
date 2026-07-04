@@ -53,6 +53,7 @@ import { resolve, join } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireNotProductionBranch } from "./run-live.mjs";
+import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
 
 // ---------------------------------------------------------------------------
 // Live flag helper (retained for compatibility; no longer gates execution)
@@ -128,23 +129,32 @@ export async function liveVerify({
 
   // Boot the app in the worktree (or an explicit appDir) and verify it.
   const bootTarget = appDir ?? worktreePath;
-  const args = ["-p", "/bgsd-verify", "--boot", bootTarget];
+  const extraArgs = ["--boot", bootTarget];
   if (criteriaFile) {
-    args.push("--criteria", criteriaFile);
+    extraArgs.push("--criteria", criteriaFile);
   }
   // Code-only mode: skip the Playwright ladder (mirrors BGSD_USAGE_TESTING=0).
   if (!usageTesting) {
-    args.push("--no-usage-verification");
+    extraArgs.push("--no-usage-verification");
   }
   // Headless UI: run Playwright with no visible browser/server window.
   if (headlessUi) {
-    args.push("--headless-ui");
+    extraArgs.push("--headless-ui");
   }
 
-  // Spawn the REAL Tester (LOOP-01: reuses v0 contract). Thread the usage/
-  // headless posture through the env too, so the Tester agent branches even if
-  // it reads env before argv.
-  const result = spawnImpl("claude", args, {
+  // Spawn the REAL Tester on the active harness (LOOP-01: reuses v0 contract).
+  // claude keeps the exact v0 argv; codex runs `codex exec` with an opus-equiv
+  // model. Thread the usage/headless posture through the env too.
+  const hc = resolveHarnessConfig(worktreePath);
+  const harness = activeHarness(worktreePath, { config: hc });
+  const verifySpawn = buildAgentSpawn({
+    harness,
+    command: "/bgsd-verify",
+    model: resolveModel("opus", harness, hc.models),
+    modelForClaude: false, // the Tester manages its own model on claude
+    extraArgs,
+  });
+  const result = spawnImpl(verifySpawn.cmd, verifySpawn.args, {
     cwd: worktreePath,
     stdio: "inherit",
     encoding: "utf8",
@@ -158,7 +168,7 @@ export async function liveVerify({
   // NO SILENT GREEN (NFR-06): a spawn error is fatal — throw, never fabricate.
   if (result?.error) {
     throw new Error(
-      `liveVerify: claude -p /bgsd-verify failed to spawn for run "${runId}": ${result.error.message}`
+      `liveVerify: ${verifySpawn.cmd} /bgsd-verify failed to spawn for run "${runId}": ${result.error.message}`
     );
   }
 
@@ -252,22 +262,28 @@ export async function liveFix(defects, opts, { worktreePath, item, runId, spawnI
     `  defects: ${Array.isArray(defects) ? defects.length : 0}  effort: ${effort}  model: ${model}\n`
   );
 
-  // Spawn the real /gsd-* fix in the worktree (NFR-04: GSD does the work).
+  // Spawn the real /gsd-* fix in the worktree on the active harness (NFR-04: GSD
+  // does the work). claude keeps the exact argv (--model-profile drives the GSD
+  // model); codex runs `codex exec` with a sonnet-equiv model.
+  const hc = resolveHarnessConfig(worktreePath);
+  const harness = activeHarness(worktreePath, { config: hc });
+  const fixSpawn = buildAgentSpawn({
+    harness,
+    command: gsdCommand,
+    model: resolveModel("sonnet", harness, hc.models),
+    modelForClaude: false, // GSD picks the model from --model-profile on claude
+    extraArgs: ["--worktree", worktreePath, "--effort", effort, "--model-profile", model],
+  });
   const result = spawnImpl(
-    "claude",
-    [
-      "-p", gsdCommand,
-      "--worktree", worktreePath,
-      "--effort", effort,
-      "--model-profile", model,
-    ],
+    fixSpawn.cmd,
+    fixSpawn.args,
     { cwd: worktreePath, stdio: "inherit", encoding: "utf8" }
   );
 
   // NO SILENT GREEN (NFR-06): throw on spawn error or non-zero exit.
   if (result?.error) {
     throw new Error(
-      `liveFix: claude -p ${gsdCommand} failed to spawn in "${worktreePath}": ${result.error.message}`
+      `liveFix: ${fixSpawn.cmd} ${gsdCommand} failed to spawn in "${worktreePath}": ${result.error.message}`
     );
   }
   if (result?.status !== 0) {

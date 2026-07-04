@@ -72,6 +72,7 @@ import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -628,29 +629,39 @@ export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   // read + spawn invocation) is fully wired here; it becomes a live process the
   // moment liveSpawnFn's spawn is uncommented. We invoke through spawnSync so
   // the seam is real and observable rather than a "would re-launch" no-op.
-  const result = spawnSync(
-    "claude",
-    [
-      "-p",
-      "/bgsd-run-agent",
+  // Re-launch on the active harness (claude: `claude -p /bgsd-run-agent …`;
+  // codex: `codex exec …`). The relaunched pipeline agent runs on the opus-equiv.
+  const relaunchRoot = worktreePath ?? process.cwd();
+  const hc = resolveHarnessConfig(relaunchRoot);
+  const harness = activeHarness(relaunchRoot, { config: hc });
+  const relaunchSpawn = buildAgentSpawn({
+    harness,
+    command: "/bgsd-run-agent",
+    model: resolveModel("opus", harness, hc.models),
+    modelForClaude: false, // matches the original relaunch argv (no --model)
+    extraArgs: [
       "--worktree", worktreePath ?? "",
       "--agent-id", agentId,
       "--resume-manifest", manifestPath,
     ],
+  });
+  const result = spawnSync(
+    relaunchSpawn.cmd,
+    relaunchSpawn.args,
     { cwd: worktreePath ?? process.cwd(), stdio: "inherit" }
   );
 
-  // spawnSync sets result.error when the binary is missing (e.g. `claude` not
-  // on PATH in a sandbox). Surface it rather than pretending the relaunch
+  // spawnSync sets result.error when the binary is missing (e.g. the harness CLI
+  // not on PATH in a sandbox). Surface it rather than pretending the relaunch
   // succeeded (NFR-06).
   if (result.error) {
     throw new Error(
-      `liveRelaunch: failed to spawn 'claude -p' for agent ${agentId}: ${result.error.message}`
+      `liveRelaunch: failed to spawn '${relaunchSpawn.cmd}' for agent ${agentId}: ${result.error.message}`
     );
   }
   if (typeof result.status === "number" && result.status !== 0) {
     throw new Error(
-      `liveRelaunch: 'claude -p' exited with status ${result.status} for agent ${agentId}`
+      `liveRelaunch: '${relaunchSpawn.cmd}' exited with status ${result.status} for agent ${agentId}`
     );
   }
 

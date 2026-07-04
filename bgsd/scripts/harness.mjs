@@ -173,13 +173,16 @@ function flagPairs(context = {}) {
  * bgsd flags, so the command name + its context are serialized into a prompt
  * preamble that a Codex run (with AGENTS.md guidance in the worktree) can act on.
  */
-function codexPrompt({ command, context = {}, instructions }) {
+function codexPrompt({ command, context = {}, extraArgs = [], instructions }) {
   const lines = [];
   lines.push(`Run the bgsd "${command}" workflow for this worktree.`);
   const ctxEntries = Object.entries(context).filter(([, v]) => v !== null && v !== undefined);
   if (ctxEntries.length) {
     lines.push("", "Context:");
     for (const [k, v] of ctxEntries) lines.push(`- ${k}: ${v}`);
+  }
+  if (extraArgs && extraArgs.length) {
+    lines.push("", `Args: ${extraArgs.join(" ")}`);
   }
   if (instructions) lines.push("", instructions);
   return lines.join("\n");
@@ -196,20 +199,34 @@ function codexPrompt({ command, context = {}, instructions }) {
  * @param {object} opts
  * @param {"claude"|"codex"} opts.harness
  * @param {string} opts.command       the bgsd slash command, e.g. "/bgsd-run-agent"
- * @param {string} opts.model         concrete model id (from resolveModel)
- * @param {object} [opts.context]     ordered flag context (worktree, unit-id, …)
+ * @param {string} [opts.model]       concrete model id (from resolveModel)
+ * @param {object} [opts.context]     ordered flag context → `--k v` on claude
+ * @param {string[]} [opts.extraArgs] raw args appended verbatim on claude (positional
+ *                                    args + boolean flags like --no-usage-verification)
+ * @param {boolean} [opts.modelForClaude=true] whether to inject `--model` on the
+ *                  claude path (some claude commands manage their own model, e.g.
+ *                  /bgsd-verify, /gsd-quick — pass false to preserve that)
  * @param {string} [opts.instructions] extra prompt text for the Codex path
  * @param {string} [opts.sandbox="workspace-write"] Codex sandbox mode
  * @returns {{ cmd: string, args: string[] }}
  */
-export function buildAgentSpawn({ harness, command, model, context = {}, instructions, sandbox = "workspace-write" }) {
+export function buildAgentSpawn({
+  harness,
+  command,
+  model,
+  context = {},
+  extraArgs = [],
+  modelForClaude = true,
+  instructions,
+  sandbox = "workspace-write",
+}) {
   if (harness === "codex") {
     return {
       cmd: "codex",
       args: [
         "exec",
-        codexPrompt({ command, context, instructions }),
-        "--model", model,
+        codexPrompt({ command, context, extraArgs, instructions }),
+        ...(model ? ["--model", model] : []),
         "--sandbox", sandbox,
       ],
     };
@@ -217,7 +234,12 @@ export function buildAgentSpawn({ harness, command, model, context = {}, instruc
   // Default: Claude Code.
   return {
     cmd: "claude",
-    args: ["-p", command, "--model", model, ...flagPairs(context)],
+    args: [
+      "-p", command,
+      ...(model && modelForClaude ? ["--model", model] : []),
+      ...flagPairs(context),
+      ...extraArgs,
+    ],
   };
 }
 

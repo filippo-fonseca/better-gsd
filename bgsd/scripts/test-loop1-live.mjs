@@ -36,6 +36,10 @@ import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 
+// Pin the harness so exact-argv assertions are deterministic regardless of the
+// runner's environment (a Codex/CI env would otherwise flip detection).
+process.env.BGSD_HARNESS = "claude";
+
 import { liveVerify, liveFix, isLiveFlagSet } from "./loop1-live.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));

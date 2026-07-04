@@ -34,6 +34,11 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Pin the harness so exact-argv assertions are deterministic regardless of the
+// runner's environment (a Codex/CI env would otherwise flip detection).
+process.env.BGSD_HARNESS = "claude";
+
 import {
   isLiveFlagSet,
   requireNotProductionBranch,

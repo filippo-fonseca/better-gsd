@@ -88,6 +88,7 @@ import { spawnSync }         from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { integrationBranchForRun, isProductionBranch } from "./integration.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
+import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
 import { resolve, join, dirname }   from "node:path";
 import { fileURLToPath }            from "node:url";
 
@@ -314,12 +315,22 @@ export async function liveVerify({
     const url = `http://localhost:${port}`;
     process.stderr.write(`[loop2-live] rehearsal app is up at ${url}\n`);
 
-    // Step 2: run the Integration Tester end-to-end (LOOP2-02).
-    // `claude -p /bgsd-verify <url> --criteria <file>` runs the whole-app UAT +
-    // code review, writes integration-report.json, and prints a verdict line.
+    // Step 2: run the Integration Tester end-to-end (LOOP2-02) on the active
+    // harness. claude: `claude -p /bgsd-verify <url> --criteria <file>`; codex:
+    // `codex exec "<prompt>" --model <equiv> --sandbox …`. Runs the whole-app UAT
+    // + code review, writes integration-report.json, and prints a verdict line.
+    const hcV = resolveHarnessConfig(root);
+    const harnessV = activeHarness(root, { config: hcV });
+    const verifySpawn = buildAgentSpawn({
+      harness: harnessV,
+      command: "/bgsd-verify",
+      model: resolveModel("opus", harnessV, hcV.models),
+      modelForClaude: false, // the Tester manages its own model on claude
+      extraArgs: [url, "--criteria", criteria],
+    });
     const verifyResult = spawn(
-      "claude",
-      ["-p", "/bgsd-verify", url, "--criteria", criteria],
+      verifySpawn.cmd,
+      verifySpawn.args,
       {
         cwd:      root,
         stdio:    "inherit",
@@ -328,11 +339,11 @@ export async function liveVerify({
       }
     );
     if (verifyResult?.error) {
-      throw new Error(`claude -p /bgsd-verify failed to spawn: ${verifyResult.error.message}`);
+      throw new Error(`${verifySpawn.cmd} /bgsd-verify failed to spawn: ${verifyResult.error.message}`);
     }
     if (verifyResult?.status !== 0) {
       throw new Error(
-        `claude -p /bgsd-verify exited non-zero (${verifyResult?.status}): ${verifyResult?.stderr ?? ""}`
+        `${verifySpawn.cmd} /bgsd-verify exited non-zero (${verifyResult?.status}): ${verifyResult?.stderr ?? ""}`
       );
     }
 
@@ -510,18 +521,28 @@ export async function liveFix(defects, opts = {}) {
       log: (m) => process.stderr.write(`[loop2-live] ${m}\n`),
     });
 
-    // 2. Spawn the fix agent in the worktree (NFR-06: throw on failure).
+    // 2. Spawn the fix agent in the worktree on the active harness (NFR-06:
+    //    throw on failure). Fix agents run sonnet/medium per Part 11.
+    const hcF = resolveHarnessConfig(root);
+    const harnessF = activeHarness(root, { config: hcF });
+    const fixSpawn = buildAgentSpawn({
+      harness: harnessF,
+      command: "/gsd-quick",
+      model: resolveModel("sonnet", harnessF, hcF.models),
+      modelForClaude: false, // /gsd-quick manages its own model on claude
+      extraArgs: ["--worktree", wtPath],
+    });
     const fixResult = spawn(
-      "claude",
-      ["-p", "/gsd-quick", "--worktree", wtPath],
+      fixSpawn.cmd,
+      fixSpawn.args,
       { cwd: wtPath, stdio: "inherit", encoding: "utf8" }
     );
     if (fixResult?.error) {
-      throw new Error(`liveFix: claude -p /gsd-quick failed to spawn for "${group.key}": ${fixResult.error.message}`);
+      throw new Error(`liveFix: ${fixSpawn.cmd} /gsd-quick failed to spawn for "${group.key}": ${fixResult.error.message}`);
     }
     if (fixResult?.status !== 0) {
       throw new Error(
-        `liveFix: claude -p /gsd-quick exited non-zero for "${group.key}" (${fixResult?.status}): ${fixResult?.stderr ?? ""}`
+        `liveFix: ${fixSpawn.cmd} /gsd-quick exited non-zero for "${group.key}" (${fixResult?.status}): ${fixResult?.stderr ?? ""}`
       );
     }
 
