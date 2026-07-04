@@ -65,6 +65,20 @@ export function defaultBgsdConfig() {
       // Skip all issue/PR machinery when the repo has no GitHub remote.
       require_remote: true,
     },
+    // Harness — bgsd is LLM/CLI agnostic. A sesh runs identically under Claude
+    // Code or Codex, and you can switch between them mid-project (e.g. to dodge
+    // one provider's usage limits): all durable state is in .bgsd/ files, so
+    // switching back and forth just works. `active: "auto"` detects the harness
+    // from the environment (AGENT=codex → codex; else claude); pin it to
+    // "claude"/"codex" to force one. `models` maps bgsd's semantic tiers to each
+    // harness's equivalents — retune here if provider model names drift.
+    harness: {
+      active: "auto",
+      models: {
+        claude: { opus: "claude-opus-4-8", sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
+        codex:  { opus: "gpt-5-codex", sonnet: "gpt-5", haiku: "gpt-5-mini", fable: "gpt-5-codex" },
+      },
+    },
     // Model routing — DEFAULTS ONLY. The Conductor decides per unit and adapts,
     // and ultimately YOU have the final say: override per-unit, per-session, by
     // flag, in this file, or by just telling the Conductor.

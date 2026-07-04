@@ -34,6 +34,10 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+// Pin the harness so the exact-argv assertions are deterministic regardless of
+// the runner's environment (a Codex/CI env would otherwise flip detection).
+process.env.BGSD_HARNESS = "claude";
+
 import { liveSpawnFn, liveMergeFn } from "./run-live.mjs";
 import { LATEST_OPUS } from "./decompose.mjs";
 import { persistRunUnits } from "./run-units.mjs";
