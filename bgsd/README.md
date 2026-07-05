@@ -200,6 +200,14 @@ bgsd is **LLM/CLI agnostic**. A sesh runs identically whether you drive it from 
 
 Kiwi detects the harness at sesh start (`harness.active: "auto"` — `AGENT=codex` → Codex, else Claude Code; pin it in `BGSD.md` or via `BGSD_HARNESS`). bgsd's semantic model tiers (opus/sonnet/haiku/fable) resolve to the active harness's equivalents via `harness.models` (Claude: `claude-opus-4-8`, …; Codex: `gpt-5-codex`, `gpt-5`, `gpt-5-mini`), and every pipeline agent spawns on that harness's CLI — so switching actually moves the work, and the quota, to that provider. Each unit records which harness ran it; the state itself is shared.
 
+**Running the whole thing from Codex.** `/bgsd-sesh` is a Claude Code slash command, so when Claude usage is exhausted you can't even start there. A harness-neutral launcher runs the entire Conductor from Codex instead:
+
+```sh
+node bgsd/scripts/conductor.mjs "<what to build>" [--project|--feature|--quick]
+```
+
+It resolves the plugin root without `CLAUDE_PLUGIN_ROOT`, loads the real Conductor instructions, exports the plugin root into Codex's environment, and launches `codex` so it becomes Kiwi and drives the session. `/bgsd-init` also drops an `AGENTS.md` so a plain `codex` session is bgsd-aware. (Fully wired but light on real-world mileage — Codex is the escape hatch that keeps bgsd LLM-agnostic; it remains primarily a Claude Code tool.)
+
 ## GSD on steroids: GSD runs inside every agent
 
 Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.

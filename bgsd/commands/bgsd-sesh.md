@@ -429,6 +429,31 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/harness.mjs" detect --json
   control files are plain files under `.bgsd/`. Each unit records which harness
   ran it, but the state itself is shared, so a switch mid-project is invisible.
 
+### Running the WHOLE Conductor from Codex
+
+`/bgsd-sesh` is a Claude Code slash command, so if your Claude usage is exhausted
+you can't start the Conductor there at all. For that case there's a
+harness-neutral launcher that runs the entire Conductor from **Codex**:
+
+```sh
+node bgsd/scripts/conductor.mjs "<what to build>" [--project|--feature|--quick]
+```
+
+It resolves the plugin root without `CLAUDE_PLUGIN_ROOT`, loads these exact
+Conductor instructions, exports the plugin root into Codex's environment (so
+every `node "${CLAUDE_PLUGIN_ROOT}/scripts/…"` command in the instructions runs
+verbatim), and launches `codex` with them so Codex becomes Kiwi and drives the
+session end to end. Add `--exec` for non-interactive `codex exec`, or
+`--print-prompt` to inspect the prompt without launching. `/bgsd-init` also drops
+an `AGENTS.md` in the repo so a plain `codex` session is bgsd-aware out of the
+box. Requires the Codex CLI installed + authed.
+
+> **Honest status:** the Codex path is fully wired but still light on real-world
+> mileage — Codex has no bgsd slash commands, so the instructions are handed to
+> it as a prompt (+ `AGENTS.md`). Expect to shake out rough edges on the first
+> real Codex run. bgsd remains primarily a Claude Code tool; Codex is the
+> escape hatch that keeps it LLM-agnostic.
+
 ---
 
 ## Starting with no prompt — the backlog
