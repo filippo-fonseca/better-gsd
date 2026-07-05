@@ -326,6 +326,7 @@ test("I12 — planInit: initialized repo only ensures dir + syncs", () => {
     planningConfigExists: true,
     gitignoreHasBlock: true,
     claudeMdHasBlock: true,
+    agentsMdHasBlock: true,
   });
   const { alreadyInitialized, actions } = planInit(state);
   const types = actions.map((a) => a.type);

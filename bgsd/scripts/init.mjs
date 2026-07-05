@@ -487,6 +487,66 @@ export function mergeClaudeMd(existing) {
 }
 
 // ---------------------------------------------------------------------------
+// AGENTS.md merge — teach Codex (and other AGENTS.md-aware harnesses) about
+// this repo, so bgsd is usable when Claude Code isn't available at all.
+// ---------------------------------------------------------------------------
+
+const AGENTS_MD_SENTINEL = "<!-- bgsd:managed -->";
+
+/** The bgsd-managed block for AGENTS.md (Codex's instruction file). */
+export function bgsdAgentsMdBlock() {
+  return [
+    AGENTS_MD_SENTINEL,
+    "## bgsd (this is a bgsd repo) — running from Codex",
+    "",
+    'This repository is orchestrated by **bgsd** (the Conductor, "Kiwi"), an',
+    "autonomous, self-verifying layer on top of GSD. bgsd is primarily a Claude",
+    "Code tool, but it is harness-agnostic: you can run the WHOLE thing from Codex.",
+    "",
+    "**To start a bgsd session from Codex**, run the harness-neutral launcher from",
+    "the repo root:",
+    "",
+    '    node bgsd/scripts/conductor.mjs "<what to build>" [--project|--feature|--quick]',
+    "",
+    "It loads the real Conductor instructions (`bgsd/commands/bgsd-sesh.md`), exports",
+    "the plugin root so every `node \"${CLAUDE_PLUGIN_ROOT}/scripts/…\"` command works,",
+    "and hands them to you (Codex) to drive end to end. If you are reading this while",
+    "already acting as the Conductor, follow `bgsd/commands/bgsd-sesh.md` directly and",
+    "run the node scripts it references (they are plain, harness-agnostic Node).",
+    "",
+    "**Where history lives.** `.bgsd/ledger.md` (index of every session) and",
+    "`.bgsd/seshs/<run-id>/` (per-session records). Search with",
+    '`node bgsd/scripts/kb.mjs --query "<terms>"`.',
+    "",
+    "**The backlog is the bgsd queue, never a file.** \"Queue that\" / \"leave it for",
+    "the next sesh\" means `node bgsd/scripts/queue.mjs add --title \"<t>\" --body \"<b>\"`",
+    "(the per-repo queue at `.bgsd/queue`). `.planning/` belongs to GSD — never write",
+    "a `.planning/BACKLOG.md`.",
+    "",
+    "**Models.** Spawned workers resolve to Codex model equivalents automatically",
+    "(`harness.mjs`, tunable in `BGSD.md > harness.models`).",
+    AGENTS_MD_SENTINEL,
+  ].join("\n");
+}
+
+/**
+ * Return AGENTS.md contents with the bgsd block present exactly once.
+ * Idempotent (sentinel-guarded), same contract as mergeClaudeMd.
+ *
+ * @param {string} existing  current AGENTS.md contents ("" if none)
+ * @returns {{ content: string, changed: boolean }}
+ */
+export function mergeAgentsMd(existing) {
+  const text = existing ?? "";
+  if (text.includes(AGENTS_MD_SENTINEL)) {
+    return { content: text, changed: false };
+  }
+  const sep = text.length === 0 || text.endsWith("\n") ? "" : "\n";
+  const lead = text.length === 0 ? "" : "\n";
+  return { content: `${text}${sep}${lead}${bgsdAgentsMdBlock()}\n`, changed: true };
+}
+
+// ---------------------------------------------------------------------------
 // Idempotent action planner
 // ---------------------------------------------------------------------------
 
@@ -522,6 +582,7 @@ export function planInit(state) {
   if (!state.bgsdMdExists) actions.push({ type: "write_bgsd_md" });
   if (!state.gitignoreHasBlock) actions.push({ type: "update_gitignore" });
   if (!state.claudeMdHasBlock) actions.push({ type: "write_claude_md" });
+  if (!state.agentsMdHasBlock) actions.push({ type: "write_agents_md" });
   if (!state.planningConfigExists) {
     actions.push({ type: "ensure_gsd_config", integrationBranch: state.integrationBranch });
   }
@@ -559,6 +620,7 @@ export function initPaths(root) {
     seshsDir: j(root, ".bgsd", "seshs"),
     gitignore: j(root, ".gitignore"),
     claudeMd: j(root, "CLAUDE.md"),
+    agentsMd: j(root, "AGENTS.md"),
     planningConfig: j(root, ".planning", "config.json"),
   };
 }
@@ -592,6 +654,9 @@ export function detectInitState(deps) {
     claudeMdHasBlock:
       deps.exists(paths.claudeMd) &&
       deps.readFile(paths.claudeMd).includes(CLAUDE_MD_SENTINEL),
+    agentsMdHasBlock:
+      deps.exists(paths.agentsMd) &&
+      deps.readFile(paths.agentsMd).includes(AGENTS_MD_SENTINEL),
     integrationBranch,
     baseBranch,
     config,
@@ -680,6 +745,15 @@ export function executeInit(deps) {
         if (changed) {
           deps.writeFile(paths.claudeMd, content);
           performed.push("write_claude_md");
+        }
+        break;
+      }
+      case "write_agents_md": {
+        const existing = deps.exists(paths.agentsMd) ? deps.readFile(paths.agentsMd) : "";
+        const { content, changed } = mergeAgentsMd(existing);
+        if (changed) {
+          deps.writeFile(paths.agentsMd, content);
+          performed.push("write_agents_md");
         }
         break;
       }
