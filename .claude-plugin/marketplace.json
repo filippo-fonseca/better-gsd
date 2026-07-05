@@ -12,7 +12,7 @@
       "name": "bgsd",
       "source": "./bgsd",
       "description": "Autonomous, self-verifying orchestration layer on top of GSD (gsd-agnostic: uses the installed gsd-core plugin).",
-      "version": "0.9.1",
+      "version": "0.10.0",
       "author": {
         "name": "Filippo Fonseca",
         "url": "https://github.com/filippo-fonseca/better-gsd"

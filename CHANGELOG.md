@@ -8,6 +8,33 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-05
+
+### Fixed
+- **Pipeline agents now spawn on the latest Opus (`claude-opus-4-8`), not the
+  stale bare `opus` alias** (which resolved to Opus 4.7). `resolveSpawnModel`
+  and the harness model tables share a single `LATEST_OPUS` source of truth.
+- **Env files propagate into every worktree and the integration boot.** `.env*`
+  files are copied into each pipeline-agent worktree and the sesh-wide checkout
+  (worktrees skip gitignored files, so apps previously booted without them). The
+  env preflight confirms uncovered files instead of guessing.
+- **GUI defaults to the latest sesh, emits proper per-sesh deep-links** (clicking
+  a link opens the sesh it was clicked from), and shows concurrent seshs
+  distinctly instead of lumping them under "Loop 1 agents."
+
+### Added
+- **Harness-agnostic operation (Claude Code or Codex).** The entire pipeline
+  routes through a harness layer that maps semantic tiers (opus/sonnet/haiku/
+  fable) to the active harness's models. Run the whole Conductor from Codex via
+  `conductor.mjs`, and switch back to Claude Code mid-project with zero
+  migration — all durable state lives in `.bgsd/`.
+- **Session recall.** At the start of every `/bgsd-sesh`, the Conductor reviews
+  this repo's history (most recent sesh + prompt-relevant past seshs) so prior
+  context carries forward. Dedicated `/bgsd-recall` for deep search.
+- **Per-repo queue / backlog.** Bank ideas mid-sesh with `/bgsd-queue`; a bare
+  `/bgsd-sesh` offers the queued batch in a multi-pick selector. The canonical
+  backlog is `.bgsd/queue`, never a `.planning/` file.
+
 ## [0.9.1] - 2026-07-03
 
 ### Fixed
@@ -93,7 +120,8 @@ upstream pre-planner that seeds the Opus pipeline.
 
 Versions prior to 0.8.0 predate this changelog; see the git history for details.
 
-[Unreleased]: https://github.com/filippo-fonseca/better-gsd/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/filippo-fonseca/better-gsd/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/filippo-fonseca/better-gsd/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.9.1
 [0.9.0]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.9.0
 [0.8.2]: https://github.com/filippo-fonseca/better-gsd/releases/tag/v0.8.2

@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-bgsd is currently at **0.9.x**. Security fixes are provided for the `0.9.x`
+bgsd is currently at **0.10.x**. Security fixes are provided for the `0.10.x`
 line. Older pre-release versions are not supported.
 
 | Version | Supported |
 |---------|-----------|
-| 0.9.x   | Yes       |
-| < 0.9   | No        |
+| 0.10.x  | Yes       |
+| < 0.10  | No        |
 
 ## Reporting a vulnerability
 
