@@ -208,6 +208,29 @@ node bgsd/scripts/conductor.mjs "<what to build>" [--project|--feature|--quick]
 
 It resolves the plugin root without `CLAUDE_PLUGIN_ROOT`, loads the real Conductor instructions, exports the plugin root into Codex's environment, and launches `codex` so it becomes Kiwi and drives the session. `/bgsd-init` also drops an `AGENTS.md` so a plain `codex` session is bgsd-aware. (Fully wired but light on real-world mileage — Codex is the escape hatch that keeps bgsd LLM-agnostic; it remains primarily a Claude Code tool.)
 
+### Using Codex
+
+A full sesh from Codex, start to finish:
+
+```sh
+# 1. One-time, from Claude Code or Codex (drops .bgsd/, BGSD.md, and AGENTS.md).
+#    Already used bgsd in Claude Code? You've done this, so skip it. (The
+#    conductor.mjs launcher doesn't need it at all; only a plain `codex`
+#    session relies on AGENTS.md, and re-running init just tops that up
+#    idempotently if your repo predates it.)
+node bgsd/scripts/init.mjs        # or /bgsd-init in Claude Code
+
+# 2. Start the whole Conductor under Codex. This becomes Kiwi and runs the
+#    full verified, parallel pipeline (no Claude Code required).
+node bgsd/scripts/conductor.mjs "add password reset to the auth flow" --feature
+
+# 3. Or just open a plain Codex session (AGENTS.md makes it bgsd-aware), so it
+#    knows to route builds through the Conductor and backlog to the queue.
+codex
+```
+
+Switching back to Claude Code later needs no migration: run `/bgsd-sesh` as usual. All state lives in `.bgsd/`, so recall, the queue, and the ledger are already there, whichever harness you used last. Pin the harness explicitly with `BGSD_HARNESS=codex` (or `harness.active` in `BGSD.md`) if auto-detection ever guesses wrong.
+
 ## GSD on steroids: GSD runs inside every agent
 
 Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.
