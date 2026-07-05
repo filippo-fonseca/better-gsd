@@ -1,0 +1,44 @@
+name: Publish launcher to npm
+
+# Publishes the `better-gsd` npm launcher (installer/) whenever a GitHub
+# release is published — which is the standing convention for every version
+# bump. Idempotent: skips if that version is already on the registry, so
+# re-running or a duplicate release event never errors. Also runnable by hand
+# via workflow_dispatch (used for the first 0.10.0 publish).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out next
+        uses: actions/checkout@v4
+        with:
+          ref: next
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish installer/ if the version is new
+        working-directory: installer
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "$NAME@$VER is already published — nothing to do."
+          else
+            echo "Publishing $NAME@$VER…"
+            npm publish --access public
+          fi
