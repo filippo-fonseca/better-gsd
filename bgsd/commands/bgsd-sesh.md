@@ -484,15 +484,30 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" list   # every queued item (--jso
   includes an escape hatch — **None — I'll type a prompt** — so you can ignore
   the queue and just describe something new instead. On confirm, Kiwi runs a
   normal, properly-scaled session using the selected items' titles + bodies as
-  the prompt. When that session reaches `done`, Kiwi marks each pulled item
-  resolved so the backlog drains and never re-proposes it:
+  the prompt.
+
+  **Each queued item may already carry a linked GitHub issue** (filed when it
+  was banked — see `/bgsd-queue`). Kiwi knows the pull-in is linked to it: before
+  fan-out it collects the `Closes #N` block for the selected ids and threads it
+  into the session's PR body (and epic issue) so the PR that results from the
+  work **closes the very issue the idea was filed under**:
 
   ```sh
-  node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --note "ran sesh <id>"
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" closes <item-id> [<item-id> ...]
+  # ->  Closes #42     (fed into the sesh's PR/epic so merge auto-closes it)
   ```
 
-  If the session fails or is abandoned, Kiwi leaves the items `queued` so they
-  surface again next time.
+  When that session reaches `done`, Kiwi marks each pulled item resolved so the
+  backlog drains and never re-proposes it — and, because bgsd merges into `next`
+  (not the default branch, so `Closes #N` won't auto-fire yet), closes the linked
+  issue explicitly:
+
+  ```sh
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --note "ran sesh <id>" --close-issue
+  ```
+
+  If the session fails or is abandoned, Kiwi leaves the items `queued` (and their
+  issues open) so they surface again next time.
 - **Backlog is empty** → Kiwi asks (selector) what you'd like to build, with a
   free-text option to just type it.
 

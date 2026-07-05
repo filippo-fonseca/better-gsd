@@ -1,7 +1,7 @@
 ---
 name: bgsd-queue
 description: "Manage the bgsd fix-stream queue: add items, check status, and drain the queue through the classify→route→execute→verify→loop pipeline."
-argument-hint: "add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>] | status | peek | done <id> | start [--dry-run]"
+argument-hint: "add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>] [--no-issue] | status | list | peek | closes <id...> | done <id> [--close-issue] | start [--dry-run]"
 allowed-tools:
   - Read
   - Write
@@ -42,7 +42,8 @@ pull in — no re-typing.
 | `status` | Print a compact, read-only view of the queue (per-state counts, current item, last verdict). |
 | `list` | Print **all** queued items — the whole next-sesh batch (`--json` for a machine payload). What the sesh-start selector reads so you can multi-pick. |
 | `peek` | Print the next queued **backlog** item (read-only), or an empty marker. What the Conductor proposes on a no-prompt sesh and at sesh end. |
-| `done <id>` | Mark a Conductor-pulled backlog item resolved (`done`, or `--failed`/`--blocked`), out-of-band of the drainer. |
+| `closes <id...>` | Print the `Closes #N` block for the GitHub issues linked to the given pulled items, so the sesh's PR closes them. |
+| `done <id>` | Mark a Conductor-pulled backlog item resolved (`done`, or `--failed`/`--blocked`), out-of-band of the drainer. `--close-issue` also closes the linked GitHub issue. |
 | `start` | Drain the queue through the pipeline. Resumes in-flight items; skips done items. |
 
 > **Two ways to drain.** `start` is the **autonomous** drainer (runs each item
@@ -67,9 +68,21 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add \
   --title "Fix nav bug on mobile" \
   [--body "The top-nav collapses incorrectly below 768 px."] \
   [--source manual]            # "manual" (default) or "hyperpolymath"
+  [--no-issue]                 # skip filing a GitHub issue for this idea
 ```
 
-**Output (stdout):** the item id, e.g. `item-a3f2c1b0-1719600000000`
+**Output (stdout):** the item id, e.g. `item-a3f2c1b0-1719600000000` (plus an
+`issue #<n> <url>` line when a GitHub issue was filed).
+
+**Files a GitHub issue by default.** When origin is a GitHub remote, `add`
+files one issue for the idea (`gh issue create`) and links it to the item
+(`github_issue: { number, url }`), mirroring the global "new bug → issue →
+branch → PR (Closes #n)" workflow. This means a queued idea is tracked on the
+repo the moment you bank it, and — because the item carries its issue number —
+when the Conductor later pulls it into a `/bgsd-sesh`, the resulting PR closes
+that same issue (see `closes` below). It degrades gracefully: no GitHub remote,
+a duplicate submission, or a failing `gh` call just drops the link and the item
+is still queued. Pass `--no-issue` to opt out for a single add.
 
 **Required fields written to each queue record:**
 
@@ -85,6 +98,22 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add \
 | `created_at` | ISO-8601 timestamp |
 | `updated_at` | ISO-8601 timestamp (set on every transition) |
 | `trail` | Append-only array of `{ from, to, at, meta? }` transition entries |
+| `github_issue` | Optional `{ number, url }` — the linked GitHub issue, when one was filed |
+
+---
+
+## closes
+
+Prints the `Closes #N` block for the GitHub issues linked to the given queued
+item ids. The Conductor calls this when it pulls ideas out of the selector into
+a session, so the resulting PR body auto-closes each idea's issue on merge.
+Read-only; items without a linked issue are skipped.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" closes <item-id> [<item-id> ...]
+# ->  Closes #42
+#     Closes #57
+```
 
 ---
 
@@ -148,10 +177,17 @@ trail entry is tagged `manual: true`. Idempotent on already-terminal items.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> [--note "ran sesh <id>"]
-node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --failed   # leave it failed, not done
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --failed        # leave it failed, not done
+node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <item-id> --close-issue   # also close the linked GitHub issue
 ```
 
-**Output (stdout):** `<item-id> -> done`
+**Output (stdout):** `<item-id> -> done` (plus `closed issue #<n>` when
+`--close-issue` is passed and the item has a linked issue).
+
+> **Why `--close-issue`.** bgsd merges into the standing `next` branch, not the
+> repo's default branch, so a PR's `Closes #N` won't auto-fire until `next`
+> reaches the default branch. When a pulled idea's session is fully resolved,
+> `--close-issue` closes its issue explicitly with a resolution comment.
 
 ---
 
@@ -290,10 +326,11 @@ An item is NEVER marked `done` without a verified Tester PASS (NFR-06).
 
 | Task | Command |
 |---|---|
-| Add item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add --title "..." [--body "..."]` |
+| Add item (files a GitHub issue) | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" add --title "..." [--body "..."] [--no-issue]` |
 | Check status | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" status` |
 | Peek next backlog item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" peek` |
-| Resolve a pulled item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <id> [--note "..."]` |
+| `Closes #N` for pulled items | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" closes <id...>` |
+| Resolve a pulled item | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" done <id> [--note "..."] [--close-issue]` |
 | Drain queue | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start` |
 | Dry-run drain | `node "${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs" start --dry-run` |
 | Run unit tests | `node "${CLAUDE_PLUGIN_ROOT}/scripts/test-queue.mjs"` |
