@@ -79,6 +79,8 @@ import {
   TRANSITIONS,
   transition,
   contentKey,
+  formatQueueIssue,
+  collectQueueCloses,
 } from "./queue.mjs";
 
 import { renameSync } from "node:fs";
@@ -111,7 +113,7 @@ function testContentKey(title, body = "") {
     .digest("hex");
 }
 
-function testAddItem({ title, body = "", source = "manual" }) {
+function testAddItem({ title, body = "", source = "manual", githubIssue = null }) {
   if (!title || title.trim().length === 0) {
     throw new Error("addItem: title is required and must be non-empty");
   }
@@ -132,6 +134,7 @@ function testAddItem({ title, body = "", source = "manual" }) {
     source,
     state: "queued",
     attempts: 0,
+    ...(githubIssue ? { github_issue: githubIssue } : {}),
     created_at: now,
     updated_at: now,
     trail: [{ from: null, to: "queued", at: now }],
@@ -651,6 +654,54 @@ test("T21: resolveItem rejects a non-terminal target state", () => {
     /not a terminal state/,
     "resolving to a non-terminal state must throw"
   );
+});
+
+// ---------------------------------------------------------------------------
+// T22: formatQueueIssue builds a titled, sourced issue payload with the body
+// ---------------------------------------------------------------------------
+test("T22: formatQueueIssue embeds title (trimmed), source, body, and the auto-filed note", () => {
+  const payload = formatQueueIssue({ title: "  Fix nav bug  ", body: "Nav breaks on mobile", source: "manual" });
+  assert.equal(payload.title, "Fix nav bug", "title must be trimmed");
+  assert.ok(payload.body.includes("source: `manual`"), "body must record the source");
+  assert.ok(payload.body.includes("Nav breaks on mobile"), "body must include the idea's body");
+  assert.ok(/pull it in|resulting PR closes/.test(payload.body), "body must explain the queue→PR linkage");
+
+  // No body → still valid, no empty stray section
+  const noBody = formatQueueIssue({ title: "Idea", source: "hyperpolymath" });
+  assert.equal(noBody.title, "Idea");
+  assert.ok(noBody.body.includes("source: `hyperpolymath`"));
+});
+
+// ---------------------------------------------------------------------------
+// T23: addItem stores a linked github_issue only when one is provided
+// ---------------------------------------------------------------------------
+test("T23: a queued item carries its linked github_issue (and omits the field when unlinked)", () => {
+  resetStore();
+  const linked = testAddItem({ title: "Linked idea", body: "a", githubIssue: { number: 42, url: "https://github.com/o/r/issues/42" } });
+  const unlinked = testAddItem({ title: "Unlinked idea", body: "b" });
+
+  const store = loadTestStore();
+  const a = store.items.find((i) => i.id === linked);
+  const b = store.items.find((i) => i.id === unlinked);
+  assert.equal(a.github_issue.number, 42, "linked item must store the issue number");
+  assert.equal(a.github_issue.url, "https://github.com/o/r/issues/42", "linked item must store the issue url");
+  assert.ok(!("github_issue" in b), "unlinked item must not carry a github_issue field");
+});
+
+// ---------------------------------------------------------------------------
+// T24: collectQueueCloses builds `Closes #N` for pulled items, skipping unlinked
+// ---------------------------------------------------------------------------
+test("T24: collectQueueCloses emits Closes #N for linked pulled items, in id order, skipping unlinked", () => {
+  const items = [
+    { id: "x", github_issue: { number: 7 } },
+    { id: "y" },
+    { id: "z", github_issue: { number: 9 } },
+  ];
+  assert.equal(collectQueueCloses(items, ["x", "z"]), "Closes #7\nCloses #9", "linked ids produce a Closes block");
+  assert.equal(collectQueueCloses(items, ["y"]), "", "an unlinked id produces nothing");
+  assert.equal(collectQueueCloses(items, ["z", "x"]), "Closes #9\nCloses #7", "order follows the requested ids");
+  assert.equal(collectQueueCloses(items, []), "", "no ids → empty block");
+  assert.equal(collectQueueCloses([], ["x"]), "", "empty store → empty block");
 });
 
 // ---------------------------------------------------------------------------

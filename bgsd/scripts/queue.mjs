@@ -87,6 +87,40 @@ const QUEUE_FILE = join(QUEUE_DIR, "queue.json");
 const QUEUE_FILE_TMP = join(QUEUE_DIR, "queue.json.tmp");
 
 // ---------------------------------------------------------------------------
+// GitHub issue seam (mirrors issues-live.mjs; queue-scoped, one issue per idea)
+// ---------------------------------------------------------------------------
+
+/** True when origin is a GitHub remote. Same detection as issues-live.mjs. */
+function hasGitHubRemote(repoRoot) {
+  const r = spawnSync("git", ["remote", "get-url", "origin"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (r.status !== 0) return false;
+  return /github\.com[:/]/i.test((r.stdout ?? "").trim());
+}
+
+/**
+ * File one GitHub issue for a queued idea via `gh` and return { number, url }.
+ * Throws on failure so the caller can degrade gracefully (skip the link).
+ */
+function ghCreateQueueIssue(repoRoot, { title, body }) {
+  const r = spawnSync("gh", ["issue", "create", "--title", title, "--body", body], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (r.status !== 0) {
+    throw new Error(`gh issue create failed: ${(r.stderr ?? "").trim()}`);
+  }
+  const url = (r.stdout ?? "").trim().split("\n").pop().trim();
+  const m = url.match(/\/issues\/(\d+)/);
+  if (!m) {
+    throw new Error(`gh issue create: could not parse issue number from: ${url}`);
+  }
+  return { number: Number(m[1]), url };
+}
+
+// ---------------------------------------------------------------------------
 // State machine
 // ---------------------------------------------------------------------------
 
@@ -253,6 +287,47 @@ export function transition(item, toState, meta = {}) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build the GitHub issue payload for a queued backlog item. Pure/testable;
+ * the actual `gh` call is a side effect done by the CLI. Mirrors the shape of
+ * issues.mjs formatUnit so queued-idea issues read consistently.
+ *
+ * @param {object} opts
+ * @param {string} opts.title
+ * @param {string} [opts.body]
+ * @param {string} [opts.source]
+ * @returns {{ title: string, body: string }}
+ */
+export function formatQueueIssue({ title, body = "", source = "manual" }) {
+  const lines = [`Queued as a bgsd backlog item (source: \`${source}\`).`, ""];
+  if (body && body.trim()) lines.push(body.trim(), "");
+  lines.push(
+    "Filed automatically when the idea was queued. A future `/bgsd-sesh` can " +
+      "pull it in from the queue selector; the resulting PR closes this issue."
+  );
+  return { title: title.trim(), body: lines.join("\n").trim() + "\n" };
+}
+
+/**
+ * Build a `Closes #N` block for the GitHub issues linked to the given queued
+ * items (by id). Items with no linked issue are skipped. Pure — used by the
+ * Conductor when it pulls queued ideas into a sesh so the resulting PR closes
+ * their issues (see `queue.mjs closes`).
+ *
+ * @param {object[]} items  The queue store's items.
+ * @param {string[]} ids    Ids of the items being pulled into the session.
+ * @returns {string}        Newline-joined `Closes #N` lines (or "").
+ */
+export function collectQueueCloses(items, ids) {
+  const byId = new Map((items ?? []).map((i) => [i.id, i]));
+  const nums = [];
+  for (const id of ids ?? []) {
+    const n = byId.get(id)?.github_issue?.number;
+    if (n) nums.push(n);
+  }
+  return nums.map((n) => `Closes #${n}`).join("\n");
+}
+
+/**
  * Enqueue a new fix/feature item. Returns the newly created item's id.
  *
  * Deduplicates by content key (QUEUE-05): if an item with the same
@@ -260,12 +335,13 @@ export function transition(item, toState, meta = {}) {
  * without creating a duplicate.
  *
  * @param {object} opts
- * @param {string} opts.title    Short, human-readable title (required)
- * @param {string} [opts.body]   Longer description (optional)
- * @param {string} [opts.source] Provenance — "manual" | "hyperpolymath" (default: "manual")
+ * @param {string} opts.title            Short, human-readable title (required)
+ * @param {string} [opts.body]           Longer description (optional)
+ * @param {string} [opts.source]         Provenance — "manual" | "hyperpolymath" (default: "manual")
+ * @param {{number:number,url:string}|null} [opts.githubIssue]  Linked GitHub issue, if one was filed
  * @returns {string}  The item id (new or existing)
  */
-export function addItem({ title, body = "", source = "manual" }) {
+export function addItem({ title, body = "", source = "manual", githubIssue = null }) {
   if (!title || title.trim().length === 0) {
     throw new Error("addItem: title is required and must be non-empty");
   }
@@ -292,6 +368,7 @@ export function addItem({ title, body = "", source = "manual" }) {
     source,
     state: "queued",
     attempts: 0,
+    ...(githubIssue ? { github_issue: githubIssue } : {}),
     created_at: now,
     updated_at: now,
     trail: [
@@ -306,6 +383,23 @@ export function addItem({ title, body = "", source = "manual" }) {
   store.items.push(item);
   saveStore(store);
   return id;
+}
+
+/**
+ * Return the non-terminal queued item matching this title+body, if any.
+ * Lets the CLI skip filing a GitHub issue for a duplicate submission
+ * (avoids orphaning an issue that addItem's dedup would discard).
+ *
+ * @returns {object|null}
+ */
+export function findDuplicate(title, body = "") {
+  const store = loadStore();
+  const key = contentKey(title, body);
+  return (
+    (store.items ?? []).find(
+      (i) => i.content_key === key && !TERMINAL_STATES.includes(i.state)
+    ) ?? null
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +532,9 @@ export function printNext() {
   process.stdout.write(`  id      ${item.id}\n`);
   process.stdout.write(`  title   ${item.title}\n`);
   process.stdout.write(`  source  ${item.source}\n`);
+  if (item.github_issue) {
+    process.stdout.write(`  issue   #${item.github_issue.number}  ${item.github_issue.url}\n`);
+  }
   process.stdout.write(`  age     ${ageStr}\n`);
   if (item.body) {
     process.stdout.write(`  body\n`);
@@ -474,7 +571,14 @@ export function printQueued({ json = false } = {}) {
   if (json) {
     process.stdout.write(
       JSON.stringify(
-        items.map((i) => ({ id: i.id, title: i.title, body: i.body, source: i.source, created_at: i.created_at })),
+        items.map((i) => ({
+          id: i.id,
+          title: i.title,
+          body: i.body,
+          source: i.source,
+          created_at: i.created_at,
+          ...(i.github_issue ? { github_issue: i.github_issue } : {}),
+        })),
         null,
         2
       ) + "\n"
@@ -491,6 +595,9 @@ export function printQueued({ json = false } = {}) {
     const ageMins = Math.max(0, Math.floor(ageMs / 60000));
     const ageStr = ageMins >= 60 ? `${Math.floor(ageMins / 60)}h ${ageMins % 60}m` : `${ageMins}m`;
     process.stdout.write(`  ${item.id}  "${item.title}"  (${item.source}, age ${ageStr})\n`);
+    if (item.github_issue) {
+      process.stdout.write(`      issue #${item.github_issue.number}  ${item.github_issue.url}\n`);
+    }
     if (item.body) {
       for (const line of item.body.split("\n")) process.stdout.write(`      ${line}\n`);
     }
@@ -753,12 +860,16 @@ if (
     process.stderr.write(
       [
         "Usage:",
-        "  node bgsd/scripts/queue.mjs add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>]",
+        "  node bgsd/scripts/queue.mjs add --title \"<title>\" [--body \"<desc>\"] [--source <provenance>] [--no-issue]",
         "  node bgsd/scripts/queue.mjs status",
         "  node bgsd/scripts/queue.mjs list [--json]             # all queued items (sesh-start selector)",
         "  node bgsd/scripts/queue.mjs peek                      # next queued backlog item, or empty",
-        "  node bgsd/scripts/queue.mjs done <id> [--note \"...\"]   # mark a pulled item resolved",
+        "  node bgsd/scripts/queue.mjs closes <id...>            # print `Closes #N` for pulled items' issues",
+        "  node bgsd/scripts/queue.mjs done <id> [--note \"...\"] [--close-issue]   # mark a pulled item resolved",
         "  node bgsd/scripts/queue.mjs start [--dry-run]",
+        "",
+        "By default `add` files a GitHub issue for the idea (when origin is a",
+        "GitHub remote) and links it to the item; pass --no-issue to skip.",
         "",
       ].join("\n")
     );
@@ -793,12 +904,36 @@ if (
       process.stderr.write("add: --title is required\n");
       process.exit(1);
     }
-    const id = addItem({
-      title,
-      body: typeof flags.body === "string" ? flags.body : "",
-      source: typeof flags.source === "string" ? flags.source : "manual",
-    });
+    const body = typeof flags.body === "string" ? flags.body : "";
+    const source = typeof flags.source === "string" ? flags.source : "manual";
+
+    // File a GitHub issue for the idea by default (unless --no-issue, no remote,
+    // or this is a duplicate submission — in which case we would orphan an issue
+    // that addItem's dedup discards). Degrade gracefully: a failed `gh` call
+    // just drops the link, the item is still queued.
+    let githubIssue = null;
+    if (flags["no-issue"] !== true && !findDuplicate(title, body)) {
+      const repoRoot = resolveRepoRoot();
+      if (hasGitHubRemote(repoRoot)) {
+        try {
+          githubIssue = ghCreateQueueIssue(repoRoot, formatQueueIssue({ title, body, source }));
+        } catch (err) {
+          process.stderr.write(`add: GitHub issue skipped (${err.message})\n`);
+        }
+      }
+    }
+
+    const id = addItem({ title, body, source, githubIssue });
     process.stdout.write(`${id}\n`);
+    if (githubIssue) process.stdout.write(`issue #${githubIssue.number}  ${githubIssue.url}\n`);
+    process.exit(0);
+  }
+
+  if (subcommand === "closes") {
+    const ids = argv.slice(1).filter((a) => !a.startsWith("--"));
+    const store = loadStore();
+    const block = collectQueueCloses(store.items, ids);
+    if (block) process.stdout.write(block + "\n");
     process.exit(0);
   }
 
@@ -838,6 +973,21 @@ if (
         note: typeof flags.note === "string" ? flags.note : "",
       });
       process.stdout.write(`${item.id} -> ${item.state}\n`);
+      // Optionally close the linked GitHub issue. bgsd merges into `next`, not
+      // the repo's default branch, so a PR's `Closes #N` won't always auto-fire;
+      // this lets the Conductor close it explicitly when the sesh resolves.
+      if (flags["close-issue"] === true && item.github_issue) {
+        const repoRoot = resolveRepoRoot();
+        if (hasGitHubRemote(repoRoot)) {
+          const r = spawnSync(
+            "gh",
+            ["issue", "close", String(item.github_issue.number), "--comment", `Resolved by bgsd (${item.state}).`],
+            { cwd: repoRoot, encoding: "utf8" }
+          );
+          if (r.status === 0) process.stdout.write(`closed issue #${item.github_issue.number}\n`);
+          else process.stderr.write(`done: issue close skipped (${(r.stderr ?? "").trim()})\n`);
+        }
+      }
       process.exit(0);
     } catch (err) {
       process.stderr.write(`done: ${err.message}\n`);
