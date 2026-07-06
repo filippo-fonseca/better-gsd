@@ -163,6 +163,19 @@ export function defaultBgsdConfig() {
     notifications: {
       os: true,
     },
+    // Remote-control bridge — observe and drive a live session from off-box
+    // (e.g. a phone app). Opt-in. When enabled at sesh start the Conductor
+    // brings up a local HTTP bridge (scripts/remote.mjs): the app streams the
+    // Conductor's output and posts messages/answers back, which land in the
+    // same session-inbox the local loop already drains. host "loopback" binds
+    // 127.0.0.1 (tunnel it for true remote); "lan" binds 0.0.0.0 on your
+    // network. A token is generated at start and REQUIRED for any non-loopback
+    // bind. port 0 lets the OS pick a free port.
+    remote: {
+      enabled: false,
+      host: "loopback",
+      port: 0,
+    },
     // Execution "modes" — how much work each role does. Three levels each:
     //   fast     — pipeline: skip research; verifier: code-only, quick checks.
     //   thorough — pipeline: research every unit; verifier: full driver ladder.
@@ -324,6 +337,12 @@ Notes section and Kiwi will respect them.
   pipeline needs your input (an escalated question, a human gate), so you can
   walk away from long seshs and still get pinged. Fail-silent, and a no-op off
   macOS.
+- **remote.enabled / remote.host / remote.port** — expose a local HTTP bridge
+  (\`/bgsd-remote\`) so you can watch and steer a live sesh from a phone app:
+  stream the Conductor's output, send it messages, and answer its questions
+  remotely. \`host\` is \`loopback\` (127.0.0.1, tunnel it for true remote) or
+  \`lan\` (0.0.0.0 on your network); a token is generated at start and required
+  for any non-loopback bind. \`port: 0\` lets the OS pick. Off by default.
 - **modes.pipeline / modes.verifier** — how much work each role does, three
   levels: \`fast\` (pipeline skips research; verifier code-only), \`thorough\`
   (pipeline researches every unit; verifier full driver ladder), or \`adaptive\`
