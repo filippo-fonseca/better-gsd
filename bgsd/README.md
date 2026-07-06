@@ -231,6 +231,16 @@ codex
 
 Switching back to Claude Code later needs no migration: run `/bgsd-sesh` as usual. All state lives in `.bgsd/`, so recall, the queue, and the ledger are already there, whichever harness you used last. Pin the harness explicitly with `BGSD_HARNESS=codex` (or `harness.active` in `BGSD.md`) if auto-detection ever guesses wrong.
 
+## Remote control: watch and steer a sesh from your phone
+
+A sesh can run for a long time, and you won't always be at the terminal. The **remote bridge** (`/bgsd-remote`) exposes a small local HTTP surface an app can target so you can **watch the Conductor's real-time output, send it messages, and answer its questions** from a phone. Turn it on with `--remote` (or `remote.enabled` in `BGSD.md`); the Conductor brings up the bridge at sesh start and hands you a URL + token.
+
+```sh
+node bgsd/scripts/remote.mjs start [--lan]   # prints url + token
+```
+
+It plugs into the existing machinery rather than bolting on a parallel one: the Conductor mirrors each line it narrates to an append-only event log the app streams, and your inbound messages land in the **same `session-inbox` the session loop already drains every tick** — so a remote answer resolves a parked question exactly like a local one. Endpoints: `GET /api/state` (live stage + pending questions), `GET /api/events` / `GET /api/stream` (output), `POST /api/message`, `POST /api/answer`. Every route is token-gated, and any non-loopback bind requires the token. Default binds loopback (tunnel it for true remote); `--lan` binds your network for same-Wi-Fi access. The full contract for building a client (or an agent that drives it) is in [`docs/remote-protocol.mdx`](./docs/remote-protocol.mdx).
+
 ## GSD on steroids: GSD runs inside every agent
 
 Here is the part that makes it powerful. GSD does not run once over your whole request. It runs inside every parallel agent.
@@ -341,6 +351,7 @@ bgsd/
     bgsd-queue.md        # /bgsd-queue — internal fix-stream stage
     bgsd-run.md          # /bgsd-run — internal Conductor orchestration stage
     bgsd-status.md       # /bgsd-status — live status view
+    bgsd-remote.md       # /bgsd-remote — remote-control bridge (observe + steer from a phone)
     bgsd-capture.md      # /bgsd-capture — Hyperpolymath capture adapter
   docs/
     index.mdx            # table of contents (Conductor Session as entry point)

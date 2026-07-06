@@ -456,6 +456,51 @@ box. Requires the Codex CLI installed + authed.
 
 ---
 
+## Remote control — watch and steer a sesh from your phone
+
+A long sesh runs unattended, but you still want to glance at it and answer its
+questions without being at the terminal. The **remote bridge** (`/bgsd-remote`,
+`scripts/remote.mjs`) exposes a small local HTTP surface an app can target: it
+streams the Conductor's real-time output and accepts messages and answers back.
+Everything routes through files already in play, so nothing about the normal
+loop changes — inbound messages land in the **same `session-inbox` the session
+loop drains every tick**, and a message tagged `answersUnit` answers a parked
+question exactly like a local interjection.
+
+**Turn it on** when `remote.enabled` is set in `BGSD.md`, or when the user passes
+`--remote` (loopback) / `--remote-lan` (bind on the LAN), or just asks ("let me
+control this from my phone"). At sesh start, bring the bridge up and hand the
+user the URL + token:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote.mjs" start --run-id <run-id> [--lan]
+# prints:  url http://…   ·   token <hex>   (the app sends Authorization: Bearer <token>)
+```
+
+Then, **whenever `remote.enabled`, mirror every user-facing line you narrate** so
+the app sees exactly what the terminal sees, and snapshot each stage transition:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote.mjs" emit "<the line you just narrated>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote.mjs" mirror   # at each stage change (deduped)
+```
+
+Inbound needs no extra wiring: a `POST /api/message` or `/api/answer` writes a
+`session-inbox` file, and the running loop drains it. When a remote **answer**
+resolves a parked unit, continue exactly as if the user had answered the local
+selector; a remote **message** is a normal interjection. Post-sesh, tear it down
+with `remote.mjs stop`.
+
+- **Loopback vs. LAN vs. true remote.** Default `loopback` binds `127.0.0.1`
+  (only this machine; pair it with a tunnel like `cloudflared`/`ngrok` for real
+  remote). `--remote-lan` binds `0.0.0.0` so your phone on the same Wi-Fi can
+  reach it. Any non-loopback bind **requires the token** (auto-generated).
+- **Protocol.** The endpoint/auth/event schema is documented for app (or agent)
+  implementers in [`docs/remote-protocol.mdx`](../docs/remote-protocol.mdx) and
+  the `/bgsd-remote` command reference.
+
+---
+
 ## Starting with no prompt — the backlog
 
 You don't always have to type what to build. bgsd keeps a persistent, **per-repo

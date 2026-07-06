@@ -1,0 +1,188 @@
+---
+title: Remote bridge protocol
+description: The endpoint, auth, and event-schema contract for building an app (or agent) that observes and drives a live bgsd session remotely.
+---
+
+# Remote bridge protocol
+
+This is the implementer's contract for the bgsd **remote-control bridge**
+(`bgsd/scripts/remote.mjs`). Read it if you're building the thing on the other
+end: a mobile app, a web client, a CLI, or another agent that watches a running
+Conductor session and steers it. It tells you exactly how the bridge works
+(transport, auth, endpoints, and payload shapes) so you can build against it
+without reading the source.
+
+## Mental model
+
+A bgsd session is a Claude Code (or Codex) process running the Conductor. It
+can't receive a network message mid-thought. So the bridge is **not** a socket
+into the model. It's two durable queues on disk that both sides poll:
+
+```
+          ┌─────────────────────────── your app ───────────────────────────┐
+          │  GET /api/state      GET /api/events / /api/stream              │
+          │  POST /api/message   POST /api/answer                           │
+          └───────────────▲───────────────────────────┬────────────────────┘
+                          │ (observe)                  │ (inject)
+   ┌──────────────────────┴──────────┐   ┌─────────────▼──────────────────────┐
+   │ OUTBOX  remote-outbox.jsonl      │   │ INBOX  session-inbox/*.json         │
+   │ append-only event log            │   │ the SAME inbox the session loop     │
+   │ (Conductor mirrors its output)   │   │ drains every tick                   │
+   └──────────────────────────────────┘   └─────────────────────────────────────┘
+                    ▲                                   │
+                    │ emit / mirror                     ▼ drained by session.mjs
+          ┌─────────┴───────────────────────────────────────────┐
+          │            Conductor (the running bgsd session)      │
+          └─────────────────────────────────────────────────────┘
+```
+
+- **Observe** by reading the outbox (the Conductor mirrors each user-facing line
+  it prints, plus a stage snapshot at each transition) and the live run state.
+- **Inject** by writing a message to the inbox. The Conductor's session loop
+  drains it on its next tick. A message that carries `answersUnit` resolves a
+  parked question; a plain `text` message is a free interjection.
+
+Everything is HTTP/JSON. There are no websockets required (an SSE stream is
+offered for convenience). Poll cadence of ~1s is fine.
+
+## Connecting
+
+`start` prints the base URL and token:
+
+```
+url    http://localhost:53421
+token  9a1b2c3d…
+```
+
+- **Base URL.** Loopback by default (tunnel it for true remote); `--lan` binds
+  `0.0.0.0` for same-Wi-Fi access. The port is OS-assigned unless you pass `--port`.
+- **Auth.** Send the token on **every** request, either header works:
+  - `Authorization: Bearer <token>`
+  - `X-Bgsd-Token: <token>`
+  - or `?token=<token>` in the query string.
+  A missing/wrong token → `401 {"error":"unauthorized"}`. When the bridge is
+  bound to loopback with no token it runs open, but any non-loopback bind
+  **requires** the token.
+
+All requests may include `?run=<run-id>` to target a specific session; omit it
+to target the latest run under `.bgsd/runs`.
+
+## Endpoints
+
+### `GET /api/state`
+
+The live snapshot. Poll it for the header/status UI.
+
+```jsonc
+{
+  "run_id": "run-3f9c…",
+  "run": { "run_id": "…", "title": "…", "scale": "feature", "state": "executing", "stage": "loop1" },
+  "stage": "loop1",
+  "stage_label": "Loop 1 · Pipeline Agents",
+  "counts": { "total": 4, "finished": 2, "verified": 2, "running": 1, "needsInput": 1 },
+  "gate_command": null,                       // the exact command to run at a human gate, or null
+  "narration_lines": ["Loop 1: 2/4 finished…"],
+  "agents": [ { "id": "auth", "unit": "auth", "status": "needs_input", "phase": "plan", "note": "escalated: which provider?" } ],
+  "pending_questions": [                       // units awaiting a human answer
+    { "answersUnit": "auth", "title": "auth", "question": "escalated: which provider?" }
+  ],
+  "conductor": { "name": "Kiwi", "emoji": "🥝" }
+}
+```
+
+Render `pending_questions` as answer prompts; each `answersUnit` is what you POST
+back to `/api/answer`.
+
+### `GET /api/events?since=<seq>`
+
+The Conductor's real-time output, as an event list after `seq` (use `0` for the
+full history, then pass the last `seq` you saw):
+
+```jsonc
+{ "run_id": "…", "events": [
+  { "seq": 12, "at": "2026-07-05T18:20:01.004Z", "type": "narration", "text": "Loop 1: 2/4 finished…" },
+  { "seq": 13, "at": "…", "type": "stage", "text": "Loop 1 · Pipeline Agents", "meta": { "stage": "loop1", "counts": {…} } },
+  { "seq": 14, "at": "…", "type": "message-in", "text": "prioritize the auth unit", "meta": { "source": "remote" } }
+] }
+```
+
+**Event `type`s:** `narration` (a mirrored Conductor line), `stage` (a stage
+snapshot, `meta.stage` + `meta.counts` + `meta.gate`), `banner`/`note` (freeform),
+`message-in` / `answer-in` (your own inbound, echoed back so it appears inline).
+`seq` is a monotonic integer per run; dedupe/order by it.
+
+### `GET /api/stream?since=<seq>`
+
+The same events as a **Server-Sent Events** stream (`text/event-stream`). Each
+event is `id: <seq>\n data: <json>\n\n`; the server replays everything after
+`since`, then pushes new events (~1s) with `: ping` keepalives. Reconnect with
+the last `id` you received.
+
+### `POST /api/message`
+
+Send the Conductor a free-text interjection (ingested without halting the loop):
+
+```jsonc
+// request
+{ "text": "prioritize the auth unit, deprioritize the feed" }
+// response  202
+{ "accepted": true, "id": "remote-…", "kind": "message", "path": ".bgsd/runs/…/session-inbox/remote-….json" }
+```
+
+### `POST /api/answer`
+
+Answer a parked question (a unit in `needs_input`). `answersUnit` must match a
+`pending_questions[].answersUnit`:
+
+```jsonc
+// request
+{ "answersUnit": "auth", "answer": "Google OAuth" }
+// response  202
+{ "accepted": true, "id": "remote-…", "kind": "answer" }
+```
+
+(`/api/message` and `/api/answer` are the same handler; sending `answersUnit`
+is what makes it an answer. `answer` falls back to `text` if you send that key.)
+
+### `GET /api/health`
+
+`{ "ok": true, "run_id": "…", "conductor": { "name": "Kiwi", "emoji": "🥝" } }`.
+A cheap liveness/identity probe for a connection indicator.
+
+## Errors
+
+| Code | Meaning |
+|---|---|
+| `401` | Missing/invalid token |
+| `400` | Invalid JSON body, or an empty message/answer |
+| `409` | No active run to message |
+| `404` | Unknown route |
+| `500` | Unexpected server error (never takes the bridge down) |
+
+## On-disk formats (for agents/tools that skip HTTP)
+
+If you're an agent on the same box you can bypass HTTP and use the files directly:
+
+- **Outbox** — `.bgsd/runs/<run-id>/remote-outbox.jsonl`, one JSON event per
+  line (append-only, monotonic `seq`). Append with
+  `remote.mjs emit "<text>"` / `remote.mjs mirror`.
+- **Inbox** — write a JSON file into `.bgsd/runs/<run-id>/session-inbox/`. Shape:
+  `{ "id": "...", "kind": "answer"|"message", "source": "remote", "answersUnit"?: "...", "answer"?: "...", "text"?: "...", "at": "ISO" }`.
+  The session loop reads and **deletes** it on the next tick.
+- **Pointer** — `.bgsd/remote.json` = `{ pid, host, port, url, run_id, token, started_at }`.
+
+## Reference client flow
+
+1. `GET /api/health` → confirm up + grab the conductor identity.
+2. `GET /api/state` → paint the header, agents, and any `pending_questions`.
+3. Open `GET /api/stream?since=0` (or poll `GET /api/events?since=<last>`),
+   append `narration`/`stage` events to a transcript view.
+4. User types → `POST /api/message { text }`. It echoes back as a `message-in`
+   event so it shows inline.
+5. A `pending_questions` entry appears → show the question, user picks →
+   `POST /api/answer { answersUnit, answer }`. The unit unparks and the session
+   continues.
+
+That's the whole contract. Build the client against these shapes; the bridge is
+intentionally small and file-backed so it's easy to reason about and hard to
+wedge.
