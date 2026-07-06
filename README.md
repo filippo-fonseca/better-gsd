@@ -16,6 +16,8 @@
 
 [Landing page](https://site-filippo-fonsecas-projects.vercel.app) · [Docs](./bgsd/docs) · [Changelog](./CHANGELOG.md) · [Contributing](./CONTRIBUTING.md) · [Architecture](./ARCHITECTURE.md)
 
+Made with ❤️ by [**@filippo-fonseca**](https://github.com/filippo-fonseca).
+
 </div>
 
 ---
