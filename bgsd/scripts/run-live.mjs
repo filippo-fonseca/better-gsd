@@ -75,6 +75,22 @@ import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } fr
 import { createControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
+import { recordUsage } from "./tokens.mjs";
+import { harvestUsage } from "./token-harvest.mjs";
+
+/**
+ * Best-effort token accounting for a spawn. Harvests real usage off the
+ * harness transcript (no tokens spent) and appends a ledger row. Never throws:
+ * if harvest fails we still log model/effort/role (source "none").
+ */
+function recordSpawnUsage(bgsdDir, runId, meta, cwd, t0) {
+  try {
+    const usage = harvestUsage(meta.harness, cwd, t0) ?? {};
+    recordUsage(bgsdDir, runId, { ...meta, ...usage });
+  } catch (_) {
+    /* accounting must never break a run */
+  }
+}
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -314,6 +330,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
       model: resolveModel("fable", harness, models),
       context: { worktree: wtPath, "unit-id": unitId, "run-id": runId, out: seedPlanPath },
     });
+    const planT0 = Date.now();
     const planResult = spawnImpl(planSpawn.cmd, planSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
     if (planResult?.error) {
       throw new Error(`Fable pre-planner failed to spawn for unit "${unitId}": ${planResult.error.message}`);
@@ -323,6 +340,10 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
         `Fable pre-planner exited non-zero for unit "${unitId}" (exit ${planResult?.status}): ${planResult?.stderr ?? ""}`
       );
     }
+    recordSpawnUsage(bgsdDir, runId, {
+      agentId: unitId, unitId, role: "fable-plan", harness,
+      model: resolveModel("fable", harness, models), effort: "high",
+    }, wtPath, planT0);
   }
 
   // 7. Spawn the headless Pipeline Agent on the active harness (NFR-06: throw on
@@ -342,7 +363,12 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
       "seed-plan": seedPlanPath, // dropped automatically when null
     },
   });
+  const agentT0 = Date.now();
   const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
+  recordSpawnUsage(bgsdDir, runId, {
+    agentId: unitId, unitId, role: "executor", harness, model: spawnModel,
+    effort: unit?.model_posture?.executor?.effort ?? "xhigh",
+  }, wtPath, agentT0);
   if (agentResult?.error) {
     throw new Error(`${agentSpawn.cmd} ${agentSpawn.args[0]} /bgsd-run-agent failed to spawn for unit "${unitId}": ${agentResult.error.message}`);
   }
