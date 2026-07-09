@@ -42,8 +42,12 @@ export const HARNESSES = Object.freeze(["claude", "codex"]);
  */
 export const DEFAULT_HARNESS_MODELS = Object.freeze({
   claude: { opus: LATEST_OPUS, sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
-  // Codex equivalents (GPT-5 family). Defaults; retune in BGSD.md if names drift.
-  codex: { opus: "gpt-5-codex", sonnet: "gpt-5", haiku: "gpt-5-mini", fable: "gpt-5-codex" },
+  // Codex equivalents (GPT-5 family, July 2026). Tier mapping by price + SWE-bench:
+  //   fable/opus → gpt-5.5 ($5/MTok input, OpenAI's top tier; no higher model exists)
+  //   sonnet     → gpt-5.4 ($2.50/MTok input, balanced speed+quality mid-tier)
+  //   haiku      → gpt-5.4-mini ($0.75/MTok input, fast/cheap subagent tier)
+  // Retune in BGSD.md (`harness.models.codex`) if names drift.
+  codex: { opus: "gpt-5.5", sonnet: "gpt-5.4", haiku: "gpt-5.4-mini", fable: "gpt-5.5" },
 });
 
 // ---------------------------------------------------------------------------
