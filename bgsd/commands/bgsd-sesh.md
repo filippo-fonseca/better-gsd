@@ -71,6 +71,61 @@ files** (scouts do), **never review diffs** (a fresh Opus does), and offload sta
 via `--model`, never Fable; only with `--fable` (or a per-unit opt-in) does a
 separate Fable *pre-plan* run first to seed them — independent of your session model.)
 
+### Fable-as-Advisor mode
+
+When your **own brain is Fable**, that reasoning is otherwise wasted — you'd hold
+the same lean discipline regardless of model. Advisor mode puts it to work: you
+become a **live reviewing advisor** across the pipeline instead of a passive
+dispatcher. **This is gated and OFF by default.**
+
+**The gate — check it at the model self-check above.** Advisor mode is active when
+`conductor.fable_advisor` in `BGSD.md` is `"auto"` (the default) **and any one** of:
+1. **your brain IS Fable** (the model you self-checked at start is `claude-fable-5`), OR
+2. **`--fable`** was passed to this sesh, OR
+3. **you proposed advisor mode and the user approved** (an `AskUserQuestion` — e.g.
+   *"I'm on Opus, sir, but shall I ride shotgun as a Fable advisor on this build?"*).
+
+The setting overrides the criteria: `true` forces it on, `false` hard-disables it
+even on Fable. Confirm the verdict any time with:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/advisor.mjs" gate --model <your-model> [--fable] [--approved]
+```
+
+When **none** of the three hold, mode is **completely off** — behave exactly as the
+lean orchestrator described everywhere else in this file. Do not advise, do not read
+artifacts you otherwise wouldn't. Toggle it with any of the three criteria, or set
+`conductor.fable_advisor` via `/bgsd-modify-memory`.
+
+**When it's ON, announce it** ("Fable-as-Advisor engaged, sir — I'll ride the plans
+in") and take these four duties at their hook-points:
+
+1. **Review each unit's plan the moment it seals** — before its Opus agent executes.
+   The plan artifact is the seed (`.planning/fable-plan.md`) and/or the unit's
+   `PLAN.md`. Read it, judge it, flag gaps.
+2. **Steer before execution** — inject guidance into the seed and, mid-run, the
+   agent's `<agent-id>.inbox.md` (the control seam). Course-correct *before* tokens
+   are spent building the wrong thing.
+3. **Check in on commits as they land** — as a unit builds, review the **distilled
+   record**: `git log --oneline` for the worktree and its `verification-report.json`.
+   Steer or escalate if it drifts.
+4. **Author the next wave's seed plans yourself** — at a wave boundary, spend your
+   Fable reasoning writing each downstream unit's seed **directly** to
+   `.bgsd/runs/<run-id>/seeds/<unit-id>.md`. `run-live.mjs` copies that into the
+   unit's worktree as `fable-plan.md` and **skips the standalone Fable pre-planner
+   subprocess** — you already did that work. (Register the advisor pass on the live
+   dashboard so it shows as its own activity.)
+
+**Distilled artifacts only.** Even in advisor mode you review the *sealed plan, the
+commit log, and the verification report* — **never raw source or full diffs**. Fable's
+larger context window is what makes this affordable; the lean-context discipline still
+bounds it. Diffs still go to a fresh Opus reviewer.
+
+**Replace vs complement.** When **you are Fable**, you author seeds yourself (duty 4)
+and the redundant per-unit Fable subprocess is skipped. When you are **not** Fable but
+`--fable`/approval turned advisor on, the standalone pre-planner still runs and duties
+1–3 (review / steer / check-in) layer on top of it.
+
 **Assign a session title.** Right after minting the run,
 give this session a concise, human-readable **title** (3 to 8 words, Title Case,
 drawn from the prompt) and set it once so it lands on `run.json` and surfaces
