@@ -94,6 +94,61 @@ const brightYellow = (t) => ansi(t, 93, 39);
 const brightCyan   = (t) => ansi(t, 96, 39);
 
 // ---------------------------------------------------------------------------
+// Colored name pills — a padded, rounded truecolor background behind a name,
+// with an auto-contrasting foreground. Each agent gets a stable hue derived
+// from its id, so the same worker keeps the same color across refreshes.
+// Degrades to `‹name›` when color is off (NO_COLOR / non-TTY / CI).
+// ---------------------------------------------------------------------------
+
+// A curated palette of saturated-but-easy-on-the-eyes hues (R,G,B).
+const PILL_PALETTE = [
+  [0x2d, 0x9c, 0xdb], // sky
+  [0x9b, 0x59, 0xb6], // violet
+  [0x1a, 0xbc, 0x9c], // teal
+  [0xe6, 0x7e, 0x22], // amber
+  [0xe7, 0x4c, 0x3c], // coral
+  [0x2e, 0xcc, 0x71], // emerald
+  [0xf3, 0x9c, 0x12], // gold
+  [0x34, 0x98, 0xdb], // blue
+  [0xe8, 0x4e, 0x8a], // pink
+  [0x16, 0xa0, 0x85], // pine
+];
+
+// The Conductor's signature: kiwi green.
+const KIWI_PILL = [0x7c, 0xb3, 0x42];
+
+function hashIndex(str, mod) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h % mod;
+}
+
+// Pick black or white text for legibility against a given background (per WCAG
+// relative-luminance rule of thumb).
+function contrastFg([r, g, b]) {
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6 ? [0x1a, 0x1a, 0x1a] : [0xff, 0xff, 0xff];
+}
+
+/**
+ * Wrap `text` in a padded truecolor pill. Uncolored fallback: `‹text›`.
+ * @param {string} text
+ * @param {[number,number,number]} rgb  background color
+ */
+function pill(text, rgb) {
+  if (!COLOR_OK) return `‹${text}›`;
+  const [br, bg, bb] = rgb;
+  const [fr, fg, fb] = contrastFg(rgb);
+  return `\x1b[1;38;2;${fr};${fg};${fb};48;2;${br};${bg};${bb}m ${text} \x1b[0m`;
+}
+
+/** A pill whose hue is stable-derived from `id` (each agent a consistent color). */
+function agentPill(id) {
+  const name = id ?? "?";
+  return pill(name, PILL_PALETTE[hashIndex(name, PILL_PALETTE.length)]);
+}
+
+// ---------------------------------------------------------------------------
 // Badge definitions (mirrors ui.mjs BADGE_DEFS — reused via inline for purity)
 // ---------------------------------------------------------------------------
 
@@ -172,8 +227,8 @@ function miniBanner(name = DEFAULT_CONDUCTOR.name, emoji = DEFAULT_CONDUCTOR.emo
   const row = (plain, colored) =>
     bold(cyan("║")) + colored + " ".repeat(Math.max(0, INNER - dispWidth(plain))) + bold(cyan("║"));
 
-  const r1plain = `  ${emoji} ${name}  ·  bgsd Conductor`;
-  const r1colored = "  " + emoji + " " + bold(brightCyan(name)) + dim(cyan("  ·  bgsd Conductor"));
+  const r1plain = `  ${emoji} ‹${name}›  ·  bgsd Conductor`;
+  const r1colored = "  " + emoji + " " + pill(name, KIWI_PILL) + dim(cyan("  ·  bgsd Conductor"));
   const r2plain = "  /bgsd-status  🔒 main-protected";
   const r2colored = "  " + dim(cyan("/bgsd-status")) + "  " + bold(brightGreen("🔒 main-protected"));
 
@@ -253,7 +308,7 @@ function renderAgentTable(agents) {
 
   for (const agent of sorted) {
     const b        = badge(agent.status ?? "running");
-    const agentId  = bold(agent.agent_id ?? "?");
+    const agentId  = agentPill(agent.agent_id ?? "?");
     const phase    = agent.phase ? dim(`[${agent.phase}]`) : "";
     const iter     = agent.progress
       ? cyan(`iter ${agent.progress.iteration ?? 0}/${agent.progress.max_iterations ?? "?"}`)
