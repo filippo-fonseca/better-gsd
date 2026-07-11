@@ -66,7 +66,7 @@
 
 import { spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
@@ -75,6 +75,7 @@ import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } fr
 import { createControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
+import { readConductorSeed } from "./advisor.mjs";
 import { recordUsage } from "./tokens.mjs";
 import { harvestUsage } from "./token-harvest.mjs";
 
@@ -321,7 +322,18 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   //    so Fable-grade planning feeds the GSD workflow without running the whole
   //    token-heavy subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
   let seedPlanPath = null;
-  if (unit?.model_posture?.fablePlan) {
+
+  // 6a. Fable-as-Advisor: if the Conductor (running on Fable) authored this
+  //     unit's seed itself, use it directly and SKIP the redundant standalone
+  //     pre-planner subprocess — Kiwi already spent Fable's reasoning on the
+  //     plan. The seed lives at .bgsd/runs/<runId>/seeds/<unitId>.md.
+  const conductorSeed = runId ? readConductorSeed(runId, unitId, { bgsdDir }) : null;
+  if (conductorSeed) {
+    seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
+    mkdirSync(dirname(seedPlanPath), { recursive: true });
+    copyFileSync(conductorSeed, seedPlanPath);
+    log(`liveSpawnFn: using Conductor-authored Fable seed for unit "${unitId}" → ${seedPlanPath} (advisor mode; pre-planner skipped)`);
+  } else if (unit?.model_posture?.fablePlan) {
     seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
     log(`liveSpawnFn: running Fable pre-planner for unit "${unitId}" → ${seedPlanPath} (harness: ${harness})`);
     const planSpawn = buildAgentSpawn({
