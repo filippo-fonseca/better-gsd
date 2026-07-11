@@ -46,7 +46,13 @@ Notes section and Kiwi will respect them.
   code verification — "no silent green" still holds.
 - **conductor** — persona + narration. `narrate` streams stage-aware live
   updates; `suggest_gate_commands` makes Kiwi hand you the exact command at
-  every human gate.
+  every human gate. `fable_advisor` controls **Fable-as-Advisor mode**: when on,
+  Kiwi actively reviews each wave unit's sealed plan, steers before execution,
+  checks in on commits, and authors the next wave's seed plans itself (reviewing
+  distilled artifacts only, never raw diffs). `"auto"` (default) follows the
+  three-criteria gate — on when your brain IS Fable, OR `--fable` was passed, OR
+  you approved a proposal; off otherwise. Set `true` to force on, `false` to
+  hard-disable even on Fable.
 - **context** — per-subagent context-window management. `max_window_tokens`
   is the model's full window (Pipeline Agents run on ~1M tokens). When an
   agent's usage crosses `compact_at` (fraction of the window) Kiwi compacts it
@@ -113,7 +119,8 @@ Notes section and Kiwi will respect them.
   "conductor": {
     "persona": "kiwi",
     "narrate": true,
-    "suggest_gate_commands": true
+    "suggest_gate_commands": true,
+    "fable_advisor": "auto"
   },
   "context": {
     "max_window_tokens": 1000000,
