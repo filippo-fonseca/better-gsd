@@ -25,6 +25,16 @@ runs against the unit's **isolated** branch + port + DB — never the main repo.
 > `bgsd/PERSONALITY.md`). Structured outputs (control-file JSON, the stdout
 > verdict line) never change. No silent green: a failure is reported honestly.
 
+> **Commit discipline — constant and atomic, non-negotiable.** Commit as you go:
+> one focused commit per logical unit of work (a fix, one component, one layer,
+> a phase artifact) the moment that unit is done. NEVER batch the whole unit into
+> one giant commit at the end. Stage with explicit pathspecs (never `git add -A`
+> or `git add .`), and record every commit on the control file
+> (`control.mjs update … --commit <sha>`) so the Conductor — and the Fable
+> advisor, whose commit check-ins read `git log --oneline` — see the history
+> grow live. If you notice several distinct pieces built without a commit, that
+> is a mistake to correct immediately, not a style choice.
+
 This is the seam that makes the Loop-1 Pipeline Agents in the two-loop
 architecture actually run GSD — dynamically tailored per unit, not one-size-fits-all.
 
@@ -136,7 +146,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/phaseconfig.mjs" --plan .planning --scale <s
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s);if(p.workflow){const fs=require("fs");const cp=".planning/config.json";const c=fs.existsSync(cp)?JSON.parse(fs.readFileSync(cp,"utf8")):{};c.workflow={...(c.workflow||{}),...p.workflow};fs.writeFileSync(cp,JSON.stringify(c,null,2))}})'
 ```
 
-Then run each phase in `phases` order, updating the control file phase as you go.
+Then run each phase in `phases` order, updating the control file phase as you go —
+committing constantly and atomically throughout (see the commit-discipline note at
+the top), with each commit's sha recorded via `--commit`.
 For each `{ id, command }`:
 
 | Phase id | Skill to invoke | Control `--phase` |

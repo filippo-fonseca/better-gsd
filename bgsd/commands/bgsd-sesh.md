@@ -942,6 +942,14 @@ manually" path does not exist.
   and does not offer to merge.
 - **No silent green.** Verification is never skipped; the review gate is never
   auto-passed; escalations surface a real question rather than a guess.
+- **Constant atomic commits — every actor, all the time.** Everyone who writes
+  under this pipeline commits as they go: the Pipeline Agents in their worktrees
+  (one focused commit per logical unit of work, sha recorded on the control
+  file), the Conductor for anything it lands on the integration branch, and the
+  advisor for any tracked artifact it authors. Never batch work into one giant
+  end-of-run commit; stage with explicit pathspecs (never `git add -A`/`.`).
+  Granular history is what makes the advisor's commit check-ins, the live
+  dashboard's commit feed, and any surgical revert possible.
 - **Clickable URLs, never bare ports.** Whenever Kiwi mentions a running app or
   dev server, it prints the full `http://localhost:<port>` (or the real host) so
   you can click it. A bare `:3137` is never acceptable, in the gate or in
