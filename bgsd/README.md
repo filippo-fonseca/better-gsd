@@ -70,7 +70,7 @@ The scale threshold is decided by the Conductor, not by you. You can always over
 | `--quick`     | Quick mode. **No discussion, no pre-prepare.** Fast — but still verified. Never skips Loop 1. Executes immediately.                                        |
 | `--feature`   | Feature mode. No pre-discussion, some parallelism, integration loop if >1 unit. Executes immediately.                                                      |
 | `--project`   | Full pipeline mode. The Conductor **discusses with you first** (brainstorm, clarify, plan), then executes. Real merges/PRs are human-gated at checkpoints. |
-| `--fable`     | Arm **Claude Fable 5** for the toughest pipeline agents (difficulty ≥ 0.4 / Opus-tier units). The Conductor asks permission per candidate before putting any agent on Fable; you can keep it on Opus (token-heavy) for any agent, or drop Fable entirely, any time. Never used silently. Persist with `models.fable: on` in `BGSD.md`; the per-agent permission gate still applies. Researchers, verifiers, and testers are never Fable candidates. |
+| `--fable`     | Turn on a standalone **Fable pre-plan** for every unit (off by default). It runs as a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that **only plans** (never edits code) and seeds the Opus pipeline agent via `--seed-plan`. The executor always stays Opus: *Fable plans; Opus executes.* Passing `--fable` also satisfies the [Fable-as-Advisor gate](#fable-as-advisor-mode). |
 | `--plan-only` | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing executes.                                                               |
 | `--dry-run`   | Alias for `--plan-only`. Same preview behavior.                                                                                                            |
 
@@ -89,10 +89,19 @@ A manual flag always wins, unconditionally; the auto-scale thresholds apply only
 | Env-file propagation     | Which `.env*` files are copied into each worktree               | `.env`, `.env.local`              |
 | GitHub issue/PR behavior | Whether to open atomic issues and PRs, and against which branch | atomic issues on; PRs into `next` |
 | Conductor narration      | Verbosity and tone of the Conductor's live narration            | on, conversational                |
+| `conductor.fable_advisor` | Fable-as-Advisor mode: `"auto"` follows the three-criteria gate; `true` forces on; `false` hard-disables | `"auto"` (gate OFF unless a criterion holds) |
 
 **Env propagation.** Git worktrees do not carry gitignored files, so apps that need `.env*` to boot would otherwise come up broken in a worktree. The Conductor copies the configured `.env*` files from the repo root into each worktree so every app boots with its real environment.
 
 **Atomic GitHub issues.** Each work unit gets its own GitHub issue, and the PR that merges that unit into `next` closes it. The session itself has an epic issue that tracks the whole run. (This is being wired now.)
+
+---
+
+## Fable-as-Advisor mode
+
+When the Conductor's **own brain is Fable** (`claude-fable-5`), that reasoning power would otherwise be wasted on lean dispatching. Advisor mode puts it to work: Kiwi becomes a **live reviewing advisor** across the pipeline — it (1) reviews each wave unit's sealed plan before its Opus agent executes, (2) steers before and during execution via the seed and the agent inbox, (3) checks in on commits as they land (the distilled record: `git log --oneline` + the verification report, **never raw diffs**), and (4) authors the next wave's seed plans itself, so the redundant standalone Fable pre-planner subprocess is **skipped**.
+
+**Gated, OFF by default.** Active only when `conductor.fable_advisor` is `"auto"` (the default) AND any one of: the Conductor's brain IS Fable, `--fable` was passed, or you approved a proposal. Set the knob `true`/`false` in `BGSD.md` to force or hard-disable. Check the verdict any time: `node advisor.mjs gate --model <id>`. When the Conductor is *not* Fable but the gate is on (via `--fable`/approval), the standalone pre-planner still runs and duties 1–3 layer on top of it.
 
 ---
 
