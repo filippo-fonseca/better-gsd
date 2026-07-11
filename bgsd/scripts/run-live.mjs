@@ -66,7 +66,7 @@
 
 import { spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
@@ -75,6 +75,23 @@ import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } fr
 import { createControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
+import { readConductorSeed } from "./advisor.mjs";
+import { recordUsage } from "./tokens.mjs";
+import { harvestUsage } from "./token-harvest.mjs";
+
+/**
+ * Best-effort token accounting for a spawn. Harvests real usage off the
+ * harness transcript (no tokens spent) and appends a ledger row. Never throws:
+ * if harvest fails we still log model/effort/role (source "none").
+ */
+function recordSpawnUsage(bgsdDir, runId, meta, cwd, t0) {
+  try {
+    const usage = harvestUsage(meta.harness, cwd, t0) ?? {};
+    recordUsage(bgsdDir, runId, { ...meta, ...usage });
+  } catch (_) {
+    /* accounting must never break a run */
+  }
+}
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -305,7 +322,18 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   //    so Fable-grade planning feeds the GSD workflow without running the whole
   //    token-heavy subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
   let seedPlanPath = null;
-  if (unit?.model_posture?.fablePlan) {
+
+  // 6a. Fable-as-Advisor: if the Conductor (running on Fable) authored this
+  //     unit's seed itself, use it directly and SKIP the redundant standalone
+  //     pre-planner subprocess — Kiwi already spent Fable's reasoning on the
+  //     plan. The seed lives at .bgsd/runs/<runId>/seeds/<unitId>.md.
+  const conductorSeed = runId ? readConductorSeed(runId, unitId, { bgsdDir }) : null;
+  if (conductorSeed) {
+    seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
+    mkdirSync(dirname(seedPlanPath), { recursive: true });
+    copyFileSync(conductorSeed, seedPlanPath);
+    log(`liveSpawnFn: using Conductor-authored Fable seed for unit "${unitId}" → ${seedPlanPath} (advisor mode; pre-planner skipped)`);
+  } else if (unit?.model_posture?.fablePlan) {
     seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
     log(`liveSpawnFn: running Fable pre-planner for unit "${unitId}" → ${seedPlanPath} (harness: ${harness})`);
     const planSpawn = buildAgentSpawn({
@@ -314,6 +342,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
       model: resolveModel("fable", harness, models),
       context: { worktree: wtPath, "unit-id": unitId, "run-id": runId, out: seedPlanPath },
     });
+    const planT0 = Date.now();
     const planResult = spawnImpl(planSpawn.cmd, planSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
     if (planResult?.error) {
       throw new Error(`Fable pre-planner failed to spawn for unit "${unitId}": ${planResult.error.message}`);
@@ -323,6 +352,10 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
         `Fable pre-planner exited non-zero for unit "${unitId}" (exit ${planResult?.status}): ${planResult?.stderr ?? ""}`
       );
     }
+    recordSpawnUsage(bgsdDir, runId, {
+      agentId: unitId, unitId, role: "fable-plan", harness,
+      model: resolveModel("fable", harness, models), effort: "high",
+    }, wtPath, planT0);
   }
 
   // 7. Spawn the headless Pipeline Agent on the active harness (NFR-06: throw on
@@ -342,7 +375,12 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
       "seed-plan": seedPlanPath, // dropped automatically when null
     },
   });
+  const agentT0 = Date.now();
   const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
+  recordSpawnUsage(bgsdDir, runId, {
+    agentId: unitId, unitId, role: "executor", harness, model: spawnModel,
+    effort: unit?.model_posture?.executor?.effort ?? "xhigh",
+  }, wtPath, agentT0);
   if (agentResult?.error) {
     throw new Error(`${agentSpawn.cmd} ${agentSpawn.args[0]} /bgsd-run-agent failed to spawn for unit "${unitId}": ${agentResult.error.message}`);
   }
