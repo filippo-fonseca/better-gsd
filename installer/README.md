@@ -10,7 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://docs.anthropic.com/en/docs/claude-code)
-[![version](https://img.shields.io/badge/version-0.10.0-informational.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/.claude-plugin/plugin.json)
+[![version](https://img.shields.io/badge/version-0.11.0-informational.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/bgsd/.claude-plugin/plugin.json)
 [![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen.svg)](https://github.com/filippo-fonseca/better-gsd/tree/next/bgsd/scripts)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/filippo-fonseca/better-gsd/blob/next/CONTRIBUTING.md)
 

@@ -30,7 +30,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -261,6 +261,55 @@ await test("L05b: non-fablePlan unit → single Opus spawn, no pre-planner, no -
     assert.ok(!call.args.includes("claude-fable-5"), "Fable never appears");
     const modelIdx = call.args.indexOf("--model");
     assert.equal(call.args[modelIdx + 1], LATEST_OPUS, "executor subprocess is Opus (latest)");
+  } finally {
+    rmSync(bgsdDir, { recursive: true, force: true });
+    rmSync(wtPath, { recursive: true, force: true });
+  }
+});
+
+await test("L05c: advisor mode — Conductor-authored seed is used, standalone pre-planner SKIPPED", async () => {
+  const bgsdDir = makeTmpDir();
+  const wtPath  = join(makeTmpDir(), "wt");
+  const plan    = { ...PLAN, path: wtPath };
+  const gitImpl = makeGitMock();
+  const spawnImpl = makeSpawnMock();
+  const runId = "bgsd-0003-adv";
+  const unitId = "unit-adv-ef56";
+
+  // Kiwi (on Fable) authored the seed itself → .bgsd/runs/<runId>/seeds/<unitId>.md
+  const seedDir = join(bgsdDir, "runs", runId, "seeds");
+  mkdirSync(seedDir, { recursive: true });
+  writeFileSync(join(seedDir, `${unitId}.md`), "# Conductor-authored plan\n", "utf8");
+
+  const fableUnit = {
+    ...UNIT,
+    id: unitId,
+    // fablePlan flag is irrelevant here — the Conductor seed takes precedence.
+    model_posture: {
+      planner: { model: "opus", effort: "high" },
+      executor: { model: "opus", effort: "xhigh" },
+      researcher: { model: "opus", effort: "high" },
+      verifier: { model: "opus", effort: "medium" },
+      fablePlan: true,
+      spawnModel: "opus",
+    },
+  };
+
+  try {
+    await liveSpawnFn(fableUnit.id, plan, {
+      runId, scale: "feature", unit: fableUnit,
+      bgsdDir, repoRoot: bgsdDir, gitImpl, spawnImpl,
+    });
+
+    assert.equal(spawnImpl.calls.length, 1, "exactly one spawn — no pre-planner subprocess");
+    const call = spawnImpl.calls[0];
+    assert.ok(call.args.includes("/bgsd-run-agent"), "spawned the Pipeline Agent");
+    assert.ok(!call.args.includes("/bgsd-plan-unit"), "standalone Fable pre-planner skipped");
+    const seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
+    assert.ok(call.args.includes("--seed-plan"), "seed plan is passed");
+    assert.equal(call.args[call.args.indexOf("--seed-plan") + 1], seedPlanPath, "seed points at copied file");
+    assert.ok(existsSync(seedPlanPath), "Conductor seed copied into the worktree");
+    assert.equal(readFileSync(seedPlanPath, "utf8"), "# Conductor-authored plan\n", "seed content preserved");
   } finally {
     rmSync(bgsdDir, { recursive: true, force: true });
     rmSync(wtPath, { recursive: true, force: true });

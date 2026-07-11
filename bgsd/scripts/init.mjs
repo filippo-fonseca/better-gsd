@@ -196,6 +196,11 @@ export function defaultBgsdConfig() {
       narrate: true,
       // At every human gate, suggest the exact command to run next.
       suggest_gate_commands: true,
+      // Fable-as-Advisor mode. "auto" (default) follows the three-criteria gate:
+      // the Conductor advises across the pipeline when its brain IS Fable, OR
+      // --fable was passed, OR the user approved a proposal — otherwise OFF.
+      // Set true to force it on, false to hard-disable even on Fable.
+      fable_advisor: "auto",
       // The Conductor is the ONLY human-facing session. When its own context
       // window crosses this fraction it self-compacts (after writing a handoff
       // note) and keeps going, so a long sesh never dies of context exhaustion.

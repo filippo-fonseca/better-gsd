@@ -8,6 +8,23 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-10
+
+### Added
+- **Fable-as-Advisor mode.** When the Conductor's own brain is Fable, Kiwi now
+  acts as a live reviewing advisor across the pipeline instead of a passive
+  dispatcher: it reviews each wave unit's sealed plan, steers before execution,
+  checks in on commits as they land, and authors the next wave's seed plans
+  itself — writing them directly so `run-live.mjs` uses the Conductor-authored
+  seed and **skips the redundant standalone Fable pre-planner subprocess**. The
+  advisor reviews distilled artifacts only (sealed plan, commit log,
+  verification report), never raw diffs.
+  - **Gated, OFF by default.** Active only when `conductor.fable_advisor` is
+    `"auto"` (default) AND any of: the brain IS Fable, `--fable` was passed, or
+    the user approved a proposal. Set the setting `true`/`false` to force or
+    hard-disable. New `advisor.mjs` holds the pure gate + the Conductor-seed
+    seam; `node advisor.mjs gate --model <id>` reports the verdict.
+
 ## [0.10.0] - 2026-07-05
 
 ### Fixed
