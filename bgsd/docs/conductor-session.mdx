@@ -41,6 +41,23 @@ bgsd is LLM/CLI agnostic. A sesh runs identically under **Claude Code** or **Cod
 
 At sesh start Kiwi detects the harness (`harness.active: "auto"` — `AGENT=codex` → Codex, else Claude Code; pin in `BGSD.md` or via `BGSD_HARNESS`). The semantic model tiers (opus/sonnet/haiku/fable) resolve to the active harness's equivalents via `harness.models` (Claude: `claude-opus-4-8`, …; Codex: `gpt-5-codex`, `gpt-5`, `gpt-5-mini`), and each pipeline agent spawns on that harness's CLI, so switching moves the work — and the quota — to that provider.
 
+## Fable-as-Advisor: when your Conductor runs on Fable
+
+If you launch the sesh on **Fable** (`claude-fable-5`), the Conductor's reasoning power would otherwise be wasted on lean dispatching — it holds the same read-nothing discipline regardless of model. **Fable-as-Advisor mode** puts it to work. When active, Kiwi announces it and takes four duties:
+
+1. **Review each unit's plan the moment it seals**, before its Opus agent executes — judge it, flag gaps.
+2. **Steer before and during execution** — inject guidance into the seed and, mid-run, the agent's inbox file, course-correcting before tokens are spent building the wrong thing.
+3. **Check in on commits as they land** — reviewing the *distilled record* only: `git log --oneline` for the worktree plus its `verification-report.json`. Never raw source or full diffs; those still go to a fresh Opus reviewer.
+4. **Author the next wave's seed plans itself** — written directly to `.bgsd/runs/<run-id>/seeds/<unit-id>.md`. `run-live.mjs` copies that into the unit's worktree as `fable-plan.md` and **skips the standalone Fable pre-planner subprocess**: the Fable reasoning was already spent in-session.
+
+**The gate (OFF by default).** Advisor mode is active only when `conductor.fable_advisor` in `BGSD.md` is `"auto"` (the default) **and any one** of: the Conductor's brain IS Fable, `--fable` was passed to the sesh, or Kiwi proposed advisor mode and you approved. Set the knob `true` to force it on or `false` to hard-disable it even on Fable. Verify the verdict deterministically:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/advisor.mjs" gate --model <your-model> [--fable] [--approved]
+```
+
+**Replace vs complement.** A Fable Conductor authors seeds itself (duty 4) and the per-unit Fable subprocess is skipped as redundant. A non-Fable Conductor with the gate on (via `--fable` or approval) keeps the standalone pre-planner and layers duties 1–3 on top.
+
 ## Session memory: recall + the backlog
 
 bgsd sessions remember each other, and all of it is **per-repo** (stored under the invoking repo's `.bgsd/`).
@@ -124,7 +141,7 @@ bgsd keeps one standing integration branch, **`next`** (the name is configurable
 | `--quick` | You know it's small (a bug fix, a copy change, a minor tweak) | No pre-discussion, no brainstorm phase. Fast. Still fully verified — Loop 1 always runs. Executes immediately. |
 | `--feature` | You know it's feature-sized (one coherent feature, a few units) | No pre-discussion, some parallelism, integration loop if >1 unit, formal review gate. Executes immediately. |
 | `--project` | You know it's large (many features, broad scope) | Conductor **discusses with you first**: brainstorm, clarify ambiguity, confirm scope. Then full parallel pipeline. Real merges/PRs are human-gated at checkpoints. |
-| `--fable` | You want a Fable pre-plan on every unit | Turns on a standalone **Fable pre-plan** for *every* unit. The pre-plan is **off by default**: difficulty does not trigger it, so every unit runs the normal GSD workflow on Opus unless `--fable` is passed (or the Conductor opts a specific unit in). The pre-plan is a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that **only plans** and then seeds the Opus pipeline agent via `--seed-plan`. It must be launched as a Bash `claude -p --model claude-fable-5` subprocess, never via the in-session Agent/Task tool (that tool offers opus/sonnet/haiku only, so a Fable pre-plan spawned as a subagent silently no-ops with zero tool uses). There is no arming ceremony and no per-candidate permission gate: the executor always stays **Opus** (Fable plans; Opus executes). Drop the pre-plan on any unit conversationally; no restart needed. Persist with `models.fable_preplan: on` in `BGSD.md`. |
+| `--fable` | You want a Fable pre-plan on every unit | Turns on a standalone **Fable pre-plan** for *every* unit. The pre-plan is **off by default**: difficulty does not trigger it, so every unit runs the normal GSD workflow on Opus unless `--fable` is passed (or the Conductor opts a specific unit in). The pre-plan is a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that **only plans** and then seeds the Opus pipeline agent via `--seed-plan`. It must be launched as a Bash `claude -p --model claude-fable-5` subprocess, never via the in-session Agent/Task tool (that tool offers opus/sonnet/haiku only, so a Fable pre-plan spawned as a subagent silently no-ops with zero tool uses). There is no arming ceremony and no per-candidate permission gate: the executor always stays **Opus** (Fable plans; Opus executes). Drop the pre-plan on any unit conversationally; no restart needed. Persist with `models.fable_preplan: on` in `BGSD.md`. Passing `--fable` also satisfies the [Fable-as-Advisor gate](#fable-as-advisor-when-your-conductor-runs-on-fable). |
 | `--sonnet` | A run is mostly trivial units | Lets the **executor** drop from Opus to **Sonnet·xhigh**, but only on trivial units (difficulty < 0.2). Without it the executor is always Opus; it affects no other role. |
 | `--plan-only` | You want to see the plan before committing | **Preview only.** Classify + print the depth plan; invoke zero boundaries. Nothing runs. |
 | `--dry-run` | Same as `--plan-only` | Alias. Identical preview behavior. |
