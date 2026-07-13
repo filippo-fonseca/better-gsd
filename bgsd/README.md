@@ -5,9 +5,11 @@ workflow while making the execution lanes explicit and provider-neutral.
 
 Use `bgsd-sesh` to start. The Conductor detects the current session model,
 then the native selector chooses the build/evaluation profile, routing mode, and
-optional proxy transport. Quick stays inside the Conductor and needs no GSD.
-For Feature and Project, `bgsd-doctor` installs or verifies GSD for every
-selected runtime before worker execution.
+optional proxy transport. Quick needs no GSD, but it is still delegated: the
+Conductor plans it and steers direct-work Pipeline Agents in isolated
+worktrees; the Conductor never edits code itself. For Feature and Project,
+`bgsd-doctor` installs or verifies GSD for every selected runtime before
+worker execution (a hard code gate, not a courtesy check).
 
 | Profile | Build | Evaluate |
 | --- | --- | --- |
