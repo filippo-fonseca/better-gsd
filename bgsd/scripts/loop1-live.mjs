@@ -53,7 +53,8 @@ import { resolve, join } from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireNotProductionBranch } from "./run-live.mjs";
-import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
+import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { harnessForLane } from "./model-contract.mjs";
 
 // ---------------------------------------------------------------------------
 // Live flag helper (retained for compatibility; no longer gates execution)
@@ -145,13 +146,14 @@ export async function liveVerify({
   // Spawn the REAL Tester on the active harness (LOOP-01: reuses v0 contract).
   // claude keeps the exact v0 argv; codex runs `codex exec` with an opus-equiv
   // model. Thread the usage/headless posture through the env too.
-  const hc = resolveHarnessConfig(worktreePath);
-  const harness = activeHarness(worktreePath, { config: hc });
+  const lane = activeLane("evaluate");
+  const harness = harnessForLane(lane);
   const verifySpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-verify",
-    model: resolveModel("opus", harness, hc.models),
-    modelForClaude: false, // the Tester manages its own model on claude
+    model: lane.model,
+    effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs,
   });
   const result = spawnImpl(verifySpawn.cmd, verifySpawn.args, {
@@ -159,7 +161,7 @@ export async function liveVerify({
     stdio: "inherit",
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...verifySpawn.env,
       BGSD_USAGE_TESTING: usageTesting ? "1" : "0",
       BGSD_HEADLESS_UI:   headlessUi   ? "1" : "0",
     },
@@ -265,19 +267,20 @@ export async function liveFix(defects, opts, { worktreePath, item, runId, spawnI
   // Spawn the real /gsd-* fix in the worktree on the active harness (NFR-04: GSD
   // does the work). claude keeps the exact argv (--model-profile drives the GSD
   // model); codex runs `codex exec` with a sonnet-equiv model.
-  const hc = resolveHarnessConfig(worktreePath);
-  const harness = activeHarness(worktreePath, { config: hc });
+  const lane = activeLane("build");
+  const harness = harnessForLane(lane);
   const fixSpawn = buildAgentSpawn({
     harness,
     command: gsdCommand,
-    model: resolveModel("sonnet", harness, hc.models),
-    modelForClaude: false, // GSD picks the model from --model-profile on claude
+    model: lane.model,
+    effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs: ["--worktree", worktreePath, "--effort", effort, "--model-profile", model],
   });
   const result = spawnImpl(
     fixSpawn.cmd,
     fixSpawn.args,
-    { cwd: worktreePath, stdio: "inherit", encoding: "utf8" }
+    { cwd: worktreePath, stdio: "inherit", encoding: "utf8", env: fixSpawn.env }
   );
 
   // NO SILENT GREEN (NFR-06): throw on spawn error or non-zero exit.

@@ -33,7 +33,7 @@ import {
   readUnitPhaseConfig,
   resolvePhasePlan,
 } from "./phaseconfig.mjs";
-import { writeUnitConfig, deriveModelPosture, writeUnitWorktreeConfig } from "./decompose.mjs";
+import { writeUnitConfig, writeUnitWorktreeConfig } from "./decompose.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -168,13 +168,13 @@ test("P09: writeUnitPhaseConfig writes bgsd_phase_config with unit_id", () => {
   }
 });
 
-test("P10: writeUnitPhaseConfig PRESERVES an existing bgsd_unit_posture key", () => {
+test("P10: writeUnitPhaseConfig preserves an existing model assignment", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "bgsd-phase-"));
   const planningDir = join(tmpDir, ".planning");
   try {
     // 1. Write posture first via decompose's writeUnitConfig.
-    const posture = deriveModelPosture(0.8, { fable: true });
-    writeUnitConfig(planningDir, posture, "unit-test-bb");
+    const assignment = { tier: "light", reason: "isolated docs" };
+    writeUnitConfig(planningDir, assignment, "unit-test-bb");
 
     // 2. Write phase config next.
     const phaseConfig = derivePhaseConfig({ difficulty: 0.8, touched: ["src/llm/agent.ts"] });
@@ -182,16 +182,15 @@ test("P10: writeUnitPhaseConfig PRESERVES an existing bgsd_unit_posture key", ()
 
     // 3. Both keys must be present and intact.
     const config = JSON.parse(readFileSync(configPath, "utf8"));
-    assert.ok(config.bgsd_unit_posture, "bgsd_unit_posture must be preserved");
-    assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-bb");
-    assert.equal(config.bgsd_unit_posture.executor.model, "opus"); // executor never Fable
-    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // --fable -> Fable pre-plan
+    assert.ok(config.bgsd_model_assignment, "assignment must be preserved");
+    assert.equal(config.bgsd_model_assignment.unit_id, "unit-test-bb");
+    assert.deepEqual(config.bgsd_model_assignment.assignment, assignment);
     assert.ok(config.bgsd_phase_config, "bgsd_phase_config must be present");
     assert.equal(config.bgsd_phase_config.unit_id, "unit-test-bb");
     assert.equal(config.bgsd_phase_config.ai_integration_phase, true);
 
     const keys = Object.keys(config);
-    assert.ok(keys.includes("bgsd_unit_posture") && keys.includes("bgsd_phase_config"),
+    assert.ok(keys.includes("bgsd_model_assignment") && keys.includes("bgsd_phase_config"),
       "both seams must coexist");
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -207,16 +206,16 @@ test("P11: readUnitPhaseConfig returns both seams written by writeUnitWorktreeCo
   const planningDir = join(tmpDir, ".planning");
   try {
     const unit = { id: "unit-read-aa", difficulty: 0.85, touched: ["src/ui/App.tsx"],
-      model_posture: deriveModelPosture(0.85) };
+      model_assignment: null };
     writeUnitWorktreeConfig(planningDir, unit);
 
-    const { phaseConfig, posture } = readUnitPhaseConfig(planningDir);
+    const { phaseConfig, modelAssignment } = readUnitPhaseConfig(planningDir);
     assert.ok(phaseConfig, "phaseConfig must be present");
     assert.equal(phaseConfig.unit_id, "unit-read-aa");
     assert.equal(phaseConfig.ui_phase, true);
     assert.equal(phaseConfig.code_review, true);
-    assert.ok(posture, "posture must be present");
-    assert.equal(posture.unit_id, "unit-read-aa");
+    assert.ok(modelAssignment, "assignment seam must be present");
+    assert.equal(modelAssignment.unit_id, "unit-read-aa");
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -227,12 +226,12 @@ test("P12: readUnitPhaseConfig returns nulls for a missing/absent config (quick/
   try {
     // No config.json at all.
     const r1 = readUnitPhaseConfig(join(tmpDir, ".planning"));
-    assert.deepEqual(r1, { phaseConfig: null, posture: null });
+    assert.deepEqual(r1, { phaseConfig: null, modelAssignment: null });
     // config.json exists but has no bgsd_* keys.
     const planningDir = join(tmpDir, ".planning");
-    writeUnitConfig(planningDir, deriveModelPosture(0.9), "x"); // writes posture only
+    writeUnitConfig(planningDir, null, "x");
     const r2 = readUnitPhaseConfig(planningDir);
-    assert.ok(r2.posture, "posture present");
+    assert.ok(r2.modelAssignment, "assignment seam present");
     assert.equal(r2.phaseConfig, null, "no phase config -> null");
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -308,7 +307,7 @@ test("P20: CLI --plan prints the resolved phase plan JSON for a GSD unit", () =>
   try {
     writeUnitWorktreeConfig(planningDir, {
       id: "unit-cli-aa", difficulty: 0.6, touched: ["src/components/Nav.tsx"],
-      model_posture: deriveModelPosture(0.6),
+      model_assignment: null,
     });
     const script = join(__dir, "phaseconfig.mjs");
     const r = spawnSync(process.execPath, [script, "--plan", planningDir], { encoding: "utf8" });

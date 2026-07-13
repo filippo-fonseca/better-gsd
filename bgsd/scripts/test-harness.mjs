@@ -18,7 +18,8 @@ import {
   resolveModel,
   buildAgentSpawn,
 } from "./harness.mjs";
-import { LATEST_OPUS } from "./decompose.mjs";
+import { DEFAULT_MODELS } from "./model-contract.mjs";
+const LATEST_OPUS = DEFAULT_MODELS.claude.model;
 
 let passed = 0;
 let failed = 0;
@@ -45,8 +46,8 @@ test("H03 — detectHarness: empty env defaults to claude", () => {
 
 test("H04 — resolveModel maps tiers per harness; claude opus = LATEST_OPUS", () => {
   assert.equal(resolveModel("opus", "claude"), LATEST_OPUS);
-  assert.equal(resolveModel("opus", "codex"), "gpt-5-codex");
-  assert.equal(resolveModel("haiku", "codex"), "gpt-5-mini");
+  assert.equal(resolveModel("opus", "codex"), "gpt-5.5");
+  assert.equal(resolveModel("haiku", "codex"), "gpt-5.4-mini");
   assert.equal(resolveModel("fable", "claude"), "claude-fable-5");
 });
 
@@ -69,14 +70,24 @@ test("H07 — buildAgentSpawn (codex) → codex exec \"<prompt>\" --model … --
   const s = buildAgentSpawn({
     harness: "codex",
     command: "/bgsd-run-agent",
-    model: "gpt-5-codex",
+    model: "gpt-5.5",
     context: { worktree: "/wt", "unit-id": "u1" },
   });
   assert.equal(s.cmd, "codex");
   assert.equal(s.args[0], "exec");
   assert.ok(s.args[1].includes("/bgsd-run-agent"));
   assert.ok(s.args[1].includes("worktree: /wt"));
-  assert.deepEqual(s.args.slice(2), ["--model", "gpt-5-codex", "--sandbox", "workspace-write"]);
+  assert.deepEqual(s.args.slice(2), ["--model", "gpt-5.5", "--config", 'model_reasoning_effort="high"', "--sandbox", "workspace-write"]);
+});
+
+test("H07b — proxy spawn uses Claude Code and scoped proxy configuration", () => {
+  const s = buildAgentSpawn({
+    harness: "claude", command: "/bgsd-run-agent", model: "gpt-5.5", proxy: true,
+    env: { BGSD_PROXY_URL: "http://localhost:8317", BGSD_PROXY_TOKEN: "x", OPENAI_API_KEY: "must-not-inherit" },
+  });
+  assert.equal(s.env.ANTHROPIC_BASE_URL, "http://localhost:8317");
+  assert.equal(s.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "gpt-5.5");
+  assert.equal(s.env.OPENAI_API_KEY, undefined);
 });
 
 test("H08 — resolveHarnessConfig reads BGSD.md harness block + merges defaults", () => {
@@ -91,7 +102,7 @@ test("H08 — resolveHarnessConfig reads BGSD.md harness block + merges defaults
     const cfg = resolveHarnessConfig(root);
     assert.equal(cfg.active, "codex");
     assert.equal(cfg.models.codex.opus, "gpt-5-pro");       // overridden
-    assert.equal(cfg.models.codex.haiku, "gpt-5-mini");     // default preserved
+    assert.equal(cfg.models.codex.haiku, "gpt-5.4-mini");   // default preserved
     assert.equal(cfg.models.claude.opus, LATEST_OPUS);      // other harness intact
   } finally {
     rmSync(root, { recursive: true, force: true });

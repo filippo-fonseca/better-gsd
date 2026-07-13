@@ -64,18 +64,19 @@
  * for the --live path.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { writeUnitWorktreeConfig, unitSpawnModel } from "./decompose.mjs";
-import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
-import { createControlFile } from "./control.mjs";
+import { writeUnitWorktreeConfig } from "./decompose.mjs";
+import { buildAgentSpawn } from "./harness.mjs";
+import { buildLaneForUnit, loadContractForRun, harnessForLane } from "./model-contract.mjs";
+import { createControlFile, updateControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
-import { readConductorSeed } from "./advisor.mjs";
+import { ADVISOR_CHECKPOINTS, readConductorSeed, writeAdvisorDirective } from "./advisor.mjs";
 import { recordUsage } from "./tokens.mjs";
 import { harvestUsage } from "./token-harvest.mjs";
 
@@ -198,11 +199,8 @@ export function requireNotProductionBranch(opts = {}) {
  *   4. Writes the unit's .planning/config.json via the config seams (NFR-04).
  *   5. Writes the unit brief to .planning/bgsd-unit.json.
  *   6. Creates the agent control file under .bgsd/runs/<runId>/control/.
- *   7. (optional) Runs a standalone Fable pre-planner (`claude -p /bgsd-plan-unit
- *      --model claude-fable-5`) when the unit is flagged fablePlan, writing
- *      .planning/fable-plan.md to seed the Opus agent.
- *   8. Launches a headless `claude -p /bgsd-run-agent` Opus Pipeline Agent
- *      (with --seed-plan when a Fable pre-plan was produced).
+ *   7. Copies a Conductor-authored seed plan, when one exists.
+ *   8. Launches the selected build-lane Pipeline Agent.
  *
  * Every child-process step checks status/error and throws on failure — no
  * silent green (NFR-06). The child-process + git boundaries are INJECTABLE so
@@ -221,7 +219,7 @@ export function requireNotProductionBranch(opts = {}) {
  * @returns {Promise<void>}
  */
 export async function liveSpawnFn(unitId, plan, opts = {}) {
-  const spawnImpl = opts.spawnImpl ?? spawnSync;
+  const spawnImpl = opts.spawnImpl ?? spawn;
   const gitImpl   = opts.gitImpl   ?? spawnSync;
   const repoRoot  = opts.repoRoot  ?? REPO_ROOT;
   const bgsdDir   = opts.bgsdDir   ?? join(repoRoot, ".bgsd");
@@ -272,6 +270,16 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   writeUnitWorktreeConfig(planningDir, unit);
 
   // 4. Write the unit brief the Pipeline Agent reads (.planning/bgsd-unit.json).
+  //    run-live runs in a SEPARATE process from session.mjs, so the resolved
+  //    contract (profile/routing/proxy) can't be read from this process's env —
+  //    it would silently revert to claude/fixed/direct. Rehydrate it from the
+  //    run's recorded run.json instead (loadContractForRun), which also keeps
+  //    --proxy fail-closed across the boundary.
+  const runDir = runId ? join(bgsdDir, "runs", runId) : null;
+  const buildLane = buildLaneForUnit(loadContractForRun(runDir), unit.model_assignment);
+  const advisorPath = runId
+    ? writeAdvisorDirective(runId, unitId, { bgsdDir, scale })
+    : null;
   const brief = {
     unit_id:  unitId,
     run_id:   runId,
@@ -280,6 +288,10 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     scope:    unit.scope ?? "",
     criteria: Array.isArray(unit.criteria) ? unit.criteria : [],
     touched:  Array.isArray(unit.touched)  ? unit.touched  : [],
+    model_assignment: buildLane.assignment,
+    model: buildLane.model,
+    advisor_path: advisorPath,
+    advisor_checkpoints: ADVISOR_CHECKPOINTS,
   };
   mkdirSync(planningDir, { recursive: true });
   writeFileSync(join(planningDir, "bgsd-unit.json"), JSON.stringify(brief, null, 2), "utf8");
@@ -289,9 +301,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   // harnesses mid-project (e.g. to dodge a usage limit) is seamless — the next
   // spawn simply follows. Recorded on the control file + brief so we know which
   // harness ran each unit; the durable .bgsd/ state is harness-independent.
-  const harnessConfig = resolveHarnessConfig(repoRoot);
-  const harness = activeHarness(repoRoot, { config: harnessConfig });
-  const models = harnessConfig.models;
+  const harness = harnessForLane(buildLane);
 
   // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
   const controlPath = join(bgsdDir, "runs", runId, "control", `${unitId}.json`);
@@ -304,67 +314,38 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     phase:    "plan",
     status:   "running",
     harness,
+    model: buildLane.model,
+    model_assignment: buildLane.assignment,
   });
 
-  // The concrete model for this unit's worktree subprocess, resolved for the
-  // active harness (opus-tier → the harness's opus equivalent). The executor is
-  // NEVER Fable (too token-heavy on the highest-VOLUME role): Opus by default,
-  // or Sonnet on trivial (< 0.2) units when --sonnet is opted in.
-  const spawnTier =
-    unit?.model_posture?.spawnModel ??
-    unitSpawnModel(typeof unit?.difficulty === "number" ? unit.difficulty : 0);
-  const spawnModel = resolveModel(spawnTier, harness, models);
+  // Fixed routing uses the session build model. Adaptive routing uses only the
+  // Conductor's persisted unit assignment and otherwise fails safe to heavy.
+  const spawnModel = buildLane.model;
+  log(`liveSpawnFn: model ${spawnModel} (${buildLane.assignment.tier}; ${buildLane.assignment.reason})`);
 
-  // 6. Fable pre-plan (opt-in). OFF by default — the plain path is normal GSD on
-  //    Opus. When the unit is flagged fablePlan (via --fable or a Conductor opt-in),
-  //    run a STANDALONE `claude -p --model claude-fable-5` planner that writes a plan
-  //    markdown into the worktree. That markdown seeds the Opus Pipeline Agent below,
-  //    so Fable-grade planning feeds the GSD workflow without running the whole
-  //    token-heavy subprocess on Fable. Fully injectable + testable via opts.spawnImpl.
+  // 6. The live Conductor/Advisor owns seed planning in v2. There is no separate
+  //    pre-planner subprocess. If the Conductor authored a seed, copy it into the
+  //    worktree and hand it to the Pipeline Agent.
   let seedPlanPath = null;
 
-  // 6a. Fable-as-Advisor: if the Conductor (running on Fable) authored this
-  //     unit's seed itself, use it directly and SKIP the redundant standalone
-  //     pre-planner subprocess — Kiwi already spent Fable's reasoning on the
+  // 6a. The live Conductor owns advisory reasoning and can author a durable seed
   //     plan. The seed lives at .bgsd/runs/<runId>/seeds/<unitId>.md.
   const conductorSeed = runId ? readConductorSeed(runId, unitId, { bgsdDir }) : null;
   if (conductorSeed) {
     seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
     mkdirSync(dirname(seedPlanPath), { recursive: true });
     copyFileSync(conductorSeed, seedPlanPath);
-    log(`liveSpawnFn: using Conductor-authored Fable seed for unit "${unitId}" → ${seedPlanPath} (advisor mode; pre-planner skipped)`);
-  } else if (unit?.model_posture?.fablePlan) {
-    seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
-    log(`liveSpawnFn: running Fable pre-planner for unit "${unitId}" → ${seedPlanPath} (harness: ${harness})`);
-    const planSpawn = buildAgentSpawn({
-      harness,
-      command: "/bgsd-plan-unit",
-      model: resolveModel("fable", harness, models),
-      context: { worktree: wtPath, "unit-id": unitId, "run-id": runId, out: seedPlanPath },
-    });
-    const planT0 = Date.now();
-    const planResult = spawnImpl(planSpawn.cmd, planSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
-    if (planResult?.error) {
-      throw new Error(`Fable pre-planner failed to spawn for unit "${unitId}": ${planResult.error.message}`);
-    }
-    if (planResult?.status !== 0) {
-      throw new Error(
-        `Fable pre-planner exited non-zero for unit "${unitId}" (exit ${planResult?.status}): ${planResult?.stderr ?? ""}`
-      );
-    }
-    recordSpawnUsage(bgsdDir, runId, {
-      agentId: unitId, unitId, role: "fable-plan", harness,
-      model: resolveModel("fable", harness, models), effort: "high",
-    }, wtPath, planT0);
+    log(`liveSpawnFn: using Conductor-authored seed for unit "${unitId}" → ${seedPlanPath}`);
   }
 
   // 7. Spawn the headless Pipeline Agent on the active harness (NFR-06: throw on
-  //    non-zero/error). If a Fable pre-plan was written, pass it via seed-plan so
-  //    the planner builds on it rather than planning from scratch.
+  //    non-zero/error). A Conductor-authored seed is passed to avoid redundant planning.
   const agentSpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-run-agent",
     model: spawnModel,
+    effort: buildLane.effort,
+    proxy: buildLane.transport === "proxy",
     context: {
       worktree: wtPath,
       "unit-id": unitId,
@@ -376,11 +357,30 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     },
   });
   const agentT0 = Date.now();
-  const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8" });
-  recordSpawnUsage(bgsdDir, runId, {
-    agentId: unitId, unitId, role: "executor", harness, model: spawnModel,
-    effort: unit?.model_posture?.executor?.effort ?? "xhigh",
-  }, wtPath, agentT0);
+  const usageMeta = { agentId: unitId, unitId, role: "executor", harness, model: spawnModel, effort: buildLane.effort };
+
+  // The real pipeline must stay asynchronous so the scheduler keeps polling
+  // control files and the Conductor can revise advisor directives mid-flight.
+  // Injected test spawns retain the synchronous result shape for deterministic
+  // assertions without launching subprocesses.
+  if (!opts.spawnImpl) {
+    const child = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", env: agentSpawn.env });
+    child.once("error", (error) => {
+      recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
+      try { updateControlFile(controlPath, { status: "failed", phase: "failed", progress: { iteration: 0, max_iterations: 5, note: `spawn error: ${error.message}` } }); } catch (_) { /* surfaced by scheduler */ }
+      process.stderr.write(`[run-live] Pipeline Agent failed to spawn for ${unitId}: ${error.message}\n`);
+    });
+    child.once("exit", (status, signal) => {
+      recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
+      if (status !== 0) {
+        try { updateControlFile(controlPath, { status: "failed", phase: "failed", progress: { iteration: 0, max_iterations: 5, note: `agent exited ${status ?? signal ?? "unknown"}` } }); } catch (_) { /* surfaced by scheduler */ }
+      }
+    });
+    return;
+  }
+
+  const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8", env: agentSpawn.env });
+  recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
   if (agentResult?.error) {
     throw new Error(`${agentSpawn.cmd} ${agentSpawn.args[0]} /bgsd-run-agent failed to spawn for unit "${unitId}": ${agentResult.error.message}`);
   }

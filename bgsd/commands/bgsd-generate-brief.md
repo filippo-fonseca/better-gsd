@@ -86,11 +86,11 @@ In order, with any empty section omitted (no hollow headers):
    ledger row and `run.json`, and assembles the skeleton brief. This part is
    pure and needs no model.
 
-2. **Synthesise on Sonnet when the raw docs are long or messy.** The skeleton
+2. **Use the live Conductor for synthesis when raw docs are long or messy.** The skeleton
    quotes clipped bodies verbatim; when the underlying planning / `RUN.md` /
-   `AGENTS.md` prose is long or noisy, the Conductor spawns a **Sonnet**
+   `AGENTS.md` prose is long or noisy, the Conductor delegates according to the session contract;
    subagent to rewrite those into a tight, readable narrative before the brief
-   lands. Summarisation is cheap: no Fable or Opus is warranted here, matching
+   lands. Summarisation preserves the selected provider and billing policy, matching
    bgsd's model doctrine (reserve the heavy planners for planning, not prose).
 
 3. **Report in persona.** Confirm the run id briefed and the path written, e.g.:

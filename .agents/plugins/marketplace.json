@@ -1,0 +1,20 @@
+{
+  "name": "better-gsd",
+  "interface": {
+    "displayName": "better-gsd"
+  },
+  "plugins": [
+    {
+      "name": "bgsd",
+      "source": {
+        "source": "local",
+        "path": "./bgsd"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

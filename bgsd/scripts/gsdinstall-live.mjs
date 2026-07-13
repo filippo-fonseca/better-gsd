@@ -67,7 +67,12 @@ export const GSD_NPM_SPEC = `${GSD_NPM_PACKAGE}@latest`;
  * Code runtime and `--global` picks the global config dir, so there are no
  * prompts. Re-running it updates to latest (install === update).
  */
-export const GSD_INSTALL_ARGS = ["-y", GSD_NPM_SPEC, "--claude", "--global"];
+export const GSD_RUNTIMES = Object.freeze(["claude", "codex"]);
+export function gsdInstallArgs(runtime = "claude") {
+  if (!GSD_RUNTIMES.includes(runtime)) throw new Error(`unsupported GSD runtime: ${runtime}`);
+  return ["-y", GSD_NPM_SPEC, `--${runtime}`, "--global"];
+}
+export const GSD_INSTALL_ARGS = gsdInstallArgs("claude");
 
 /**
  * Known gsd command files the installer writes under the global config dir. We
@@ -101,6 +106,16 @@ export function resolveClaudeConfigDir({ env = process.env, home = homedir } = {
   return join(home(), ".claude");
 }
 
+export function resolveCodexConfigDir({ env = process.env, home = homedir } = {}) {
+  const fromEnv = env && env.CODEX_HOME;
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return fromEnv;
+  return join(home(), ".codex");
+}
+
+export function resolveRuntimeConfigDir(runtime = "claude", opts = {}) {
+  return runtime === "codex" ? resolveCodexConfigDir(opts) : resolveClaudeConfigDir(opts);
+}
+
 // ---------------------------------------------------------------------------
 // DETECT (read-only, filesystem-based — no guard needed)
 // ---------------------------------------------------------------------------
@@ -123,8 +138,9 @@ export function resolveClaudeConfigDir({ env = process.env, home = homedir } = {
  */
 export function isGsdInstalled(opts = {}) {
   const exists = opts.exists ?? existsSync;
+  const runtime = opts.runtime ?? "claude";
   const configDir =
-    opts.configDir ?? resolveClaudeConfigDir({ env: opts.env, home: opts.home });
+    opts.configDir ?? resolveRuntimeConfigDir(runtime, { env: opts.env, home: opts.home });
   try {
     return GSD_COMMAND_MARKERS.some((rel) => {
       try {
@@ -154,22 +170,23 @@ export function isGsdInstalled(opts = {}) {
  *        injectable spawnSync (tests pass a stub so no real npx runs)
  * @param {"install"|"update"} [which="install"]
  */
-function runGsdInstaller({ log, spawn } = {}, which = "install") {
+function runGsdInstaller({ log, spawn, runtime = "claude" } = {}, which = "install") {
   const say = log ?? (() => {});
   const run = spawn ?? spawnSync;
+  const args = gsdInstallArgs(runtime);
   say(
     which === "update"
-      ? `updating ${GSD_NPM_PACKAGE} to latest (npx ${GSD_INSTALL_ARGS.join(" ")})`
-      : `installing ${GSD_NPM_PACKAGE} (npx ${GSD_INSTALL_ARGS.join(" ")})`
+      ? `updating ${GSD_NPM_PACKAGE} for ${runtime} (npx ${args.join(" ")})`
+      : `installing ${GSD_NPM_PACKAGE} for ${runtime} (npx ${args.join(" ")})`
   );
-  const r = run("npx", GSD_INSTALL_ARGS, { stdio: "inherit", encoding: "utf8" });
+  const r = run("npx", args, { stdio: "inherit", encoding: "utf8" });
   if (r && r.error) {
     throw new Error(`npx ${GSD_NPM_SPEC} failed to spawn: ${r.error.message}`);
   }
   const code = r ? r.status ?? 1 : 1;
   if (code !== 0) {
     throw new Error(
-      `npx ${GSD_NPM_SPEC} --claude --global ${which} failed (exit ${code})`
+      `npx ${GSD_NPM_SPEC} --${runtime} --global ${which} failed (exit ${code})`
     );
   }
 }
@@ -196,11 +213,11 @@ export function updateGsd(opts = {}) {
 // ---------------------------------------------------------------------------
 
 /** Build the real deps for ensureGsd. Detection + mutations all use the real fs/npx. */
-export function liveDeps({ log, updatePolicy, configDir } = {}) {
+export function liveDeps({ log, updatePolicy, configDir, runtime = "claude" } = {}) {
   return {
-    isInstalled: () => isGsdInstalled({ configDir }),
-    install: () => installGsd({ log }),
-    update: () => updateGsd({ log }),
+    isInstalled: () => isGsdInstalled({ configDir, runtime }),
+    install: () => installGsd({ log, runtime }),
+    update: () => updateGsd({ log, runtime }),
     log: log ?? (() => {}),
     updatePolicy: updatePolicy ?? DEFAULT_UPDATE_POLICY,
   };
@@ -211,8 +228,14 @@ export function liveDeps({ log, updatePolicy, configDir } = {}) {
  * real npx installer. Called at the start of every /bgsd-sesh so the user's
  * gsd-core engine is never missing or stale, automatically.
  */
-export function ensureGsdLive({ log, updatePolicy, configDir } = {}) {
-  return ensureGsd(liveDeps({ log, updatePolicy, configDir }));
+export function ensureGsdLive({ log, updatePolicy, configDir, runtime = "claude" } = {}) {
+  return ensureGsd(liveDeps({ log, updatePolicy, configDir, runtime }));
+}
+
+export function ensureGsdRuntimesLive(runtimes, opts = {}) {
+  const result = {};
+  for (const runtime of [...new Set(runtimes)]) result[runtime] = ensureGsdLive({ ...opts, runtime });
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +248,11 @@ function readPolicyArg() {
   return DEFAULT_UPDATE_POLICY;
 }
 
+function readRuntimeArg() {
+  const i = process.argv.indexOf("--runtime");
+  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : "claude";
+}
+
 /** --ensure (or legacy --live) actually performs install/update; default previews. */
 function isEnsureRequested() {
   return process.argv.includes("--ensure") || process.argv.includes("--live");
@@ -233,13 +261,15 @@ function isEnsureRequested() {
 export function main() {
   const out = (s) => process.stdout.write(s);
   const updatePolicy = readPolicyArg();
-  const configDir = resolveClaudeConfigDir();
+  const runtime = readRuntimeArg();
+  const configDir = resolveRuntimeConfigDir(runtime);
 
   if (!isEnsureRequested()) {
-    const installed = isGsdInstalled({ configDir });
+    const installed = isGsdInstalled({ configDir, runtime });
     const actions = gsdEnsurePlan({ installed, updatePolicy });
     out(`\nbgsd-gsdinstall preview — package: ${GSD_NPM_PACKAGE}\n`);
-    out(`  install command:     npx ${GSD_INSTALL_ARGS.join(" ")}\n`);
+    out(`  runtime:             ${runtime}\n`);
+    out(`  install command:     npx ${gsdInstallArgs(runtime).join(" ")}\n`);
     out(`  config dir:          ${configDir}\n`);
     out(`  currently installed: ${installed ? "yes" : "no"}\n`);
     out(`  update policy:       ${updatePolicy}\n`);
@@ -248,7 +278,7 @@ export function main() {
     return;
   }
 
-  const res = ensureGsdLive({ log: (m) => out(`  ${m}\n`), updatePolicy, configDir });
+  const res = ensureGsdLive({ log: (m) => out(`  ${m}\n`), updatePolicy, configDir, runtime });
   out(`\nbgsd-gsdinstall complete — package: ${GSD_NPM_PACKAGE}\n`);
   out(`  installed:      ${res.installed ? "yes" : "no"}\n`);
   out(`  performed:      ${res.performed.length ? res.performed.join(", ") : "(none)"}\n`);

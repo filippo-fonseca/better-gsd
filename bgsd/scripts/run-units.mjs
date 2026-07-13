@@ -3,7 +3,7 @@
  * run-units.mjs — per-run unit persistence (SPAWN-04 threading helper)
  *
  * The live spawn boundary (liveSpawnFn in run-live.mjs) needs the FULL decomposed
- * unit (title, scope, criteria, touched, difficulty, model_posture, ...) plus the
+ * unit (title, scope, criteria, touched, difficulty, model_assignment, ...) plus the
  * run's scale to write .planning/config.json + .planning/bgsd-unit.json inside a
  * worktree. runLifecycle only records unit IDS into run.json, and the injected
  * spawnFn signature is (unitId, plan) — it does not carry the unit blob.

@@ -35,7 +35,7 @@
    | "stop UI-testing quick fixes" | `verification.usage_testing` → `false` |
    | "default the pipeline to thorough" | `modes.pipeline` → `"thorough"` |
    | "verifiers should be fast" | `modes.verifier` → `"fast"` |
-   | "never use haiku for verification" | `model_posture.verifier.model` → (a stronger model) |
+   | "always evaluate with Claude" | `model_contract.evaluate` → Claude evaluation lane |
    | "pin the base branch to main" | `base_branch` → `"main"` |
    | "rename yourself to Jarvis" / "call yourself X" | `conductor.name` → `"Jarvis"` |
    | "change your emoji to 🤖" / "use this emoji: …" | `conductor.emoji` → `"🤖"` |

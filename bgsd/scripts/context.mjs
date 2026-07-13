@@ -72,7 +72,8 @@ import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { activeHarness, resolveHarnessConfig, resolveModel, buildAgentSpawn } from "./harness.mjs";
+import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { harnessForLane } from "./model-contract.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -632,13 +633,14 @@ export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   // Re-launch on the active harness (claude: `claude -p /bgsd-run-agent …`;
   // codex: `codex exec …`). The relaunched pipeline agent runs on the opus-equiv.
   const relaunchRoot = worktreePath ?? process.cwd();
-  const hc = resolveHarnessConfig(relaunchRoot);
-  const harness = activeHarness(relaunchRoot, { config: hc });
+  const lane = activeLane("build");
+  const harness = harnessForLane(lane);
   const relaunchSpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-run-agent",
-    model: resolveModel("opus", harness, hc.models),
-    modelForClaude: false, // matches the original relaunch argv (no --model)
+    model: lane.model,
+    effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs: [
       "--worktree", worktreePath ?? "",
       "--agent-id", agentId,
@@ -648,7 +650,7 @@ export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   const result = spawnSync(
     relaunchSpawn.cmd,
     relaunchSpawn.args,
-    { cwd: worktreePath ?? process.cwd(), stdio: "inherit" }
+    { cwd: worktreePath ?? process.cwd(), stdio: "inherit", env: relaunchSpawn.env }
   );
 
   // spawnSync sets result.error when the binary is missing (e.g. the harness CLI

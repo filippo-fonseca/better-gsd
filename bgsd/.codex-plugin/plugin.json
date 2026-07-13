@@ -1,0 +1,30 @@
+{
+  "name": "bgsd",
+  "version": "2.0.0",
+  "description": "Model-agnostic conductor for subscription-backed Claude and Codex GSD pipelines.",
+  "author": {
+    "name": "Filippo Fonseca",
+    "email": "filifonsecacagnazzo@gmail.com",
+    "url": "https://github.com/filippo-fonseca"
+  },
+  "homepage": "https://github.com/filippo-fonseca/better-gsd",
+  "repository": "https://github.com/filippo-fonseca/better-gsd",
+  "license": "MIT",
+  "keywords": ["gsd", "codex", "claude", "orchestration", "verification"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "better-gsd",
+    "shortDescription": "Conduct verified Claude and Codex pipelines",
+    "longDescription": "A model-agnostic conductor that plans with your live session and runs isolated GSD build and evaluation lanes on your existing subscriptions.",
+    "developerName": "Filippo Fonseca",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/filippo-fonseca/better-gsd",
+    "defaultPrompt": [
+      "Start a BGSD session for this repository.",
+      "Check whether BGSD is configured correctly.",
+      "Run a verified feature build with hybrid agents."
+    ],
+    "brandColor": "#16A34A"
+  }
+}

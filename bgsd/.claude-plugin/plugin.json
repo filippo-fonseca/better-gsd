@@ -1,8 +1,8 @@
 {
   "name": "bgsd",
   "displayName": "better-gsd",
-  "version": "0.11.0",
-  "description": "Autonomous, self-verifying orchestration layer on top of GSD: talk to the Conductor, it handles everything.",
+  "version": "2.0.0",
+  "description": "Model-agnostic conductor for subscription-backed Claude and Codex GSD pipelines.",
   "author": {
     "name": "Filippo Fonseca",
     "url": "https://github.com/filippo-fonseca/better-gsd"

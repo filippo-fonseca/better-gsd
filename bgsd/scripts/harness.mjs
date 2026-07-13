@@ -29,7 +29,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { defaultBgsdConfig, parseBgsdMd } from "./init.mjs";
-import { LATEST_OPUS } from "./decompose.mjs";
+import { DEFAULT_MODELS } from "./model-contract.mjs";
+import { proxyEnvForClaude } from "./proxy.mjs";
+import { contractFromEnv, laneFor, scrubApiKeyEnv } from "./model-contract.mjs";
 
 /** The harnesses bgsd knows how to drive. */
 export const HARNESSES = Object.freeze(["claude", "codex"]);
@@ -41,7 +43,7 @@ export const HARNESSES = Object.freeze(["claude", "codex"]);
  * change. Claude's opus tier reuses the single LATEST_OPUS source of truth.
  */
 export const DEFAULT_HARNESS_MODELS = Object.freeze({
-  claude: { opus: LATEST_OPUS, sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
+  claude: { opus: DEFAULT_MODELS.claude.model, sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
   // Codex equivalents (GPT-5 family, July 2026). Tier mapping by price + SWE-bench:
   //   fable/opus → gpt-5.5 ($5/MTok input, OpenAI's top tier; no higher model exists)
   //   sonnet     → gpt-5.4 ($2.50/MTok input, balanced speed+quality mid-tier)
@@ -132,6 +134,11 @@ export function activeHarness(repoRoot, { env = process.env, config } = {}) {
   return detectHarness(env);
 }
 
+/** Resolve the frozen v2 runtime lane. Legacy config remains a fallback only. */
+export function activeLane(role = "build", { env = process.env, contract } = {}) {
+  return laneFor(contract ?? contractFromEnv(env), role);
+}
+
 // ---------------------------------------------------------------------------
 // Model resolution
 // ---------------------------------------------------------------------------
@@ -180,6 +187,7 @@ function flagPairs(context = {}) {
 function codexPrompt({ command, context = {}, extraArgs = [], instructions }) {
   const lines = [];
   lines.push(`Run the bgsd "${command}" workflow for this worktree.`);
+  lines.push("This is a Codex-native execution. Use the installed bgsd and gsd-* skills directly; Claude slash commands are labels for the workflow, not shell syntax.");
   const ctxEntries = Object.entries(context).filter(([, v]) => v !== null && v !== undefined);
   if (ctxEntries.length) {
     lines.push("", "Context:");
@@ -223,7 +231,15 @@ export function buildAgentSpawn({
   modelForClaude = true,
   instructions,
   sandbox = "workspace-write",
+  effort = "high",
+  proxy = false,
+  env = process.env,
 }) {
+  const cleanEnv = scrubApiKeyEnv(env);
+  const childEnv = proxy ? proxyEnvForClaude(cleanEnv, model) : cleanEnv;
+  if (proxy && harness !== "claude") {
+    throw new Error("Proxy transport requires the Claude host harness");
+  }
   if (harness === "codex") {
     return {
       cmd: "codex",
@@ -231,8 +247,10 @@ export function buildAgentSpawn({
         "exec",
         codexPrompt({ command, context, extraArgs, instructions }),
         ...(model ? ["--model", model] : []),
+        ...(effort ? ["--config", `model_reasoning_effort=\"${effort}\"`] : []),
         "--sandbox", sandbox,
       ],
+      env: childEnv,
     };
   }
   // Default: Claude Code.
@@ -244,6 +262,11 @@ export function buildAgentSpawn({
       ...flagPairs(context),
       ...extraArgs,
     ],
+    env: {
+      ...childEnv,
+      ...(model ? { CLAUDE_CODE_SUBAGENT_MODEL: model } : {}),
+      ...(effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort, CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } : {}),
+    },
   };
 }
 

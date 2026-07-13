@@ -2,7 +2,7 @@
 /**
  * phaseconfig.mjs — Phase 7: per-unit dynamic GSD phase selection
  *
- * Today bgsd tunes model + effort per work unit (bgsd_unit_posture, written by
+ * BGSD records an optional adaptive assignment per work unit (bgsd_model_assignment, written by
  * writeUnitConfig in decompose.mjs). This module adds the orthogonal axis: WHICH
  * GSD phases run for a given unit. A trivial unit can skip research/plan-check/
  * code-review; a UI-heavy unit can add the UI phase; an AI unit can add the
@@ -17,7 +17,7 @@
  *   calls (NFR-05).
  * - Config seam only: phase toggles are written under the bgsd_phase_config key
  *   in .planning/config.json. Every other key is preserved — crucially the
- *   sibling bgsd_unit_posture written by writeUnitConfig is never clobbered.
+ *   sibling bgsd_model_assignment written by writeUnitConfig is never clobbered.
  *   Zero edits to vendored GSD (NFR-03/04).
  * - Atomic writes: temp file + rename, mirroring control.mjs writeAtomic, so the
  *   config file is never half-written.
@@ -107,7 +107,7 @@ export function derivePhaseConfig(unit = {}) {
  * Write the per-unit GSD phase config to a worktree's .planning/config.json.
  *
  * Sets ONLY the bgsd_phase_config key; preserves all other keys — in
- * particular it must not clobber the sibling bgsd_unit_posture written by
+ * particular it must not clobber the sibling bgsd_model_assignment written by
  * decompose.mjs's writeUnitConfig. Writes atomically (temp file + rename, like
  * control.mjs writeAtomic) so the config file is never half-written.
  * Zero edits to vendored GSD (NFR-03/04).
@@ -131,7 +131,7 @@ export function writeUnitPhaseConfig(planningDir, phaseConfig, unitId) {
   }
 
   // Set phase config under the bgsd_phase_config key (config seam, NFR-04).
-  // Every other key — including bgsd_unit_posture — is preserved.
+  // Every other key — including bgsd_model_assignment — is preserved.
   config.bgsd_phase_config = { unit_id: unitId, ...phaseConfig };
 
   // Atomic write: temp file + rename (POSIX-atomic, mirrors control.mjs).
@@ -153,20 +153,20 @@ export function writeUnitPhaseConfig(planningDir, phaseConfig, unitId) {
  * phaseConfig comes back null — the signal for the light "direct fix" path.
  *
  * @param {string} planningDir   path to the worktree's .planning/ directory
- * @returns {{ phaseConfig: object|null, posture: object|null }}
+ * @returns {{ phaseConfig: object|null, modelAssignment: object|null }}
  */
 export function readUnitPhaseConfig(planningDir) {
   const configPath = join(planningDir, "config.json");
-  if (!existsSync(configPath)) return { phaseConfig: null, posture: null };
+  if (!existsSync(configPath)) return { phaseConfig: null, modelAssignment: null };
   let config;
   try {
     config = JSON.parse(readFileSync(configPath, "utf8"));
   } catch (_) {
-    return { phaseConfig: null, posture: null };
+    return { phaseConfig: null, modelAssignment: null };
   }
   return {
     phaseConfig: config.bgsd_phase_config ?? null,
-    posture: config.bgsd_unit_posture ?? null,
+    modelAssignment: config.bgsd_model_assignment ?? null,
   };
 }
 

@@ -24,7 +24,7 @@ next assembled (v2 Conductor)
   → PASS:   integration_done → advance to User Review Gate (Phase 3)
   → ERROR / BLOCKED: integration_blocked (fix NEVER called; NFR-06)
   → FAIL:
-      → LOOP2-03: dispatch parallel fix agents (Sonnet/medium)
+      → LOOP2-03: dispatch build-lane fix agents using the session contract
                   in worktrees off next
                → re-merge via conflict.mjs (dependency-ordered)
                → re-verify (goto LOOP2-02)

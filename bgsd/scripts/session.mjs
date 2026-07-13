@@ -61,6 +61,7 @@ import { fileURLToPath } from "node:url";
 
 import { classifyHeuristic } from "./classify-item.mjs";
 import { recallLive } from "./recall.mjs";
+import { resolveModelContract, exportContractEnv } from "./model-contract.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -197,16 +198,19 @@ export function lengthBand(prompt) {
  *   - never turns a needs-clarification (scale=null) into a silent guess,
  *   - the deterministic heuristic is ALWAYS computed first and is the fallback.
  *
- * Until activated this throws; classifyScale catches and keeps the heuristic.
+ * Until activated this is a NO-OP: it returns null so the heuristic scale stands
+ * as the floor. It must never throw — a dormant seam can't be allowed to crash a
+ * session even if `refine:true` is passed.
  *
  * @param {string} _prompt
  * @param {{ scale: string }} _heuristicResult
- * @returns {Promise<{ scale: string }>}
+ * @returns {Promise<{ scale: string } | null>}
  */
 // eslint-disable-next-line no-unused-vars
 export async function refineScaleWithModel(_prompt, _heuristicResult) {
   // --- HAIKU SEAM: replace with a real one-step nudge call. ---
-  throw new Error("refineScaleWithModel: Haiku scale-refiner seam not yet activated (Part 11 TODO)");
+  // Not yet activated → no model nudge; the heuristic classification wins.
+  return null;
 }
 
 /**
@@ -231,8 +235,27 @@ function clampOneStep(heuristicScale, proposedScale) {
 // ---------------------------------------------------------------------------
 
 /**
- * Deterministic scale classifier. Maps a prompt + mode to quick | feature |
- * project (or a clarify action). Zero required model calls.
+ * Extract an explicit natural-language scale instruction from a request. This
+ * intentionally recognizes only imperative phrasing so ordinary descriptions
+ * like "a quick fix" remain available to Conductor sizing heuristics.
+ */
+export function naturalLanguageMode(prompt) {
+  const text = String(prompt ?? "").toLowerCase();
+  const matches = new Set();
+  const patterns = [
+    /\b(?:make|treat|run|use|handle|classify|take|keep)\s+(?:this|it|the\s+(?:task|work|request))?\s*(?:(?:as|like|in)\s+)?(?:a\s+)?(quick|feature|project)(?:\s+(?:mode|run|task|workflow))?\b/g,
+    /\b(?:this|it|the\s+(?:task|work|request))\s+(?:needs?\s+to\s+be|should\s+be|must\s+be)\s+(?:a\s+)?(quick|feature|project)\b/g,
+    /\b(quick|feature|project)\s+(?:mode|workflow|run)\b/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) matches.add(match[1]);
+  }
+  return matches.size === 1 ? [...matches][0] : null;
+}
+
+/**
+ * Deterministic Conductor scale classifier. Maps a prompt + mode to quick |
+ * feature | project (or a clarify action). Zero required model calls.
  *
  * @param {object} input
  * @param {string} input.prompt          The user's request.
@@ -249,6 +272,7 @@ function clampOneStep(heuristicScale, proposedScale) {
  *   unitCountEstimate: number,
  *   depthBreadth: number,
  *   confidence: "forced"|"heuristic"|"model",
+ *   selectionSource?: "flag"|"natural-language"|"conductor-auto",
  *   clarification_question?: string,
  *   modelSeam?: object,
  * }>}
@@ -261,15 +285,22 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
     throw new Error(`classifyScale: unknown mode "${mode}". Valid: ${SESSION_MODES.join(", ")}`);
   }
 
-  // Forced modes short-circuit the heuristic (flag overrides — §3.1.3 / §5).
+  // CLI flags are the highest-precedence explicit override.
   if (mode === "quick") {
-    return forcedResult("quick", mode, prompt);
+    return forcedResult("quick", mode, prompt, "flag");
   }
   if (mode === "feature") {
-    return forcedResult("feature", mode, prompt);
+    return forcedResult("feature", mode, prompt, "flag");
   }
   if (mode === "project") {
-    return forcedResult("project", mode, prompt);
+    return forcedResult("project", mode, prompt, "flag");
+  }
+
+  // A clear in-prompt instruction is the next-precedence override. Ambiguous
+  // or conflicting instructions return null and leave sizing to the Conductor.
+  const requestedMode = naturalLanguageMode(prompt);
+  if (requestedMode) {
+    return forcedResult(requestedMode, mode, prompt, "natural-language");
   }
 
   // --- auto mode: compute the cheap signals (§3.1) ---
@@ -296,9 +327,9 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
       unitCountEstimate,
       depthBreadth,
       confidence: "heuristic",
+      selectionSource: "conductor-auto",
       clarification_question:
-        "I can't tell the size of this yet. Is it a quick fix, a feature, or a whole project? " +
-        "Tell me what changes, where, and what 'done' looks like.",
+        "Present the native Quick, Feature, and Project selector with the request's scope summary; do not guess.",
     };
   }
 
@@ -336,6 +367,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
     unitCountEstimate,
     depthBreadth,
     confidence: "heuristic",
+    selectionSource: "conductor-auto",
   };
 
   // --- MODEL SEAM (optional, marked): one-step nudge of a BORDERLINE case. ---
@@ -365,7 +397,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
  * @param {string} mode
  * @param {string} prompt
  */
-function forcedResult(scale, mode, prompt) {
+function forcedResult(scale, mode, prompt, selectionSource) {
   return {
     scale,
     action: "route",
@@ -381,6 +413,7 @@ function forcedResult(scale, mode, prompt) {
     unitCountEstimate: clauseCount(prompt),
     depthBreadth: distinctSurfaces(prompt),
     confidence: "forced",
+    selectionSource,
   };
 }
 
@@ -401,6 +434,9 @@ export function explainScale(result) {
   const units = `~${result.unitCountEstimate} unit${result.unitCountEstimate === 1 ? "" : "s"}`;
   const surfaces = `${result.depthBreadth} surface${result.depthBreadth === 1 ? "" : "s"}`;
   if (result.confidence === "forced") {
+    if (result.selectionSource === "natural-language") {
+      return `scale set to ${result.scale} from the explicit natural-language instruction (signals read ${units}, ${surfaces}).`;
+    }
     return `scale forced to ${result.scale} by the --${result.scale} flag (signals read ${units}, ${surfaces}).`;
   }
   if (result.action === "clarify") {
@@ -422,9 +458,10 @@ export function explainScale(result) {
 /**
  * Map a resolved scale to the ordered engine plan (§4 depth-routing table).
  *
- * INVARIANT: `verified` is ALWAYS true. Quick STILL VERIFIES — Loop 1 runs and
- * quick can only reach `done` on a Tester PASS. Verification is never skipped
- * at any scale. `discuss` is true ONLY for project.
+ * INVARIANT: `verified` is ALWAYS true. Quick STILL VERIFIES — its direct
+ * Pipeline Agents can only reach `done` on a Tester PASS. The Conductor plans,
+ * reviews evidence, and steers but does not edit session code. `discuss` is
+ * true ONLY for project.
  *
  * @param {string} scale  one of SCALES.
  * @param {object} [ctx]
@@ -445,11 +482,14 @@ export function buildDepthPlan(scale, { prompt } = {}) {
 
   if (scale === "quick") {
     stages.push(
-      { id: "classify", engine: "classify-item.mjs", entry: "classifyItem", depth: "single" },
-      { id: "route", engine: "route-item.mjs", entry: "routeItem", depth: "single" },
-      { id: "execute", engine: "run-live.mjs", entry: "liveSpawnFn", depth: "single-agent" },
-      // VERIFY→FIX (Loop 1) — NEVER skipped, even for quick (§4.1).
-      { id: "verify_fix", engine: "loop1.mjs", entry: "runLoop1", depth: "single-worktree" },
+      { id: "conductor_plan", engine: "Conductor", entry: "authorQuickPlan", depth: "direct" },
+      { id: "quick_decompose", engine: "Conductor", entry: "defineQuickUnits", depth: "adaptive-small" },
+      { id: "quick_fanout", engine: "worktree.mjs", entry: "planWorktrees", depth: "adaptive-small" },
+      { id: "quick_workers", engine: "Pipeline Agent", entry: "executeDirectUnits", depth: "adaptive-no-gsd" },
+      { id: "conductor_review", engine: "Conductor", entry: "reviewQuickEvidence/steer", depth: "advisory" },
+      // Quick still verifies, but direct workers apply repairs; GSD is never invoked.
+      { id: "verify_fix", engine: "Pipeline Agent", entry: "runDirectVerifyFix", depth: "per-worktree-no-gsd" },
+      { id: "merge", engine: "conflict.mjs", entry: "preCheckMerge/executeMerges", depth: "light" },
     );
     return { scale, discuss: false, verified: true, stages };
   }
@@ -577,6 +617,11 @@ export function defaultInboxReader(inboxDir) {
  * ones live behind the *-live.mjs requireLiveFlag guards and are wired in U3):
  * @param {Function} [opts.verifyFn]        async () => { verdict, defects }
  * @param {Function} [opts.fixFn]           async (defects, {effort,model}) => void
+ * @param {Function} [opts.quickPlanFn]     async () => compact Conductor plan
+ * @param {Function} [opts.quickDecomposeFn] async () => one or more direct-work units
+ * @param {Function} [opts.quickWorkerFn]   async (unit) => delegated no-GSD worker result
+ * @param {Function} [opts.quickReviewFn]   async () => Conductor evidence review/steering
+ * @param {Function} [opts.quickExecuteFn]  legacy alias for quickWorkerFn
  * @param {Function} [opts.discussFn]       async () => oracle manifest (project)
  * @param {Function} [opts.oracleFn]        (question) => { action, ... }  (answerQuestion)
  * @param {Function} [opts.decomposeFn]     async (prompt) => units[]
@@ -603,6 +648,11 @@ export async function startSession(opts = {}) {
     bgsdDir = join(REPO_ROOT, ".bgsd"),
     verifyFn,
     fixFn,
+    quickPlanFn,
+    quickDecomposeFn,
+    quickWorkerFn,
+    quickReviewFn,
+    quickExecuteFn,
     discussFn,
     oracleFn,
     decomposeFn,
@@ -732,7 +782,10 @@ export async function startSession(opts = {}) {
 
   let result;
   if (scale === "quick") {
-    result = await runQuick({ prompt, classification, plan, verifyFn, fixFn, tick });
+    result = await runQuick({
+      prompt, classification, plan, verifyFn, fixFn, quickPlanFn,
+      quickDecomposeFn, quickWorkerFn, quickReviewFn, quickExecuteFn, tick,
+    });
   } else {
     result = await runDecomposed({
       prompt, scale, classification, plan, bgsdDir, sessionRecord,
@@ -760,70 +813,119 @@ export async function startSession(opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// quick path — classify → route → Loop 1 (still verifies; §4.1)
+// quick path — Conductor plan → adaptive direct workers → review → Loop 1
 // ---------------------------------------------------------------------------
 
 /**
- * Drive the quick path: a single item through the real Loop 1 controller.
- * Reuses queue.transition + classifyItem + routeItem + runLoop1 exactly.
+ * Drive the quick path without GSD. The live Conductor authors the compact
+ * plan, decides how many small direct-work units exist, and delegates them to
+ * Pipeline Agents in isolated worktrees. It reviews evidence and rewrites
+ * steering; it never edits session code. Workers can run serially or in
+ * parallel according to the Conductor plan. Loop 1 supplies the bounded
+ * verification/retry state machine around that delegated direct work.
  * Terminates `done` ONLY on a Tester PASS (NFR-06).
  */
-async function runQuick({ prompt, classification, plan, verifyFn, fixFn, tick }) {
+async function runQuick({
+  prompt, classification, plan, verifyFn, fixFn, quickPlanFn, quickDecomposeFn,
+  quickWorkerFn, quickReviewFn, quickExecuteFn, tick,
+}) {
   const { transition } = await import("./queue.mjs");
-  const { classifyItem } = await import("./classify-item.mjs");
-  const { routeItem } = await import("./route-item.mjs");
   const { runLoop1 } = await import("./loop1.mjs");
 
   if (typeof verifyFn !== "function") {
     throw new Error("runQuick: verifyFn must be injected (mock in tests; loop1-live in --live)");
   }
 
-  const lines = prompt.trim().split(/\n/);
-  const title = lines[0];
-  const body = lines.slice(1).join("\n");
-
-  // Build a single in-memory queue item (the orchestrator stores a pointer to
-  // it; quick is single-stream, single-worktree).
-  const now = new Date().toISOString();
-  const item = {
-    id: `sesh-quick-${Date.now()}`,
-    title, body, source: "session",
-    state: "queued", attempts: 1,
-    created_at: now, updated_at: now,
-    trail: [{ from: null, to: "queued", at: now }],
-  };
-
-  // classify → (needs_input stops here) → route → Loop 1.
-  classifyItem(item, transition);
-  tick({ run: { state: "executing", run_id: item.id }, agents: [{ agent_id: item.id, status: "running", phase: "execute" }] });
-
-  if (item.state === "needs_input") {
-    return {
-      outcome: "needs_input",
-      itemState: item.state,
-      clarification_question: item.clarification_question,
-    };
+  const conductorPlan = typeof quickPlanFn === "function"
+    ? await quickPlanFn({ prompt, classification, plan })
+    : { source: "conductor", prompt };
+  if (!conductorPlan || typeof conductorPlan !== "object") {
+    throw new Error("runQuick: quickPlanFn must return a Conductor plan object");
   }
 
-  routeItem(item, transition, { skipConfigWrite: true });
+  const rawUnits = typeof quickDecomposeFn === "function"
+    ? await quickDecomposeFn({ prompt, conductorPlan, classification, plan })
+    : [{ id: `quick-${Date.now()}`, title: prompt.trim().split("\n")[0] }];
+  if (!Array.isArray(rawUnits) || rawUnits.length === 0) {
+    throw new Error("runQuick: quickDecomposeFn must return one or more direct-work units");
+  }
 
-  // VERIFY→FIX. fixFn defaults to a no-op (verifyFn drives PASS/FAIL in tests).
-  const loopResult = await runLoop1({
-    item,
-    transitionFn: transition,
-    verify: verifyFn,
-    fix: typeof fixFn === "function" ? fixFn : async () => {},
-    maxIterations: 5,
+  const units = rawUnits.map((unit, index) => ({
+    ...unit,
+    id: unit?.id ?? `quick-${index + 1}`,
+    title: unit?.title ?? prompt.trim().split("\n")[0],
+  }));
+  const workerFn = quickWorkerFn ?? quickExecuteFn;
+  if (typeof workerFn !== "function") {
+    throw new Error("runQuick: quickWorkerFn must delegate Quick code changes to Pipeline Agents");
+  }
+
+  // The Conductor may deliberately serialize a risky edit. Otherwise Quick
+  // workers fan out, just like other modes, but without GSD phases.
+  const runWorker = (unit) => workerFn({ prompt, conductorPlan, unit, classification, plan, scale: "quick" });
+  const workers = conductorPlan.parallel === false
+    ? await units.reduce(async (pending, unit) => [...await pending, await runWorker(unit)], Promise.resolve([]))
+    : await Promise.all(units.map(runWorker));
+
+  const reviews = [];
+  async function reviewQuickEvidence(event, extra = {}) {
+    if (typeof quickReviewFn !== "function") return null;
+    const review = await quickReviewFn({
+      event, prompt, conductorPlan, units, workers, classification, plan, scale: "quick", ...extra,
+    });
+    reviews.push(review);
+    return review;
+  }
+  await reviewQuickEvidence("after-worker-execution");
+
+  // In-memory items let the generic verification state machine track every
+  // direct worker without routing execution to GSD.
+  const now = new Date().toISOString();
+  const items = units.map((unit) => ({
+    id: unit.id, title: unit.title, body: "", source: "conductor",
+    state: "routed", attempts: 1, created_at: now, updated_at: now,
+    trail: [{ from: null, to: "routed", at: now }],
+  }));
+  tick({
+    run: { state: "executing", run_id: `sesh-quick-${Date.now()}` },
+    agents: items.map((item) => ({ agent_id: item.id, status: "running", phase: "execute" })),
   });
 
-  tick({ run: { state: item.state === "done" ? "done" : item.state, run_id: item.id }, agents: [{ agent_id: item.id, status: item.state, phase: "verify" }] });
+  const loopResults = await Promise.all(items.map(async (item, index) => {
+    const loopResult = await runLoop1({
+      item,
+      transitionFn: transition,
+      verify: () => verifyFn(item.id),
+      fix: typeof fixFn === "function"
+        ? (defects, context) => fixFn(defects, {
+          ...context, unit: units[index], worker: workers[index], conductorPlan, scale: "quick",
+        })
+        : async () => {},
+      maxIterations: 5,
+    });
+    await reviewQuickEvidence("after-verification", { unit: units[index], worker: workers[index], loopResult });
+    return loopResult;
+  }));
+
+  const outcome = loopResults.some((result) => result.outcome === "blocked") ? "blocked"
+    : loopResults.some((result) => result.outcome !== "done") ? "failed"
+    : "done";
+  tick({
+    run: { state: outcome, run_id: `sesh-quick-${Date.now()}` },
+    agents: items.map((item) => ({ agent_id: item.id, status: item.state, phase: "verify" })),
+  });
 
   return {
-    outcome: loopResult.outcome,   // done | failed | blocked
-    reason: loopResult.reason,
-    iterations: loopResult.iterations,
-    itemState: item.state,
+    outcome,
+    reason: loopResults.find((result) => result.reason)?.reason,
+    iterations: loopResults.reduce((total, result) => total + result.iterations, 0),
+    itemState: items.length === 1 ? items[0].state : undefined,
+    units: items.map((item, index) => ({ id: item.id, status: item.state, iterations: loopResults[index].iterations })),
     verified: true,
+    execution: "delegated-direct-pipeline",
+    conductorPlan,
+    workers,
+    reviews,
   };
 }
 
@@ -1123,6 +1225,8 @@ if (
     if (!prompt) {
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
+        '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
+        '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
@@ -1143,6 +1247,22 @@ if (
     const headlessFlag = flags["headless-ui"] === true;
     const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
     const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
+    const modelContract = resolveModelContract({
+      profile: typeof flags.profile === "string" ? flags.profile : "claude",
+      buildModel: typeof flags["build-model"] === "string" ? flags["build-model"] : undefined,
+      lightBuildModel: typeof flags["light-build-model"] === "string" ? flags["light-build-model"] : undefined,
+      evaluateModel: typeof flags["evaluate-model"] === "string" ? flags["evaluate-model"] : undefined,
+      routing: typeof flags.routing === "string" ? flags.routing : "fixed",
+      proxy: flags.proxy === true,
+    });
+    Object.assign(process.env, exportContractEnv(modelContract));
+    if (modelContract.build.transport === "proxy" && !planOnly) {
+      const { probeProxy } = await import("./doctor.mjs");
+      const proxy = await probeProxy({
+        models: [modelContract.build.model, modelContract.evaluate.model],
+      });
+      if (!proxy.ok) throw new Error(`Proxy preflight failed: ${proxy.reason}`);
+    }
 
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
@@ -1172,14 +1292,14 @@ if (
     const plan = buildDepthPlan(classification.scale, { prompt });
 
     // GUI resolution: --no-gui always wins, --gui always opens; otherwise the
-    // gui.auto knob opens the dashboard for feature/project scale (quick stays
-    // terminal-only, and --plan-only never spawns a server).
+    // gui.auto opens the dashboard for every live session so Quick worker
+    // progress and Conductor steering are observable too.
     const guiAuto = bgsdConfig?.gui?.auto !== false;
     const gui = noGuiFlag
       ? false
       : guiFlag
         ? true
-        : !planOnly && guiAuto && classification.scale !== "quick";
+        : !planOnly && guiAuto;
 
     try { const { splash } = await import("./ui.mjs"); splash({ name: conductorName }); } catch (_) { /* splash is cosmetic */ }
     process.stdout.write(`\n${conductorName} · bgsd Conductor   [lock] main-protected\n`);
@@ -1187,13 +1307,30 @@ if (
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
     process.stdout.write(`  why:     ${explainScale(classification)}\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);
-    process.stdout.write(`  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`);
     process.stdout.write(
-      `  verify:  ${usageTesting
-        ? `full (gsd-verifier + Playwright usage testing${headless ? ", headless" : ""})`
-        : "code-only (gsd-verifier; Playwright UI usage testing OFF)"}\n`
+      classification.scale === "quick"
+        ? `  discuss: ${plan.discuss}   verified: ${plan.verified} (direct-worker verify/fix; Conductor reviews)\n`
+        : `  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`
     );
+    const verifyDescription = classification.scale === "quick"
+      ? usageTesting
+        ? `direct-worker checks + Playwright usage testing${headless ? ", headless" : ""} (no GSD; Conductor reviews evidence)`
+        : "direct-worker code checks (no GSD; Conductor reviews evidence; Playwright UI usage testing OFF)"
+      : usageTesting
+        ? `full (gsd-verifier + Playwright usage testing${headless ? ", headless" : ""})`
+        : "code-only (gsd-verifier; Playwright UI usage testing OFF)";
+    process.stdout.write(`  verify:  ${verifyDescription}\n`);
     process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
+    process.stdout.write(`  conductor: ${modelContract.conductor.provider}/${modelContract.conductor.model}\n`);
+    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
+    if (modelContract.routing === "adaptive") {
+      process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
+    }
+    if (classification.scale === "quick") {
+      process.stdout.write("  workers:   Conductor chooses one or more direct Pipeline Agents; no GSD\n");
+    } else {
+      process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
+    }
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
@@ -1219,30 +1356,61 @@ if (
       } catch (err) {
         process.stdout.write(`  preflight skipped (${err.message})\n`);
       }
+      // BGSD Doctor gate: subscription-only preflight. Runs for EVERY scale
+      // (Quick still needs the build CLI + a subscription login), and is a hard
+      // gate — a genuine failure throws and nothing is spawned. GSD itself is
+      // auto-installed just below, so it is reported but not required here
+      // (requireGsd:false); the proxy path stays fail-closed via runDoctor.
+      try {
+        const { runDoctor } = await import("./doctor.mjs");
+        const doctor = await runDoctor({ contract: modelContract, requireGsd: false });
+        if (!doctor.ok) {
+          const fails = [];
+          for (const [rt, r] of Object.entries(doctor.cli)) if (!r.ok) fails.push(`${rt} CLI not found`);
+          for (const [pv, r] of Object.entries(doctor.auth)) if (!r.ok) fails.push(`${pv} subscription login required (${r.mode ?? "missing"})`);
+          if (doctor.proxy.enabled !== false && !doctor.proxy.ok) fails.push(`proxy: ${doctor.proxy.reason}`);
+          throw new Error(
+            `BGSD Doctor: setup required — ${fails.join("; ")}. ` +
+            `Fix these and re-run (subscription login only; API keys are not accepted).`
+          );
+        }
+        process.stdout.write(`  doctor: subscription + CLI ready (${Object.keys(doctor.auth).join(", ")})\n`);
+      } catch (err) {
+        if (/BGSD Doctor: setup required/.test(err.message)) throw err;
+        process.stdout.write(`  doctor: preflight check skipped (${err.message})\n`);
+      }
       // Conductor dependency preflight: ENSURE the engine is present + current,
       // out of the box. gsd-core is the npm package @opengsd/gsd-core, installed
       // (and updated) by the same non-interactive command. If it is missing we
       // install it now; if present we refresh it to latest. Resilient: any
       // failure is reported, never crashes the session.
       try {
-        const { isGsdInstalled, ensureGsdLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
-        const wasInstalled = isGsdInstalled();
-        if (wasInstalled) {
-          process.stdout.write(`  deps: gsd-core (engine) installed ✓ — refreshing to latest\n`);
+        if (classification.scale === "quick") {
+          process.stdout.write("  deps: Quick needs the selected build CLI subscription; no GSD runtime install is needed.\n");
         } else {
-          process.stdout.write(`  deps: gsd-core (engine) missing — installing ${GSD_NPM_PACKAGE} now\n`);
+          const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
+          const { harnessForLane } = await import("./model-contract.mjs");
+          const runtimes = [...new Set([harnessForLane(modelContract.build), harnessForLane(modelContract.evaluate)])];
+          for (const runtime of runtimes) {
+            const installed = isGsdInstalled({ runtime });
+            process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
+          }
+          const results = ensureGsdRuntimesLive(runtimes, { log: (m) => process.stdout.write(`        ${m}\n`) });
+          for (const runtime of runtimes) {
+            const did = results[runtime].performed.length ? results[runtime].performed.join(", ") : "already current";
+            process.stdout.write(`  deps: ${runtime} gsd-core ready  [${did}]\n`);
+          }
         }
-        const res = ensureGsdLive({ log: (m) => process.stdout.write(`        ${m}\n`) });
-        const did = res.performed.length ? res.performed.join(", ") : "already current";
-        process.stdout.write(`  deps: gsd-core ready ✓  [${did}]\n`);
       } catch (err) {
         process.stdout.write(
           `  deps: gsd-core ensure FAILED (${err.message}). ` +
-          `Install manually: npx -y @opengsd/gsd-core@latest --claude --global\n`
+          `Install manually for each selected lane: npx -y @opengsd/gsd-core@latest --claude|--codex --global\n`
         );
       }
       if (usageTesting) {
         process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
+      } else if (classification.scale === "quick") {
+        process.stdout.write("  deps: Playwright skipped — direct-worker code checks (no GSD; Conductor reviews evidence).\n");
       } else {
         process.stdout.write(`  deps: Playwright skipped — code-only verification (gsd-verifier). No browser/UI usage testing this session.\n`);
       }
@@ -1257,7 +1425,7 @@ if (
         const initialStage =
           classification.scale === "project" ? "discuss"
           : classification.scale === "feature" ? "decompose"
-          : "loop1";
+          : "quick_workers";
         const runDir = `${resolveRepoRoot()}/.bgsd/runs/${seshRunId}`;
         mkdirSync(runDir, { recursive: true });
         writeFileSync(
@@ -1268,6 +1436,7 @@ if (
             state: "executing",
             stage: initialStage,
             note: plan.discuss ? "discussing decisions before fan-out" : "planning the work",
+            model_contract: modelContract,
             started_at: new Date().toISOString(),
           }, null, 2) + "\n",
           "utf8"

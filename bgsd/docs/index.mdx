@@ -1,177 +1,22 @@
----
-title: "bgsd Documentation"
-description: "Table of contents for all bgsd doc pages — start with the Conductor Session, then explore the stage references."
----
+# BGSD v2
 
-# bgsd Documentation
+BGSD combines a live Conductor with independent build and evaluation lanes. The
+Conductor is whichever Claude Code or Codex session you started. It scopes the
+work, authors seed plans, makes advisory decisions, and asks every user-facing
+question through the native selector UI.
 
-bgsd is an open-source, installable Claude Code plugin that layers autonomous, self-verifying orchestration on top of GSD. Lightweight to install (markdown files and a handful of zero-dependency Node scripts), but ultra-potent in what it does. The single entry point is the **Conductor Session** (`/bgsd-sesh`). All other pages document the internal stages the Conductor orchestrates on your behalf.
+Quick is a lightweight adaptive Pipeline Agent run: the Conductor writes a
+compact plan, chooses one or more direct workers, and steers them through
+evidence without invoking GSD. The workers edit and repair code in isolated
+worktrees; the Conductor does not. Feature and Project build lanes run full GSD
+workflows under the same advisory contract at every plan, commit, blocker, and
+verification checkpoint. The evaluation lane performs Loop 1, Loop 2, and final
+fresh review. Both lanes use existing subscriptions, not provider API keys.
 
-## Install
+| Mode | Best for | Build path | Evidence |
+| --- | --- | --- | --- |
+| Quick | one contained fix | adaptive direct workers; no GSD | worker verify/fix plus Conductor review |
+| Feature | a scoped change | a few units, integrate when needed | Loop 1 plus Loop 2 when applicable |
+| Project | multi-surface product work | discuss, DAG, waves, full GSD units | Loop 1, Loop 2, fresh review, human gate |
 
-```bash
-claude plugin marketplace add filippo-fonseca/better-gsd
-claude plugin install bgsd@better-gsd
-```
-
-Then run `/reload-plugins` (or restart Claude Code) so the `/bgsd-*` commands bind. bgsd is **gsd-agnostic**: it does not vendor GSD. It uses the user-installed `gsd-core` plugin, and the Conductor (default name **Kiwi**, customizable in `BGSD.md`) keeps that dependency current and ensures the Playwright browser tooling is available, all at the start of every `/bgsd-sesh`. You just talk to the Conductor; it sets up what it needs. See the [Quickstart](./quickstart.mdx) for the full walkthrough.
-
-A repo is set up once with the idempotent `/bgsd-init` command (also run automatically as a `/bgsd-sesh` preflight): it creates the standing **`next`** integration branch off the auto-detected base branch, scaffolds the persistent `.bgsd/` master folder (`seshs/`, `ledger.md`, `config.json`), and writes a user-editable `BGSD.md` settings file. The pipeline integrates everything on `next`; agents never write to `main`, and the `next` → `main` merge is always manual and human-only.
-
-All pages are valid standalone Mintlify MDX. They are intentionally kept outside GSD's vendored nav config (`mint.json` / `docs.json`) — editing that file would violate the "never edit vendored GSD" rule. To surface bgsd in the docs site nav, add a single group entry to the Mintlify nav config pointing at these pages (see the note at the bottom of any page).
-
----
-
-## Start here
-
-- **[Conductor Session — /bgsd-sesh](./conductor-session.mdx)** — **The primary page.** This is how you use bgsd: one command, one ongoing session, always-on Conductor. Covers the `/bgsd-sesh "<prompt>" [--quick|--feature|--project]` entry, auto-scale behavior, flags (including the unconditional manual-flag rule), the "same pipeline, scaled" idea, and a full Mermaid pipeline flowchart from prompt to done.
-
-- **[Commands Reference](./commands-reference.mdx):** **every command, every flag.** The canonical one-page reference: a section per `/bgsd-*` command (all 18) with a purpose line, a usage block, and a full flags/subcommands table. Start here when you want the exact flag for anything, including `/bgsd-gui`, `/bgsd-resume`, `/bgsd-modify-memory`, `/bgsd-recall`, `/bgsd-generate-brief`, and `/bgsd-clean`.
-
-- **[Quickstart](./quickstart.mdx)** — Install bgsd, add Playwright MCP, and run your first `/bgsd-verify` against the bundled canary fixture. From zero to a structured defect report in under ten minutes. Run this once after installing.
-
----
-
-## New in this release
-
-Recent additions to how the Conductor runs and talks to you (bgsd 0.11.0). For the exact flag on any command, see the [Commands Reference](./commands-reference.mdx).
-
-### How bgsd picks models
-
-bgsd assigns a model and effort to each pipeline role. **Opus is the standard for every role.** The slogan for the one exception is simple: **Fable plans; Opus executes.** The executor (the per-unit worktree subprocess) is the highest-volume role and Fable guzzles tokens there, so the executor is **never Fable**: it runs Opus·xhigh on every unit, dropping to Sonnet·xhigh only on trivial units (difficulty < 0.2) and only when you pass `--sonnet`. Fable earns its keep purely as reasoning leverage: it runs solely as a **standalone upstream pre-planner**, a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that only plans (it never edits code), writes `.planning/fable-plan.md`, and then seeds the Opus pipeline agent via `--seed-plan`. That pre-plan is **off by default**: difficulty does not trigger it, so every unit just runs the normal GSD workflow on Opus. It runs only when you pass `--fable` (turning it on for every unit) or when the Conductor opts a specific unit in, feeding Fable's reasoning into the GSD workflow only when Fable is actually wanted. Two structural limits shape everything below. First, bgsd **cannot force the Conductor's model**: the Conductor is your own live session, so bgsd only *nudges* it via `/model` (both ways) and honors whatever you're on. Second, the in-session agent tool is **opus/sonnet/haiku only** — bgsd **cannot spawn a Fable subagent in-session**. Fable therefore runs in exactly two places: (1) as the Conductor's own session, if you happen to be on Fable, or (2) as the standalone per-unit pre-planner subprocess described above. There is no `settings.json` model seed and no per-agent Fable approval gate. Place (1) is no longer passive: with **Fable-as-Advisor mode** active (see below), a Fable Conductor reviews plans, steers execution, and authors seeds itself, replacing the per-unit pre-planner subprocess.
-
-Everything below is a **default**. The Conductor decides per unit and adapts as a run unfolds, and you always have the final say: override per-unit or per-session, by flag, in `BGSD.md`, or by just telling the Conductor, and it re-plans on the fly.
-
-| Role | Where | Model · effort |
-|---|---|---|
-| **Conductor** (live session) | orchestrates; decompose + oracle in-session | your session model, not forced; two-way nudge |
-| **Executor / per-unit subprocess** | Loop 1 worktree | Opus · xhigh (always); Sonnet · xhigh only on trivial units (< 0.2) with `--sonnet`; never Fable |
-| **Planner** (in-pipeline) | inside the unit | Opus · high (always); builds on the Fable pre-plan when one exists |
-| **Fable pre-planner** (standalone) | upstream subprocess, plans only | Fable · high; off by default, runs only with `--fable` (every unit) or when the Conductor opts a unit in; seeds the Opus agent via `--seed-plan` |
-| **Scout / research** | inside the unit, reads files | Opus · high (Opus · medium when trivial) |
-| **Code review** | fresh context | Opus · high |
-| **Verifier / Tester** | verify | Opus · medium |
-| **Conflict resolver** | Loop 2 | Opus · high |
-| **Loop-2 fix** | Loop 2 | Opus · medium |
-
-**Principle:** Opus is the standard everywhere. Fable runs only as the standalone pre-planner (Fable plans; Opus executes), the executor is never Fable, and code review is a fresh Opus.
-
-- **Fable-as-Advisor mode (0.11.0).** When the Conductor's own brain is Fable, Kiwi becomes a **live reviewing advisor** across the pipeline instead of a passive dispatcher: it reviews each wave unit's sealed plan before its Opus agent executes, steers before and during execution (via the seed and the agent inbox), checks in on commits as they land (distilled artifacts only — sealed plan, `git log --oneline`, verification report; never raw diffs), and authors the next wave's seed plans itself so the redundant standalone Fable pre-planner subprocess is **skipped**. Gated and **OFF by default**: active only when `conductor.fable_advisor` in `BGSD.md` is `"auto"` (the default) and any one of — the brain IS Fable, `--fable` was passed, or you approved a proposal. `true`/`false` force or hard-disable; `node advisor.mjs gate --model <id>` prints the verdict.
-- **Commit discipline, pipeline-wide (0.11.0).** Every actor that writes — pipeline agents in their worktrees, the Conductor on the integration branch, the advisor — commits constantly and atomically: one focused commit per logical unit of work, sha recorded on the control file, never a batched end-of-run dump.
-- **Brief a past session for the next one (`/bgsd-generate-brief`).** A new history/utility command that synthesizes a clean, comprehensive markdown brief of a completed session (what was requested, what was done per unit, the agents, what changed, outstanding items, and a ready-to-paste "how to continue" `/bgsd-sesh` line) and writes it to `.bgsd/briefs/<run-id>-brief.md`. Defaults to the last session; pass a `<run-id>` for a specific one. The narrative synthesis runs on Sonnet (cheap summarization, no Opus) and is read-only over history; it never modifies past records. See [`/bgsd-generate-brief`](./commands-reference.mdx#bgsd-generate-brief).
-- **The dashboard opens on its own.** The `--gui` web dashboard now opens automatically for feature- and project-scale sessions (never for quick fixes), so you get the full-pipeline view without asking. Controlled by the new `gui.auto` knob in `BGSD.md` (default `true`); `--no-gui` suppresses it for a session, and `--gui` forces it on even for a quick fix. It also no longer flickers or re-animates on its ~1.5s refresh: the page only re-renders when the run state actually changes.
-- **Walk-away notifications.** When a pipeline unit parks and needs your input (a `needs_input` escalation), the Conductor now fires a native macOS notification, so you can step away from the terminal and still get pinged. Opt out with the new `notifications.os` knob in `BGSD.md` (default `true`). macOS only; a silent no-op everywhere else.
-- **Kiwi always tells you why it sized the job the way it did.** Every session now prints a one-line explanation of the scale decision (e.g. "auto-scaled to feature — route 'multi-file', ~3 units, 2 surfaces, length band medium"), so the auto-scale is never a black box. Forced scale (via `--quick` / `--feature` / `--project`) and clarify-instead-of-guess cases are narrated the same way.
-- **Prune merged branches and worktrees (`/bgsd-clean`).** A new maintenance command that removes merged bgsd branches and their stale git worktrees. It is plan-first (it shows exactly what it will remove; `--dry-run` and `--json` give you a preview), only ever touches `bgsd-`-prefixed branches, and hard-protects `next` / `main` / `master` and the current branch. `--force` includes unmerged bgsd branches but still never touches a protected one. See [`/bgsd-clean`](./commands-reference.mdx#bgsd-clean).
-- **Lossless resume after compaction.** `/bgsd-resume` now reads a structured compact-handoff sidecar (`.bgsd/runs/<id>/compact-handoff.json`: stage, wave, per-agent phase/status, pending gates, next step). If a session was compacted or interrupted, resume surfaces that handoff first and picks up exactly where it left off, then consumes the handoff so it is never replayed.
-- **Name your Conductor at `/bgsd-init`.** First-time setup now asks — with arrow-key selectors — for your Conductor's **name** and **emoji** (default 🥝 Kiwi, or type your own). Both persist to `BGSD.md` (`conductor.name` / `conductor.emoji`) and flow everywhere the Conductor shows itself: the chat name pill, the live status banner and narration, and the web dashboard header. Change either any time by editing `BGSD.md`, via `/bgsd-modify-memory` ("rename yourself to Jarvis", "change your emoji to 🤖"), or just by asking the Conductor.
-- **The Conductor self-manages its own context.** The human-facing Conductor now watches its own context window and, at `conductor.self_compact_at` (default 90%), writes a handoff note and auto-compacts to keep a long session running to completion instead of dying mid-pipeline. Tune it in `BGSD.md`.
-- **Neumorphic dashboard with clickable cards.** The `--gui` dashboard was restyled to a soft neumorphic aesthetic, and every agent card is now clickable: open it for the full, untruncated detail (the complete note, GSD flow, phase, iteration, and progress) in a live-updating panel.
-- **The full pipeline now actually runs.** As of 0.5.0, a plain `/bgsd-sesh` fires the entire two-loop pipeline end-to-end with zero friction. The old `--live` human-gate on the execution path itself is gone; only the `main`/`master` branch guard remains. Nothing writes to `main`.
-- **Per-unit GSD tailoring.** Each Loop-1 Pipeline Agent now runs a per-unit-tailored GSD flow in its own git worktree. The Conductor decides which GSD phases each unit gets: research on harder units, `/gsd-ui-phase` for UI units, `/gsd-ai-integration-phase` for AI units, a code-review gate on harder work. Trivial/quick units skip GSD phases and apply a direct fix. This is driven by the new `/bgsd-run-agent` command and `phaseconfig.mjs` resolver.
-- **Decision oracle (proxy Q&A).** The Conductor answers GSD's discuss-phase questions as the user's proxy via the decision oracle (new `oracle.mjs --answer` CLI). Only true unknowns escalate, non-blockingly, per unit.
-- **Gradient session banners.** Oh-my-logo gradient banners now print at session start, between each stage, at finish, and on init.
-
-- **The backlog (start with no prompt).** Run `/bgsd-sesh` with no prompt and the Conductor proposes the next item from a persistent backlog (the queue at `.bgsd/queue/queue.json`). When you defer scope mid-session ("scope this later"), the Conductor enqueues it instead of dropping it, and at the end of every session it proposes the next item. Work drains across sessions without re-typing. New queue subcommands `peek` and `done` back the loop. See [/bgsd-queue](./bgsd-queue.mdx).
-- **Execution modes (`--mode` / `--verify-mode`).** Pipeline agents and verifiers each run in one of three modes: `fast` (skip research; code-only quick checks), `thorough` (research every unit; full driver ladder), or `adaptive` (the default: the Conductor decides per unit). Override per-session with `--mode fast|thorough|adaptive` (pipeline) and `--verify-mode fast|thorough|adaptive` (verifiers), or persist under `modes` in `BGSD.md`.
-- **Role-aware model routing and branded subagents.** Each role gets a model and effort by the doctrine above: Opus is the standard everywhere, the executor runs `opus/xhigh` on every unit (dropping to `sonnet/xhigh` only on trivial units below 0.2, and only with `--sonnet`), the in-pipeline planner runs `opus/high`, verifiers run `opus/medium`, and Fable runs solely as the standalone pre-planner that seeds the Opus agent. Every subagent is spawned with a consistent branded label of the form `<emoji> <Role> · <unit> (<model>)` so you can tell each agent's role and model at a glance.
-- **Headless UI (`--headless-ui`).** Runs Playwright headless, with no visible browser or server window popping up on your machine (discreet). Orthogonal to `--no-usage-verification`; persist as `verification.headless` in `BGSD.md`.
-- **Selector questions.** Every question the Conductor asks (a vague prompt to clarify, a gray-area decision, the review gate, "which backlog item next") is a GSD-style arrow-key selector with a hard maximum of 4 concrete options plus an always-available "type your own", never a wall of prose.
-- **Per-subagent context management.** Each worktree Pipeline Agent runs in its own large (~1M-token) window. The Conductor watches each agent's usage and proactively compacts it (default at 0.70 of the window) or relaunches it from a handoff manifest (default 0.90) before it overflows. Tune it with the `context` block in `BGSD.md`.
-- **Verification depth (`--no-usage-verification`).** The goal-backward code verification (the gsd-verifier) always runs. The heavier Playwright usage testing (driving the real app) is now optional: turn it off per-session with `--no-usage-verification`, per-repo with the `verification.usage_testing` knob in `BGSD.md`, or just tell the Conductor ("stop UI-testing quick fixes") and it edits the setting itself. Good for quick fixes and non-UI changes; it never disables code verification. See [/bgsd-verify](./bgsd-verify.mdx).
-- **Modify settings in plain language (`/bgsd-modify-memory`).** Tell the Conductor what to remember for this repo ("always verify headless", "default the pipeline to thorough") and it writes the exact `BGSD.md` knob, or appends a free-form preference to the Notes section. A flag you type on a specific session always overrides a remembered setting: **flag > BGSD.md > default.**
-- **Search past session history (`/bgsd-recall`).** Ask Kiwi what happened in previous sessions ("what did we build last month?", "what changed in the auth layer?") and get a conversational answer with concrete facts: what shipped, when, and which run id. Read-only; never modifies any record.
-- **Resume an interrupted session.** If a session is cut short (the Claude Code instance is lost), `/bgsd-resume` finds the most recent in-flight run under `.bgsd/runs/` and picks it back up from each unit's last phase; `/bgsd-resume <run-id>` targets a specific one.
-- **The name pill, splash, and terminal identity.** Every conversational message the Conductor sends is prefixed with a name pill — `🥝 Kiwi:` by default (the name is customizable in `BGSD.md`) — a colored Markdown badge in front of each message, so you always know the Conductor is speaking. A session opens with the splash banner and, right after it, a terminal `/rename` (an apt task name) plus a random `/color`, so parallel sessions are easy to tell apart. Structured outputs (verdict lines, report JSON) stay literal.
-- **The live dashboard (`--gui`).** Pass `--gui` (or say "open the dashboard") and the Conductor opens a local web view that tracks every agent live: the parallel Loop 1 Pipeline Agents, the Verification lane, the Loop 2 Integrator, and the Review Gate, each card showing the agent's GSD substage, status, and progress, with per-agent GSD-flow steppers, a pipeline-stage timeline, and a sessions tab. It reads the run's control files, refreshes on its own, and the Conductor can open or close it at any point (the `/bgsd-gui` command). The terminal narration already keeps things legible for most runs; the dashboard gives you an animated full-pipeline view when you are running many agents at once and want unparalleled visibility into every agent's state at a glance.
-- **`--fable` and `--sonnet`.** The Fable pre-plan is **off by default**; difficulty does not trigger it, so every unit runs the normal GSD workflow on Opus. `--fable` turns on a standalone **Fable pre-plan** for *every* unit (the Conductor can also opt a specific unit in). The pre-plan is a `claude -p /bgsd-plan-unit --model claude-fable-5` subprocess that only plans and then seeds the Opus pipeline agent via `--seed-plan`; it never becomes the executor and it can't put the Conductor or any in-session subagent on Fable (the agent tool is opus/sonnet/haiku only, and bgsd never forces your session model). `--sonnet` is the one lever on the executor: it lets a *trivial* unit (difficulty < 0.2) drop from Opus·xhigh to Sonnet·xhigh; without it, the executor is always Opus. You can also just tell the Conductor to pre-plan or drop any specific unit conversationally, with no restart.
-
----
-
-## Internal stage references
-
-These pages document what the Conductor runs internally. You never call these commands directly from a `/bgsd-sesh` — the Conductor orchestrates all of them. They are reference material for contributors, advanced users, and anyone who wants to understand the mechanics.
-
-### v0 — Verify engine
-
-- **[/bgsd-verify reference](./bgsd-verify.mdx)** — Full reference for the verify stage: arguments, acceptance-criteria input formats (`--criteria` file or `--inline` string), the `verification-report.json` schema (all fields and types), and detailed driver-ladder behavior (pre-flight probe, rung-by-rung procedure, `console_reliable` flag, and hard rules).
-
-### v1 — Fix-stream
-
-- **[/bgsd-queue reference](./bgsd-queue.mdx)** — Fix-stream lifecycle diagram, state machine (all states and terminal conditions), subcommands, classification rules and routing table, Loop 1 controller algorithm and stop conditions, queue store format.
-
-- **[Hyperpolymath capture→queue cron](./hyperpolymath-capture.mdx)** — How bgsd turns Hyperpolymath items into queue entries: the capture seam contract, dry-run cron invocation modes, idempotency via content-key dedup, launchd scheduling, and the human-gated live hookup.
-
-### v2 — Conductor pipeline
-
-- **[/bgsd-run reference](./bgsd-run.mdx)** — The Conductor state machine: decomposition and the verified DAG, topological wave ordering, control-file protocol and heartbeat/restart, worktree fan-out and wave scheduler, conflict pre-check and merge-resolver, integration onto the standing `next` branch, doc aggregation, reversible cleanup, context management, and the human-gated `--live` checklist.
-
-- **[/bgsd-status reference](./bgsd-status.mdx)** — The Conductor's live status view: color-coded per-worktree badges, the worker table layout, merge history, budget and context telemetry (tokens, cost, pressure level), `--watch` live refresh, `NO_COLOR`/non-TTY behavior, and the `main-protected` indicator (marking that `main` is never written by an agent).
-
-### v3 — Integration loop + human handoff
-
-- **[/bgsd-integrate + /bgsd-user-eval reference](./bgsd-loop2-review.mdx)** — Loop 2 integration verify→fix on the standing `next` branch: boot the integrated app, run the Integration Tester, dispatch parallel fix agents, re-merge, and re-verify in a bounded loop until clean or a stop condition fires. Followed by the User Review Gate: auto-boot `next`, per-criterion checklist, GSD-style selector verdict (approve / request-changes / abort / type-your-own), `review.json` output, and the never-auto-pass rule.
-
-- **[/bgsd-feedback + CHANGELOG→PR reference](./bgsd-feedback-changelog.mdx)** — Feedback mode ingestion and routing: full re-run of both loops on your findings vs `--fast` parallel fix agents with no verification (always `UNVERIFIED`). Per-agent CHANGELOG aggregation across Loop 1, Loop 2, and feedback rounds. PR body assembly as a pure deterministic string. Guarded `gh pr create` into `next` behind `--live`, with the agents-never-write-to-`main` rule (the guard refuses `main`/`master` as PR base) enforced unconditionally.
-
----
-
-## Background and decisions
-
-- **[INTEGRATION-NOTES.md](./INTEGRATION-NOTES.md)** — Plugin loading decisions (why a Directory marketplace source instead of editing GSD's plugin manifest), MCP invocation decisions (why a general-purpose subagent instead of the named plugin subagent), and references to the Claude Code bugs that motivate each choice.
-
----
-
-## Quick links
-
-| I want to... | Go to |
-|---|---|
-| **Start using bgsd** | [Conductor Session](./conductor-session.mdx) |
-| **Look up any command or flag** | [Commands Reference](./commands-reference.mdx) |
-| Install and run the canary proof | [Quickstart](./quickstart.mdx) |
-| Understand the pipeline flowchart | [Conductor Session — pipeline diagram](./conductor-session.mdx#the-same-pipeline-scaled) |
-| Understand the flags (--quick / --feature / --project) | [Conductor Session — flags](./conductor-session.mdx#flags) |
-| Set execution mode (--mode / --verify-mode) | [/bgsd-sesh flags](./commands-reference.mdx#bgsd-sesh) |
-| Verify headless or code-only | [/bgsd-verify flags](./commands-reference.mdx#bgsd-verify) |
-| Open the live web dashboard | [/bgsd-gui](./commands-reference.mdx#bgsd-gui) |
-| Resume an interrupted session | [/bgsd-resume](./commands-reference.mdx#bgsd-resume) |
-| Modify a setting in plain language | [/bgsd-modify-memory](./commands-reference.mdx#bgsd-modify-memory) |
-| Search past session history | [/bgsd-recall](./commands-reference.mdx#bgsd-recall) |
-| Brief a past session for the next one | [/bgsd-generate-brief](./commands-reference.mdx#bgsd-generate-brief) |
-| Understand the verdict contract | [/bgsd-verify — report schema](./bgsd-verify.mdx#the-report-schema) |
-| Understand Loop 1 mechanics | [/bgsd-queue — Loop 1 controller](./bgsd-queue.mdx) |
-| Understand the full orchestration state machine | [/bgsd-run](./bgsd-run.mdx) |
-| Watch in-flight workers live | [/bgsd-status](./bgsd-status.mdx) |
-| Run Loop 2 integration verify→fix | [/bgsd-integrate + /bgsd-user-eval](./bgsd-loop2-review.mdx) |
-| Review the integrated build on `next` by hand | [User Review Gate](./bgsd-loop2-review.mdx#user-review-gate) |
-| Feed findings back into the pipeline | [/bgsd-feedback](./bgsd-feedback-changelog.mdx) |
-| Open a real PR (into `next`) with the CHANGELOG | [CHANGELOG→PR](./bgsd-feedback-changelog.mdx#guarded-pr-creation) |
-| Connect Hyperpolymath captures | [Hyperpolymath capture](./hyperpolymath-capture.mdx) |
-| Understand the voice contract | [bgsd/PERSONALITY.md](../PERSONALITY.md) |
-| Read the project milestone history | [.planning/PROJECT.md](../../.planning/PROJECT.md) |
-
----
-
-## Adding these pages to the Mintlify docs site nav
-
-These pages render standalone without any nav config change. When a maintainer is ready to surface all bgsd pages in the nav, add one group entry to the Mintlify nav config (`mint.json` or `docs.json`):
-
-```json
-{
-  "group": "bgsd",
-  "pages": [
-    "bgsd/docs/conductor-session",
-    "bgsd/docs/commands-reference",
-    "bgsd/docs/quickstart",
-    "bgsd/docs/bgsd-verify",
-    "bgsd/docs/bgsd-queue",
-    "bgsd/docs/bgsd-run",
-    "bgsd/docs/bgsd-status",
-    "bgsd/docs/bgsd-loop2-review",
-    "bgsd/docs/bgsd-feedback-changelog",
-    "bgsd/docs/hyperpolymath-capture"
-  ]
-}
-```
-
-That one addition is the only change needed. It does not touch any vendored GSD files.
+Start with [Quickstart](./quickstart.mdx), then read [Conductor sessions](./conductor-session.mdx).
