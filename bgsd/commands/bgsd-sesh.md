@@ -13,6 +13,13 @@ pipeline profile, optional custom model ids, fixed or adaptive routing, and
 verification depth. Run BGSD Doctor before any work. If setup is missing, offer
 the native Install and Continue selector action.
 
+Resolve workflow depth in this order: an explicit `--quick`, `--feature`, or
+`--project` flag; then a clear request-level instruction such as "Treat this as
+a project"; then your Conductor scope decision. If the request is genuinely
+ambiguous, present the native Quick/Feature/Project selector with a brief scope
+summary. Never make the user type an unstructured answer, and do not mistake a
+descriptive phrase such as "this is a quick fix" for an explicit override.
+
 `--quick` stays in the Conductor session: author a compact plan, implement it
 directly, and run Loop 1. Do not install, invoke, or spawn GSD for Quick.
 

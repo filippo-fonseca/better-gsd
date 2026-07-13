@@ -12,6 +12,20 @@
 | `--quick` / `--feature` / `--project` | force workflow depth |
 | `--plan-only` | show the route without spawning work |
 
+## Workflow depth
+
+BGSD resolves depth in a deliberate precedence order:
+
+1. An explicit CLI flag wins: `--quick`, `--feature`, or `--project`.
+2. Without a flag, a clear request-level instruction wins, for example
+   `Treat this as a project` or `Run this as a feature`.
+3. Otherwise the live Conductor sizes the request from its scope.
+
+If the scope is unclear, the Conductor presents the host-native Quick, Feature,
+and Project selector. It does not make an ungrounded choice. Descriptive text
+such as `This is a quick fix` is not treated as a mode override; use an
+imperative instruction when you want to choose the workflow in natural language.
+
 Proxy mode requires `BGSD_PROXY_URL`, `BGSD_PROXY_TOKEN`, a local endpoint by
 default, and advertised requested models. It changes transport only; the direct
 CLI path remains the normal subscription-backed option.

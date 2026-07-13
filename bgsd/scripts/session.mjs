@@ -232,8 +232,27 @@ function clampOneStep(heuristicScale, proposedScale) {
 // ---------------------------------------------------------------------------
 
 /**
- * Deterministic scale classifier. Maps a prompt + mode to quick | feature |
- * project (or a clarify action). Zero required model calls.
+ * Extract an explicit natural-language scale instruction from a request. This
+ * intentionally recognizes only imperative phrasing so ordinary descriptions
+ * like "a quick fix" remain available to Conductor sizing heuristics.
+ */
+export function naturalLanguageMode(prompt) {
+  const text = String(prompt ?? "").toLowerCase();
+  const matches = new Set();
+  const patterns = [
+    /\b(?:make|treat|run|use|handle|classify|take|keep)\s+(?:this|it|the\s+(?:task|work|request))?\s*(?:(?:as|like|in)\s+)?(?:a\s+)?(quick|feature|project)(?:\s+(?:mode|run|task|workflow))?\b/g,
+    /\b(?:this|it|the\s+(?:task|work|request))\s+(?:needs?\s+to\s+be|should\s+be|must\s+be)\s+(?:a\s+)?(quick|feature|project)\b/g,
+    /\b(quick|feature|project)\s+(?:mode|workflow|run)\b/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) matches.add(match[1]);
+  }
+  return matches.size === 1 ? [...matches][0] : null;
+}
+
+/**
+ * Deterministic Conductor scale classifier. Maps a prompt + mode to quick |
+ * feature | project (or a clarify action). Zero required model calls.
  *
  * @param {object} input
  * @param {string} input.prompt          The user's request.
@@ -250,6 +269,7 @@ function clampOneStep(heuristicScale, proposedScale) {
  *   unitCountEstimate: number,
  *   depthBreadth: number,
  *   confidence: "forced"|"heuristic"|"model",
+ *   selectionSource?: "flag"|"natural-language"|"conductor-auto",
  *   clarification_question?: string,
  *   modelSeam?: object,
  * }>}
@@ -262,15 +282,22 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
     throw new Error(`classifyScale: unknown mode "${mode}". Valid: ${SESSION_MODES.join(", ")}`);
   }
 
-  // Forced modes short-circuit the heuristic (flag overrides — §3.1.3 / §5).
+  // CLI flags are the highest-precedence explicit override.
   if (mode === "quick") {
-    return forcedResult("quick", mode, prompt);
+    return forcedResult("quick", mode, prompt, "flag");
   }
   if (mode === "feature") {
-    return forcedResult("feature", mode, prompt);
+    return forcedResult("feature", mode, prompt, "flag");
   }
   if (mode === "project") {
-    return forcedResult("project", mode, prompt);
+    return forcedResult("project", mode, prompt, "flag");
+  }
+
+  // A clear in-prompt instruction is the next-precedence override. Ambiguous
+  // or conflicting instructions return null and leave sizing to the Conductor.
+  const requestedMode = naturalLanguageMode(prompt);
+  if (requestedMode) {
+    return forcedResult(requestedMode, mode, prompt, "natural-language");
   }
 
   // --- auto mode: compute the cheap signals (§3.1) ---
@@ -297,9 +324,9 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
       unitCountEstimate,
       depthBreadth,
       confidence: "heuristic",
+      selectionSource: "conductor-auto",
       clarification_question:
-        "I can't tell the size of this yet. Is it a quick fix, a feature, or a whole project? " +
-        "Tell me what changes, where, and what 'done' looks like.",
+        "Present the native Quick, Feature, and Project selector with the request's scope summary; do not guess.",
     };
   }
 
@@ -337,6 +364,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
     unitCountEstimate,
     depthBreadth,
     confidence: "heuristic",
+    selectionSource: "conductor-auto",
   };
 
   // --- MODEL SEAM (optional, marked): one-step nudge of a BORDERLINE case. ---
@@ -366,7 +394,7 @@ export async function classifyScale({ prompt, mode = "auto" }, opts = {}) {
  * @param {string} mode
  * @param {string} prompt
  */
-function forcedResult(scale, mode, prompt) {
+function forcedResult(scale, mode, prompt, selectionSource) {
   return {
     scale,
     action: "route",
@@ -382,6 +410,7 @@ function forcedResult(scale, mode, prompt) {
     unitCountEstimate: clauseCount(prompt),
     depthBreadth: distinctSurfaces(prompt),
     confidence: "forced",
+    selectionSource,
   };
 }
 
@@ -402,6 +431,9 @@ export function explainScale(result) {
   const units = `~${result.unitCountEstimate} unit${result.unitCountEstimate === 1 ? "" : "s"}`;
   const surfaces = `${result.depthBreadth} surface${result.depthBreadth === 1 ? "" : "s"}`;
   if (result.confidence === "forced") {
+    if (result.selectionSource === "natural-language") {
+      return `scale set to ${result.scale} from the explicit natural-language instruction (signals read ${units}, ${surfaces}).`;
+    }
     return `scale forced to ${result.scale} by the --${result.scale} flag (signals read ${units}, ${surfaces}).`;
   }
   if (result.action === "clarify") {

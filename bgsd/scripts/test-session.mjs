@@ -17,6 +17,7 @@ import {
   SCALES,
   SESSION_MODES,
   classifyScale,
+  naturalLanguageMode,
   buildDepthPlan,
   startSession,
   resolveUsageTesting,
@@ -56,6 +57,25 @@ console.log("\nbgsd session (U1/U2/U3) tests\n");
 await test("U1: constants — SCALES + SESSION_MODES", () => {
   assert.deepEqual(SCALES, ["quick", "feature", "project"]);
   assert.deepEqual(SESSION_MODES, ["auto", "quick", "feature", "project"]);
+});
+
+await test("U1: natural-language mode requests are explicit but narrow", () => {
+  assert.equal(naturalLanguageMode("Treat this as a project; it needs migration, API, UI, and launch work."), "project");
+  assert.equal(naturalLanguageMode("Run it as a feature."), "feature");
+  assert.equal(naturalLanguageMode("Use quick mode for this copy correction."), "quick");
+  assert.equal(naturalLanguageMode("This is a quick fix."), null);
+  assert.equal(naturalLanguageMode("Make this quick, not project mode."), null);
+});
+
+await test("U1: selection precedence is flag, natural language, then Conductor sizing", async () => {
+  const natural = await classifyScale({ prompt: "Treat this as a project, even though it is only a typo." });
+  assert.equal(natural.scale, "project");
+  assert.equal(natural.selectionSource, "natural-language");
+  const flag = await classifyScale({ prompt: "Treat this as a project.", mode: "quick" });
+  assert.equal(flag.scale, "quick");
+  assert.equal(flag.selectionSource, "flag");
+  const automatic = await classifyScale({ prompt: "Fix the typo in the README." });
+  assert.equal(automatic.selectionSource, "conductor-auto");
 });
 
 // ---------------------------------------------------------------------------

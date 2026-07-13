@@ -67,6 +67,13 @@ npx -y @opengsd/gsd-core@latest --codex --global
 Use the `bgsd-sesh` skill in Claude Code or Codex. It presents native selectors
 for profile, custom models, routing mode, verification depth, and setup.
 
+Workflow depth is resolved in this order: an explicit `--quick`, `--feature`,
+or `--project` flag; a clear instruction in the request such as "treat this as
+a project" or "run this as a feature"; then the Conductor's scope decision.
+When the request is genuinely ambiguous, the Conductor presents the native
+Quick/Feature/Project selector rather than guessing. Phrases that merely
+describe the work, such as "this is a quick fix", do not force a mode.
+
 CLI equivalent:
 
 ```sh
@@ -74,6 +81,13 @@ node bgsd/scripts/session.mjs \
   --prompt "Build an audit log" \
   --profile claude-openai \
   --routing fixed
+```
+
+The same workflow choice can be made in ordinary language, without a flag:
+
+```sh
+node bgsd/scripts/session.mjs \
+  --prompt "Treat this as a project: build billing, migration, and a rollout plan."
 ```
 
 For a Claude Code harness backed by a verified local CLIProxyAPI endpoint:
