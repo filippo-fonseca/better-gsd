@@ -63,6 +63,7 @@
 
 import { spawnSync } from "node:child_process";
 import { generateChangelog } from "./rehearsal.mjs";
+import { emitPrOpened } from "./remote-events.mjs";
 
 // ---------------------------------------------------------------------------
 // HUMAN-GATED guard (mirrors loop1-live.mjs / run-live.mjs pattern exactly)
@@ -515,6 +516,8 @@ export function liveCreatePr({
   dryRun     = false,
   spawnFn    = spawnSync,
   printFn    = (msg) => process.stdout.write(msg),
+  runId      = null,
+  repoRoot   = null,
 }) {
   if (!base  || typeof base  !== "string") throw new Error("liveCreatePr: base is required");
   if (!head  || typeof head  !== "string") throw new Error("liveCreatePr: head is required");
@@ -600,6 +603,23 @@ export function liveCreatePr({
 
   const url = (result.stdout ?? "").trim();
   printFn(`[bgsd changelog-pr] PR created: ${url}\n`);
+
+  // Structured outbox: mirror the opened PR for remote observers when a run
+  // context was supplied (the CLI passes --run-id / cwd). Guarded — the PR
+  // creation result is returned regardless of emit success. `gh pr create`
+  // prints the URL, not a number; parse the trailing /pull/<n> when present.
+  if (runId) {
+    try {
+      const m = url.match(/\/pull\/(\d+)/);
+      emitPrOpened(repoRoot ?? process.cwd(), runId, {
+        prNumber: m ? Number(m[1]) : null,
+        url: url || null,
+        branch: head,
+        into: base,
+      });
+    } catch (_) { /* telemetry must never break PR creation */ }
+  }
+
   return { dryRun: false, url };
 }
 

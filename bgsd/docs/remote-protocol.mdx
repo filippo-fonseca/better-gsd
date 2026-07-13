@@ -378,3 +378,89 @@ directly on-box if you need them.
 | `409` | `/api/plan` on a run that exists but has not been decomposed |
 
 All other status codes match the v1 table above.
+## v2 addendum: structured events + agent log files
+
+Everything above is the v1 contract and stays valid. This section is purely
+**additive**: it documents the structured outbox event types and the per-agent
+log-file contract added by the remote API v2 events slice (`bgsd/scripts/remote-events.mjs`).
+
+**Client requirement (forward compatibility).** Clients MUST ignore any outbox
+event `type` they do not recognize, and MUST ignore any `meta` key they do not
+recognize. New event types and keys will be added over time; a compliant client
+treats an unknown type as an opaque line (render the human `text`, or skip it)
+and never errors on it. Do not gate behavior on the presence of a specific type.
+
+### Envelope (unchanged)
+
+Structured events use the exact same envelope as every other outbox event:
+
+`{ "seq": <int>, "at": "<ISO>", "type": "<string>", "text": "<human line>", "meta": { ... } }`
+
+`seq` is monotonic per run, `text` is a short human-readable line, and `meta`
+carries the machine-readable payload. The on-disk file is still
+`.bgsd/runs/<run-id>/remote-outbox.jsonl`, one JSON object per line, append-only.
+
+**Seq performance note.** v2 assigns `seq` without re-parsing the whole outbox
+on every append. It maintains a `remote-outbox.seq` sidecar (a plain integer
+high-water mark) next to the jsonl and, on a cold start, recovers the mark by
+reading only the last line of the jsonl. The jsonl format is byte-for-byte
+identical to v1; the sidecar is an internal optimization that clients can ignore.
+
+### Structured event types
+
+Each row lists the `type`, the shape of its `meta` payload, and when it fires.
+
+| `type` | `meta` shape | Emitted when |
+|---|---|---|
+| `run-state` | `{ from, to, run_id }` | The run transitions between lifecycle states. |
+| `plan-ready` | `{ unit_count, wave_count, units: [{ id, title, wave }] }` | Decomposition has persisted the units and waves. |
+| `wave-started` | `{ wave, units: [id] }` | A wave begins in the merge loop. |
+| `wave-done` | `{ wave, units: [id] }` | A wave's merges complete. |
+| `agent-spawned` | `{ agent_id, unit_id, model, harness, worktree, branch }` | A pipeline agent is provisioned (worktree + control file). |
+| `agent-phase` | `{ agent_id, phase, status, iteration, note }` | An agent's phase or status changes (emitted on change only, never per heartbeat). |
+| `agent-escalation` | `{ agent_id, question, blocker_id }` | An agent parks in `needs_input` and escalates a question to the user. |
+| `agent-done` | `{ agent_id, status, verified }` | An agent reaches a terminal status. `status` is `"done"` or `"failed"`. |
+| `unit-merged` | `{ unit_id, branch, into }` | A unit branch merges into the integration branch. |
+| `verification` | `{ verdict, defect_count }` | A verification report is written. `verdict` is `"PASS"`, `"FAIL"`, or `"ERROR"`. |
+| `issue-linked` | `{ unit_id, issue_number, url }` | A GitHub issue is created for a unit. `url` may be null. |
+| `pr-opened` | `{ pr_number, url, branch, into }` | A pull request is opened. |
+| `pr-merged` | `{ pr_number, url }` | A pull request is merged. |
+| `branch-created` | `{ branch, unit_id }` | A unit's git branch is created. |
+
+`meta` values may be `null` when the underlying source does not carry that datum
+(for example, `issue_number`/`url` when only a number is known, or `pr_number`
+when `gh` returns only a URL). Treat every `meta` field as optional.
+
+### Recording an event from a shell (Conductor markdown steps)
+
+Some git/GitHub artifacts happen only in Conductor command markdown, which has no
+in-process JavaScript seam to hook. For those steps, record the event from the
+shell with the events CLI:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote-events.mjs" emit \
+  --run-id <run-id> --type pr-opened \
+  --meta '{"pr_number":42,"url":"https://github.com/o/r/pull/42","branch":"run/unit-x","into":"next"}' \
+  [--text "PR #42 opened"] [--repo <repo-root>]
+```
+
+`--meta` must be valid JSON. The command uses the same never-throw append and
+no-ops when the run directory is absent, so it is safe to call unconditionally.
+
+### Per-agent log files
+
+v1 pipeline agents ran with `stdio: "inherit"`, so their transcripts never
+touched disk. v2 redirects each pipeline agent's stdout and stderr into a
+per-run log file:
+
+`.bgsd/runs/<run-id>/logs/<unit-id>.log`
+
+The file is opened in append mode, so a re-launched agent keeps appending to the
+same log. The path is recorded on the agent's control file as `log_path` (an
+absolute path, or `null` when logging was unavailable and the agent fell back to
+inherited stdio), which makes the transcript discoverable without guessing the
+naming convention. A byte-offset log-tail endpoint (added by the read-endpoints
+slice) serves this file to remote clients.
+
+Nothing parses agent stdout: the Conductor coordinates entirely through control
+files, so this redirection is behavior-preserving for the pipeline itself.

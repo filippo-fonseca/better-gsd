@@ -64,6 +64,12 @@ import {
 import { join, dirname, resolve } from "node:path";
 import { integrationBranchForRun } from "./integration.mjs";
 import { persistRunUnits } from "./run-units.mjs";
+import {
+  emitRunState,
+  emitPlanReady,
+  emitWaveStarted,
+  emitWaveDone,
+} from "./remote-events.mjs";
 import { fileURLToPath } from "node:url";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -312,6 +318,16 @@ export function advanceState(runPath, toState, meta = {}) {
   };
 
   writeRunAtomic(runPath, updated);
+
+  // Structured outbox: mirror the state transition for remote observers. Guarded
+  // (emitStructured never throws + no-ops when the run dir is absent), so this
+  // can never affect the transition itself. runPath is
+  // <repoRoot>/.bgsd/runs/<runId>/run.json → four dirnames up = <repoRoot>.
+  try {
+    const repoRoot = dirname(dirname(dirname(dirname(runPath))));
+    emitRunState(repoRoot, current.run_id, { from: current.state, to: toState });
+  } catch (_) { /* telemetry must never break a state transition */ }
+
   return updated;
 }
 
@@ -571,6 +587,18 @@ export async function runLifecycle({
     process.stderr.write(`[run] persistRunUnits skipped: ${err.message}\n`);
   }
 
+  // Structured outbox: the plan is now persisted (units + waves), so remote
+  // observers can render it. Guarded (never throws / no-ops on missing run).
+  try {
+    const repoRoot = dirname(dirname(dirname(runPath)));
+    const waveOf = new Map();
+    waves.forEach((w, i) => { for (const id of w) waveOf.set(id, i); });
+    emitPlanReady(repoRoot, runId, {
+      waveCount: waves.length,
+      units: units.map((u) => ({ id: u.id, title: u.title ?? u.id, wave: waveOf.get(u.id) ?? null })),
+    });
+  } catch (_) { /* telemetry must never break the lifecycle */ }
+
   // -------------------------------------------------------------------------
   // 2. spawning — drive the scheduler wave-by-wave
   // -------------------------------------------------------------------------
@@ -629,12 +657,17 @@ export async function runLifecycle({
   // -------------------------------------------------------------------------
   advanceState(runPath, "merging", {});
 
+  // Structured outbox: repoRoot for wave events (guarded, never throws).
+  const eventsRepoRoot = dirname(dirname(dirname(runPath)));
+
   // Process each wave: merge done units, hold back failed/blocked ones,
   // then pause at the merge-boundary checkpoint.
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
     const waveUnits = waves[waveIdx];
     const waveMerged = [];
     const waveHeld   = [];
+
+    emitWaveStarted(eventsRepoRoot, runId, { wave: waveIdx, units: waveUnits });
 
     for (const unitId of waveUnits) {
       const plan = plans?.get(unitId);
@@ -655,6 +688,8 @@ export async function runLifecycle({
         heldAll.push(unitId);
       }
     }
+
+    emitWaveDone(eventsRepoRoot, runId, { wave: waveIdx, units: waveMerged });
 
     // Collect any open blockers for the checkpoint summary
     const blockers = schedulerResult.failed.includes

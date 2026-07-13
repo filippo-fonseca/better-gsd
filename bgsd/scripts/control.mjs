@@ -89,6 +89,7 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { emitAgentEscalation } from "./remote-events.mjs";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -292,6 +293,7 @@ export function createControlFile(controlPath, fields) {
     commits     = [],
     model       = null,
     model_assignment = null,
+    log_path    = null,
   } = fields;
 
   const now = new Date().toISOString();
@@ -311,6 +313,9 @@ export function createControlFile(controlPath, fields) {
     commits,
     model,
     model_assignment,
+    // Absolute path to the agent's stdio transcript (run-live redirects the
+    // pipeline agent's stdout/stderr here). null when logging is unavailable.
+    log_path,
     assumptions:   [],
     blockers:      [],
     escalations:   [],
@@ -583,6 +588,18 @@ export function addEscalation(controlPath, escalation, { notifyFn } = {}) {
   };
   validateControlFile(merged);
   writeAtomic(controlPath, merged);
+
+  // Structured outbox: mirror the escalation for remote observers. controlPath is
+  // <repoRoot>/.bgsd/runs/<runId>/control/<agent>.json → five dirnames up =
+  // <repoRoot>. Guarded: emitStructured never throws / no-ops on a missing run.
+  try {
+    const repoRoot = dirname(dirname(dirname(dirname(dirname(controlPath)))));
+    emitAgentEscalation(repoRoot, current.run_id, {
+      agentId: current.agent_id,
+      question: entry.question,
+      blockerId: entry.id,
+    });
+  } catch (_) { /* telemetry must never break the pipeline */ }
 
   if (typeof notifyFn === "function") {
     try {
