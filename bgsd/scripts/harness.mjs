@@ -30,6 +30,7 @@ import { join } from "node:path";
 
 import { defaultBgsdConfig, parseBgsdMd } from "./init.mjs";
 import { DEFAULT_MODELS } from "./model-contract.mjs";
+import { proxyEnvForClaude } from "./proxy.mjs";
 import { contractFromEnv, laneFor, scrubApiKeyEnv } from "./model-contract.mjs";
 
 /** The harnesses bgsd knows how to drive. */
@@ -231,9 +232,14 @@ export function buildAgentSpawn({
   instructions,
   sandbox = "workspace-write",
   effort = "high",
+  proxy = false,
   env = process.env,
 }) {
-  const childEnv = scrubApiKeyEnv(env);
+  const cleanEnv = scrubApiKeyEnv(env);
+  const childEnv = proxy ? proxyEnvForClaude(cleanEnv, model) : cleanEnv;
+  if (proxy && harness !== "claude") {
+    throw new Error("Proxy transport requires the Claude host harness");
+  }
   if (harness === "codex") {
     return {
       cmd: "codex",

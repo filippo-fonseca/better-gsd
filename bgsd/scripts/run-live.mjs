@@ -72,7 +72,7 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { writeUnitWorktreeConfig } from "./decompose.mjs";
 import { buildAgentSpawn } from "./harness.mjs";
-import { buildLaneForUnit, contractFromEnv } from "./model-contract.mjs";
+import { buildLaneForUnit, contractFromEnv, harnessForLane } from "./model-contract.mjs";
 import { createControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
@@ -290,7 +290,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   // harnesses mid-project (e.g. to dodge a usage limit) is seamless — the next
   // spawn simply follows. Recorded on the control file + brief so we know which
   // harness ran each unit; the durable .bgsd/ state is harness-independent.
-  const harness = buildLane.harness;
+  const harness = harnessForLane(buildLane);
 
   // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
   const controlPath = join(bgsdDir, "runs", runId, "control", `${unitId}.json`);
@@ -334,6 +334,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     command: "/bgsd-run-agent",
     model: spawnModel,
     effort: buildLane.effort,
+    proxy: buildLane.transport === "proxy",
     context: {
       worktree: wtPath,
       "unit-id": unitId,

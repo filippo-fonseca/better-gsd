@@ -89,6 +89,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { integrationBranchForRun, isProductionBranch } from "./integration.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { harnessForLane } from "./model-contract.mjs";
 import { resolve, join, dirname }   from "node:path";
 import { fileURLToPath }            from "node:url";
 
@@ -320,12 +321,13 @@ export async function liveVerify({
     // `codex exec "<prompt>" --model <equiv> --sandbox …`. Runs the whole-app UAT
     // + code review, writes integration-report.json, and prints a verdict line.
     const laneV = activeLane("evaluate");
-    const harnessV = laneV.harness;
+    const harnessV = harnessForLane(laneV);
     const verifySpawn = buildAgentSpawn({
       harness: harnessV,
       command: "/bgsd-verify",
       model: laneV.model,
       effort: laneV.effort,
+      proxy: laneV.transport === "proxy",
       extraArgs: [url, "--criteria", criteria],
     });
     const verifyResult = spawn(
@@ -524,12 +526,13 @@ export async function liveFix(defects, opts = {}) {
     // 2. Spawn the fix agent in the worktree on the selected build lane (NFR-06:
     //    throw on failure).
     const laneF = activeLane("build");
-    const harnessF = laneF.harness;
+    const harnessF = harnessForLane(laneF);
     const fixSpawn = buildAgentSpawn({
       harness: harnessF,
       command: "/gsd-quick",
       model: laneF.model,
       effort: laneF.effort,
+      proxy: laneF.transport === "proxy",
       extraArgs: ["--worktree", wtPath],
     });
     const fixResult = spawn(

@@ -23,6 +23,11 @@ export function providerHarness(provider) {
   throw new Error(`Unsupported provider "${provider}"; expected claude or openai`);
 }
 
+/** A proxy exposes a Claude-compatible endpoint, so Claude Code is its host harness. */
+export function harnessForLane(lane) {
+  return lane.transport === "proxy" ? "claude" : lane.harness;
+}
+
 export function normalizeProvider(value) {
   const v = String(value ?? "").trim().toLowerCase();
   if (v === "codex" || v === "openai") return "openai";

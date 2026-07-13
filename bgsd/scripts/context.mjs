@@ -73,6 +73,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { harnessForLane } from "./model-contract.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -633,12 +634,13 @@ export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   // codex: `codex exec …`). The relaunched pipeline agent runs on the opus-equiv.
   const relaunchRoot = worktreePath ?? process.cwd();
   const lane = activeLane("build");
-  const harness = lane.harness;
+  const harness = harnessForLane(lane);
   const relaunchSpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-run-agent",
     model: lane.model,
     effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs: [
       "--worktree", worktreePath ?? "",
       "--agent-id", agentId,

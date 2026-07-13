@@ -54,6 +54,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireNotProductionBranch } from "./run-live.mjs";
 import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { harnessForLane } from "./model-contract.mjs";
 
 // ---------------------------------------------------------------------------
 // Live flag helper (retained for compatibility; no longer gates execution)
@@ -146,12 +147,13 @@ export async function liveVerify({
   // claude keeps the exact v0 argv; codex runs `codex exec` with an opus-equiv
   // model. Thread the usage/headless posture through the env too.
   const lane = activeLane("evaluate");
-  const harness = lane.harness;
+  const harness = harnessForLane(lane);
   const verifySpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-verify",
     model: lane.model,
     effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs,
   });
   const result = spawnImpl(verifySpawn.cmd, verifySpawn.args, {
@@ -266,12 +268,13 @@ export async function liveFix(defects, opts, { worktreePath, item, runId, spawnI
   // does the work). claude keeps the exact argv (--model-profile drives the GSD
   // model); codex runs `codex exec` with a sonnet-equiv model.
   const lane = activeLane("build");
-  const harness = lane.harness;
+  const harness = harnessForLane(lane);
   const fixSpawn = buildAgentSpawn({
     harness,
     command: gsdCommand,
     model: lane.model,
     effort: lane.effort,
+    proxy: lane.transport === "proxy",
     extraArgs: ["--worktree", worktreePath, "--effort", effort, "--model-profile", model],
   });
   const result = spawnImpl(

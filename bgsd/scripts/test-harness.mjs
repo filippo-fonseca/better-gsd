@@ -80,6 +80,16 @@ test("H07 — buildAgentSpawn (codex) → codex exec \"<prompt>\" --model … --
   assert.deepEqual(s.args.slice(2), ["--model", "gpt-5.5", "--config", 'model_reasoning_effort="high"', "--sandbox", "workspace-write"]);
 });
 
+test("H07b — proxy spawn uses Claude Code and scoped proxy configuration", () => {
+  const s = buildAgentSpawn({
+    harness: "claude", command: "/bgsd-run-agent", model: "gpt-5.5", proxy: true,
+    env: { BGSD_PROXY_URL: "http://localhost:8317", BGSD_PROXY_TOKEN: "x", OPENAI_API_KEY: "must-not-inherit" },
+  });
+  assert.equal(s.env.ANTHROPIC_BASE_URL, "http://localhost:8317");
+  assert.equal(s.env.ANTHROPIC_DEFAULT_OPUS_MODEL, "gpt-5.5");
+  assert.equal(s.env.OPENAI_API_KEY, undefined);
+});
+
 test("H08 — resolveHarnessConfig reads BGSD.md harness block + merges defaults", () => {
   const root = mkdtempSync(join(tmpdir(), "bgsd-harness-"));
   try {

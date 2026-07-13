@@ -21,8 +21,8 @@ await test("Codex subscription accepts ChatGPT", () => {
   assert.equal(probeSubscription("openai", spawn).ok, true);
 });
 await test("proxy probe fails closed", async () => {
-  const result = await probeProxy({ fetchImpl: async () => ({ ok: false, status: 503 }), env: {} });
-  assert.deepEqual(result.reason, "http_503");
+  const result = await probeProxy({ fetchImpl: async () => ({ ok: false, status: 503 }), env: { BGSD_PROXY_URL: "http://localhost:8317", BGSD_PROXY_TOKEN: "x" } });
+  assert.match(result.reason, /503/);
 });
 
 process.stdout.write(`\ndoctor.mjs: ${passed} passed\n`);

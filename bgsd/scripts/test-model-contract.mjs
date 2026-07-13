@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   PIPELINE_PROFILES, resolveModelContract, validateModelId, scrubApiKeyEnv,
-  parseClaudeAuth, parseCodexAuth, detectConductor, buildLaneForUnit,
+  parseClaudeAuth, parseCodexAuth, detectConductor, buildLaneForUnit, harnessForLane,
 } from "./model-contract.mjs";
 
 let passed = 0;
@@ -21,6 +21,11 @@ test("custom models remain provider-bound", () => {
   assert.equal(validateModelId("openai", "claude-opus-4-8").ok, false);
 });
 test("proxy is explicit", () => assert.equal(resolveModelContract({ profile: "claude", proxy: true }).build.transport, "proxy"));
+test("proxy hosts a foreign provider through Claude Code", () => {
+  const c = resolveModelContract({ profile: "openai", proxy: true });
+  assert.equal(c.build.provider, "openai");
+  assert.equal(harnessForLane(c.build), "claude");
+});
 test("fixed routing ignores per-unit downgrade requests", () => {
   const lane = buildLaneForUnit(resolveModelContract({ profile: "claude" }), { tier: "light", reason: "small" });
   assert.equal(lane.model, "claude-opus-4-8");

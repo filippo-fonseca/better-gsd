@@ -3,8 +3,9 @@
 
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolveModelContract, parseClaudeAuth, parseCodexAuth } from "./model-contract.mjs";
+import { resolveModelContract, parseClaudeAuth, parseCodexAuth, harnessForLane } from "./model-contract.mjs";
 import { isGsdInstalled, resolveRuntimeConfigDir } from "./gsdinstall-live.mjs";
+import { resolveProxyConfig, probeProxy as probeConfiguredProxy, assertProxyModel } from "./proxy.mjs";
 
 export function probeCommand(command, spawn = spawnSync) {
   const result = spawn("sh", ["-lc", `command -v ${command}`], { encoding: "utf8" });
@@ -21,29 +22,29 @@ export function probeSubscription(provider, spawn = spawnSync) {
   return result?.status === 0 ? parseCodexAuth(`${result.stdout ?? ""}\n${result.stderr ?? ""}`) : { ok: false, provider, mode: "missing" };
 }
 
-export async function probeProxy({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
-  const url = String(env.BGSD_PROXY_URL || "http://127.0.0.1:8317").replace(/\/$/, "");
-  if (typeof fetchImpl !== "function") return { ok: false, url, reason: "fetch_unavailable" };
+export async function probeProxy({ env = process.env, fetchImpl = globalThis.fetch, models = [] } = {}) {
   try {
-    const headers = env.BGSD_PROXY_TOKEN ? { Authorization: `Bearer ${env.BGSD_PROXY_TOKEN}` } : {};
-    const response = await fetchImpl(`${url}/v1/models`, { headers, signal: AbortSignal.timeout(3000) });
-    return { ok: response.ok, url, reason: response.ok ? null : `http_${response.status}` };
-  } catch (_) {
-    return { ok: false, url, reason: "unreachable" };
+    const result = await probeConfiguredProxy({ config: resolveProxyConfig(env), fetchImpl });
+    for (const model of models) assertProxyModel(result.models, model);
+    return { ok: true, url: resolveProxyConfig(env).url, models: result.models, reason: null };
+  } catch (error) {
+    return { ok: false, url: env.BGSD_PROXY_URL ?? null, reason: error.message };
   }
 }
 
 export async function runDoctor({ contract, env = process.env, spawn = spawnSync, fetchImpl } = {}) {
   const c = contract ?? resolveModelContract({ profile: env.BGSD_PIPELINE_PROFILE || "claude", proxy: env.BGSD_PROXY === "1", env });
   const providers = [...new Set([c.build.provider, c.evaluate.provider])];
-  const runtimes = [...new Set([c.build.harness, c.evaluate.harness])];
+  const runtimes = [...new Set([harnessForLane(c.build), harnessForLane(c.evaluate)])];
   const cli = Object.fromEntries(runtimes.map((runtime) => [runtime, probeCommand(runtime, spawn)]));
   const auth = Object.fromEntries(providers.map((provider) => [provider, probeSubscription(provider, spawn)]));
   const gsd = Object.fromEntries(runtimes.map((runtime) => [runtime, {
     ok: isGsdInstalled({ runtime, env }),
     config_dir: resolveRuntimeConfigDir(runtime, { env }),
   }]));
-  const proxy = c.build.transport === "proxy" ? await probeProxy({ env, fetchImpl }) : { ok: true, enabled: false };
+  const proxy = c.build.transport === "proxy"
+    ? await probeProxy({ env, fetchImpl, models: [c.build.model, c.evaluate.model] })
+    : { ok: true, enabled: false };
   const ok = Object.values(cli).every((x) => x.ok) && Object.values(auth).every((x) => x.ok) && Object.values(gsd).every((x) => x.ok) && proxy.ok;
   return { ok, contract: c, cli, auth, gsd, proxy };
 }
@@ -63,7 +64,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const contract = resolveModelContract({
     profile: flags.profile || "claude",
     buildModel: flags["build-model"],
+    lightBuildModel: flags["light-build-model"],
     evaluateModel: flags["evaluate-model"],
+    routing: flags.routing || "fixed",
     proxy: flags.proxy === true,
   });
   const result = await runDoctor({ contract });
@@ -80,4 +83,3 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   process.exitCode = result.ok ? 0 : 2;
 }
-

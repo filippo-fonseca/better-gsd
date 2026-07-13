@@ -1155,6 +1155,13 @@ if (
       proxy: flags.proxy === true,
     });
     Object.assign(process.env, exportContractEnv(modelContract));
+    if (modelContract.build.transport === "proxy" && !planOnly) {
+      const { probeProxy } = await import("./doctor.mjs");
+      const proxy = await probeProxy({
+        models: [modelContract.build.model, modelContract.evaluate.model],
+      });
+      if (!proxy.ok) throw new Error(`Proxy preflight failed: ${proxy.reason}`);
+    }
 
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
@@ -1244,7 +1251,8 @@ if (
       // failure is reported, never crashes the session.
       try {
         const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
-        const runtimes = [...new Set([modelContract.build.harness, modelContract.evaluate.harness])];
+        const { harnessForLane } = await import("./model-contract.mjs");
+        const runtimes = [...new Set([harnessForLane(modelContract.build), harnessForLane(modelContract.evaluate)])];
         for (const runtime of runtimes) {
           const installed = isGsdInstalled({ runtime });
           process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
