@@ -22,22 +22,22 @@ function test(name, fn) {
   catch (err) { process.stdout.write(`  FAIL  ${name}\n        ${err.message}\n`); failures.push({ name, error: err.message }); failed++; }
 }
 
-test("BM01 — setConfigValue deep-sets a dotted path + returns oldValue", () => {
+test("BM01 — setConfigValue deep-sets the v2 model contract", () => {
   const cfg = defaultBgsdConfig();
-  const { config, oldValue } = setConfigValue(cfg, "model_posture.verifier.model", "sonnet");
-  assert.equal(oldValue, "opus");
-  assert.equal(config.model_posture.verifier.model, "sonnet");
+  const { config, oldValue } = setConfigValue(cfg, "model_contract.evaluate.model", "gpt-5.5");
+  assert.equal(oldValue, "claude-opus-4-8");
+  assert.equal(config.model_contract.evaluate.model, "gpt-5.5");
   // original not mutated
-  assert.equal(cfg.model_posture.verifier.model, "opus");
+  assert.equal(cfg.model_contract.evaluate.model, "claude-opus-4-8");
 });
 
 test("BM02 — applySetting updates the json block while preserving prose", () => {
   const text = renderBgsdMd(defaultBgsdConfig());
-  const res = applySetting(text, "model_posture.verifier.model", "sonnet");
-  assert.equal(res.oldValue, "opus");
-  assert.equal(res.newValue, "sonnet");
+  const res = applySetting(text, "model_contract.evaluate.model", "gpt-5.5");
+  assert.equal(res.oldValue, "claude-opus-4-8");
+  assert.equal(res.newValue, "gpt-5.5");
   // settings round-trip reflects the change
-  assert.equal(parseBgsdMd(res.text).model_posture.verifier.model, "sonnet");
+  assert.equal(parseBgsdMd(res.text).model_contract.evaluate.model, "gpt-5.5");
   // prose preserved
   assert.ok(res.text.includes("## Settings"));
   assert.ok(res.text.includes("## Notes"));
