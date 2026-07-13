@@ -7,7 +7,7 @@ export const ROUTING_MODES = Object.freeze(["fixed", "adaptive"]);
 
 export const DEFAULT_MODELS = Object.freeze({
   claude: { model: "claude-opus-4-8", lightModel: "sonnet", effort: "high", harness: "claude" },
-  openai: { model: "gpt-5.5", lightModel: "gpt-5.5", effort: "high", harness: "codex" },
+  openai: { model: "gpt-5.6-sol", lightModel: "gpt-5.5", effort: "medium", harness: "codex" },
 });
 
 export const PIPELINE_PROFILES = Object.freeze({
@@ -63,7 +63,7 @@ function lane(provider, model, transport) {
   const selectedModel = model || base.model;
   const valid = validateModelId(provider, selectedModel);
   if (!valid.ok) throw new Error(`Invalid ${provider} model "${selectedModel}" (${valid.reason})`);
-  return { provider, harness: base.harness, model: selectedModel, effort: "high", transport };
+  return { provider, harness: base.harness, model: selectedModel, effort: base.effort, transport };
 }
 
 function adaptiveCatalog(buildLane, lightModel) {

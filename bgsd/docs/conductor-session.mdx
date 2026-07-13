@@ -4,6 +4,10 @@ The live session is the Conductor and Advisor. BGSD records its detected provide
 and model, but does not replace it. The Conductor owns decomposition, unit seeds,
 adaptive assignments, human gates, and all selector-driven setup.
 
+Defaults apply only to pipeline lanes: Claude lanes use Opus at high effort;
+OpenAI lanes use GPT-5.6 Sol at medium effort. A Codex Conductor you started at
+GPT-5.6 high remains at that effort while it directs those independent lanes.
+
 | Lane | Responsibilities |
 | --- | --- |
 | Build | Pipeline Agent, nested GSD phases, internal review, repairs |

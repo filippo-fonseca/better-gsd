@@ -11,9 +11,14 @@ function test(name, fn) { fn(); passed++; process.stdout.write(`  PASS  ${name}\
 test("four pipeline profiles", () => assert.deepEqual(Object.keys(PIPELINE_PROFILES), ["claude", "openai", "claude-openai", "openai-claude"]));
 test("hybrid profile resolves fixed defaults", () => {
   const c = resolveModelContract({ profile: "openai-claude", conductor: { provider: "openai", model: "gpt-5.6-sol" } });
-  assert.equal(c.build.model, "gpt-5.5");
+  assert.equal(c.build.model, "gpt-5.6-sol");
   assert.equal(c.evaluate.model, "claude-opus-4-8");
-  assert.equal(c.build.effort, "high");
+  assert.equal(c.build.effort, "medium");
+});
+test("OpenAI lanes default to GPT-5.6 Sol at medium effort", () => {
+  const c = resolveModelContract({ profile: "openai" });
+  assert.deepEqual(c.build, { provider: "openai", harness: "codex", model: "gpt-5.6-sol", effort: "medium", transport: "direct" });
+  assert.deepEqual(c.evaluate, { provider: "openai", harness: "codex", model: "gpt-5.6-sol", effort: "medium", transport: "direct" });
 });
 test("custom models remain provider-bound", () => {
   const c = resolveModelContract({ profile: "openai", buildModel: "gpt-5.6-terra" });
@@ -39,7 +44,8 @@ test("adaptive routing applies an auditable Conductor assignment", () => {
 });
 test("adaptive routing defaults to heavy without a Conductor assignment", () => {
   const lane = buildLaneForUnit(resolveModelContract({ profile: "openai", routing: "adaptive" }));
-  assert.equal(lane.model, "gpt-5.5");
+  assert.equal(lane.model, "gpt-5.6-sol");
+  assert.equal(lane.effort, "medium");
   assert.equal(lane.assignment.source, "fail-safe");
 });
 test("adaptive custom models remain provider-bound", () => {

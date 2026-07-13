@@ -14,8 +14,10 @@ never writes directly to your production branch.
 | Build lane | Pipeline Agents, nested GSD workflow, internal reviews, repairs | BGSD session selector |
 | Evaluation lane | Loop 1, Loop 2, fresh final review | BGSD session selector |
 
-The default models are Claude Opus high for Claude lanes and GPT-5.5 high for
-OpenAI lanes. Choose one of four profiles: Claude/Claude, OpenAI/OpenAI,
+The default models are Claude Opus high for Claude lanes and GPT-5.6 Sol medium
+for OpenAI lanes. The Conductor is never changed by that default: it remains the
+model and effort of the Claude Code or Codex session you started. Choose one of
+four profiles: Claude/Claude, OpenAI/OpenAI,
 Claude build/OpenAI evaluate, or OpenAI build/Claude evaluate. Custom model ids
 are validated against the selected provider and never silently fall back.
 
