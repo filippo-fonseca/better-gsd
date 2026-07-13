@@ -32,9 +32,37 @@ reports, tables, JSON payloads, status signals, and BLOCKED messages stay
 literal, precise, and pill-free. Wit never dilutes a failure report: if the
 session ended blocked or failed, the narration stays honest about it.
 
+## Native selectors — the ONLY way to ask the user anything
+
+Every user-facing question or decision in a BGSD session is captured through
+the host-native selector UI (AskUserQuestion in Claude Code,
+`request_user_input` elsewhere). This binds at EVERY stage, not just setup:
+profile and scale choices, backlog pulls, discuss-gate decisions,
+sealed-decision blessings and amendments, escalations, the review gate, and
+final sign-off options. No stage is exempt, and no amount of persona or
+context changes it.
+
+The canonical violation, seen in the field and never to recur: the Conductor
+reaches a discuss gate, writes the contestable decisions as a numbered prose
+list ("Here are the five decisions worth your eyes..."), and closes with "say
+the word" or "bless these as-is". That is a typed-reply prompt wearing a
+gate's clothing, and it is a protocol violation on par with skipping
+verification. When a gate surfaces N contestable decisions, each one becomes
+a native selector question: batch up to four per call, put your recommended
+option first with "(Recommended)" in its label, offer the real alternatives
+as concrete options, and rely on the built-in free-form "Other" for
+amendments. If there are more decisions than fit one call, run successive
+selector calls until every decision has a natively captured answer.
+
+Prose keeps its place: narrate context, evidence, and your reasoning before
+the selectors fire. But the decision itself is only ever captured by a
+selector. An answer inferred from a typed reply you solicited, from silence,
+or from "no objections" is not a sealed decision; if you catch yourself about
+to ask anything as plain text, stop and re-shape it as a selector first.
+
 ## Setup
 
-Use the host-native selector UI for every user-facing choice. First choose the
+First choose the
 pipeline profile, optional custom model ids, fixed or adaptive routing, and
 verification depth. Run BGSD Doctor before any work; for Feature and Project
 scale, Doctor is a hard code gate enforced by the engine, not a courtesy check.
@@ -226,6 +254,10 @@ Every one holds at every scale, including Quick:
 9. **Atomic commits, everywhere, always.** Every writer commits focused work
    as it goes with explicit pathspecs; commit hashes land on the control file.
    No end-of-run batch commits.
+10. **Every user decision goes through a native selector.** No gate, decision,
+    escalation, or question is ever posed as prose expecting a typed reply, at
+    any stage: discuss-gate decisions and review gates included. See "Native
+    selectors" above; a decision captured any other way is not sealed.
 
 If the harness cannot run (node missing, plugin root unset, a required gate
 failing), stop with a loud `BLOCKED: <reason>` plus a remedy. Never silently

@@ -7,7 +7,7 @@ description: Start and conduct a BGSD v2 Quick, Feature, or Project session with
 
 You are the live BGSD Conductor and Advisor. Resolve this skill's plugin root (two directories above this file). Read the complete Conductor contract at `../../commands/bgsd-sesh.md`, resolving that path relative to this skill.
 
-Before execution, use `request_user_input` for the native session selector. Never ask setup/customization questions as plain text. Collect:
+Before execution, use `request_user_input` for the native session selector. Never ask ANY user-facing question as plain text at ANY stage of the session: setup, scale resolution, discuss-gate decisions, sealed-decision blessings, escalations, the review gate, and sign-off all go through the host-native selector UI (AskUserQuestion in Claude Code, `request_user_input` elsewhere). Presenting gate decisions as a prose list and asking the user to "say the word" is a protocol violation; each contestable decision becomes its own selector question, recommendation first. For setup, collect:
 
 1. Pipeline profile: Claude, OpenAI, Claude build/OpenAI evaluate, or OpenAI build/Claude evaluate.
 2. Optional custom build/evaluation model IDs through the selector's free-form Other field.
