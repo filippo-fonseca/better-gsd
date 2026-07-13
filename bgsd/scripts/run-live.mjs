@@ -72,7 +72,7 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { writeUnitWorktreeConfig } from "./decompose.mjs";
 import { buildAgentSpawn } from "./harness.mjs";
-import { buildLaneForUnit, contractFromEnv, harnessForLane } from "./model-contract.mjs";
+import { buildLaneForUnit, loadContractForRun, harnessForLane } from "./model-contract.mjs";
 import { createControlFile, updateControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
@@ -270,7 +270,13 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   writeUnitWorktreeConfig(planningDir, unit);
 
   // 4. Write the unit brief the Pipeline Agent reads (.planning/bgsd-unit.json).
-  const buildLane = buildLaneForUnit(contractFromEnv(), unit.model_assignment);
+  //    run-live runs in a SEPARATE process from session.mjs, so the resolved
+  //    contract (profile/routing/proxy) can't be read from this process's env —
+  //    it would silently revert to claude/fixed/direct. Rehydrate it from the
+  //    run's recorded run.json instead (loadContractForRun), which also keeps
+  //    --proxy fail-closed across the boundary.
+  const runDir = runId ? join(bgsdDir, "runs", runId) : null;
+  const buildLane = buildLaneForUnit(loadContractForRun(runDir), unit.model_assignment);
   const advisorPath = runId
     ? writeAdvisorDirective(runId, unitId, { bgsdDir, scale })
     : null;

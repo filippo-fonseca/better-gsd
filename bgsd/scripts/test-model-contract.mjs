@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   PIPELINE_PROFILES, resolveModelContract, validateModelId, scrubApiKeyEnv,
   parseClaudeAuth, parseCodexAuth, detectConductor, buildLaneForUnit, harnessForLane,
+  loadContractForRun,
 } from "./model-contract.mjs";
 
 let passed = 0;
@@ -47,6 +51,44 @@ test("adaptive routing defaults to heavy without a Conductor assignment", () => 
   assert.equal(lane.model, "gpt-5.6-sol");
   assert.equal(lane.effort, "medium");
   assert.equal(lane.assignment.source, "fail-safe");
+});
+test("adaptive routing REJECTS an assignment with no recorded reason (fail-safe to heavy)", () => {
+  const c = resolveModelContract({ profile: "claude", routing: "adaptive", lightBuildModel: "claude-sonnet-4-6" });
+  for (const bad of [{ tier: "light" }, { tier: "light", reason: "" }, { tier: "light", reason: "   " }]) {
+    const lane = buildLaneForUnit(c, bad);
+    assert.equal(lane.model, "claude-opus-4-8", "reason-less light assignment must not ride the light tier");
+    assert.equal(lane.assignment.tier, "heavy");
+    assert.equal(lane.assignment.source, "fail-safe");
+    assert.match(lane.assignment.reason, /rejected/);
+  }
+});
+test("contract rehydrates from run.json across the process boundary", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bgsd-contract-"));
+  try {
+    const original = resolveModelContract({ profile: "openai-claude", routing: "adaptive" });
+    writeFileSync(join(dir, "run.json"), JSON.stringify({ run_id: "r1", model_contract: original }));
+    // A bare env would revert to claude/fixed; the loader must restore the record.
+    const rehydrated = loadContractForRun(dir, { env: { PATH: "/bin" } });
+    assert.equal(rehydrated.profile, "openai-claude");
+    assert.equal(rehydrated.routing, "adaptive");
+    assert.equal(rehydrated.build.model, "gpt-5.6-sol");
+    assert.equal(rehydrated.evaluate.model, "claude-opus-4-8");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+test("rehydration falls back to env/defaults when no run.json exists", () => {
+  const contract = loadContractForRun(null, { env: { PATH: "/bin" } });
+  assert.equal(contract.profile, "claude");
+  assert.equal(contract.routing, "fixed");
+});
+test("proxy stays FAIL-CLOSED across rehydration (missing proxy env throws, never direct)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bgsd-contract-"));
+  try {
+    const proxied = resolveModelContract({ profile: "openai", proxy: true });
+    assert.equal(proxied.build.transport, "proxy");
+    writeFileSync(join(dir, "run.json"), JSON.stringify({ run_id: "r2", model_contract: proxied }));
+    // No BGSD_PROXY_URL/TOKEN in this process → must throw, not silently revert to direct.
+    assert.throws(() => loadContractForRun(dir, { env: { PATH: "/bin" } }));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 test("adaptive custom models remain provider-bound", () => {
   assert.throws(

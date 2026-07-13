@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 /** BGSD v2 session model contract: conductor, build lane, evaluation lane. */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { resolveProxyConfig } from "./proxy.mjs";
+
 export const PROVIDERS = Object.freeze(["claude", "openai"]);
 export const TRANSPORTS = Object.freeze(["direct", "proxy"]);
 export const ROUTING_MODES = Object.freeze(["fixed", "adaptive"]);
@@ -121,6 +125,62 @@ export function contractFromEnv(env = process.env) {
   });
 }
 
+/**
+ * Rehydrate the session's model contract across the process boundary.
+ *
+ * session.mjs resolves the contract once, exports it into ITS OWN env, and
+ * records it as `model_contract` in run.json — then exits. Downstream
+ * entrypoints (run-live, loop1-live, loop2-live, context) run as separate
+ * processes, so `contractFromEnv` alone silently reverts to defaults
+ * (profile=claude, routing=fixed, proxy=off). This loader reads the recorded
+ * contract back from `<runDir>/run.json` and only falls back to env/defaults
+ * when no recorded contract exists.
+ *
+ * Proxy stays FAIL-CLOSED across rehydration: if the effective contract says
+ * transport=proxy but the proxy config (BGSD_PROXY_URL/TOKEN) is missing or
+ * invalid in this process, this THROWS — it never quietly downgrades to a
+ * direct transport.
+ *
+ * @param {string|null} runDir  absolute path to .bgsd/runs/<runId> (or null)
+ * @param {object} [opts]
+ * @param {Record<string,string|undefined>} [opts.env]
+ * @returns {object} the effective model contract
+ */
+export function loadContractForRun(runDir, { env = process.env } = {}) {
+  let stored = null;
+  if (runDir) {
+    try {
+      stored = JSON.parse(readFileSync(join(runDir, "run.json"), "utf8"))?.model_contract ?? null;
+    } catch (_) {
+      stored = null;
+    }
+  }
+  let contract;
+  if (stored && stored.version === 2 && stored.profile) {
+    // Rebuild through resolveModelContract so every stored field is re-validated.
+    contract = resolveModelContract({
+      profile: stored.profile,
+      buildModel: stored.build?.model,
+      lightBuildModel: stored.adaptive?.light?.model,
+      evaluateModel: stored.evaluate?.model,
+      routing: stored.routing || "fixed",
+      conductor: stored.conductor,
+      proxy: stored.build?.transport === "proxy",
+      env,
+    });
+    if (stored.build?.effort) contract.build.effort = stored.build.effort;
+    if (stored.evaluate?.effort) contract.evaluate.effort = stored.evaluate.effort;
+    if (stored.auth) contract.auth = stored.auth;
+  } else {
+    contract = contractFromEnv(env);
+  }
+  if (contract.build.transport === "proxy" || contract.evaluate.transport === "proxy") {
+    // Throws when the proxy env is absent/invalid — fail closed, never direct.
+    resolveProxyConfig(env);
+  }
+  return contract;
+}
+
 export function exportContractEnv(contract, env = process.env) {
   return {
     ...env,
@@ -168,8 +228,26 @@ export function buildLaneForUnit(contract, assignment = null) {
     return { ...base, assignment: { tier: "heavy", reason: "fixed session routing", source: "session" } };
   }
 
-  const requestedTier = assignment?.tier === "light" ? "light" : "heavy";
-  const requestedModel = assignment?.model || contract.adaptive[requestedTier].model;
+  // Adaptive mode is auditable: an assignment is honored ONLY when the Conductor
+  // recorded a non-empty reason. A reason-less assignment (or none at all) fails
+  // safe to the heavy profile default and records WHY — a light tier is never
+  // silently ridden on unaccountable input.
+  const reason = typeof assignment?.reason === "string" ? assignment.reason.trim() : "";
+  if (!assignment || reason.length === 0) {
+    return {
+      ...base,
+      assignment: {
+        tier: "heavy",
+        reason: assignment
+          ? "adaptive assignment rejected (missing Conductor reason); heavy fail-safe"
+          : "no Conductor assignment; heavy fail-safe",
+        source: "fail-safe",
+      },
+    };
+  }
+
+  const requestedTier = assignment.tier === "light" ? "light" : "heavy";
+  const requestedModel = assignment.model || contract.adaptive[requestedTier].model;
   const valid = validateModelId(base.provider, requestedModel);
   if (!valid.ok) {
     throw new Error(`Invalid adaptive ${base.provider} model "${requestedModel}" (${valid.reason})`);
@@ -177,11 +255,7 @@ export function buildLaneForUnit(contract, assignment = null) {
   return {
     ...base,
     model: requestedModel,
-    effort: assignment?.effort || contract.adaptive[requestedTier].effort,
-    assignment: {
-      tier: requestedTier,
-      reason: String(assignment?.reason || "no Conductor assignment; heavy fail-safe"),
-      source: assignment ? "conductor" : "fail-safe",
-    },
+    effort: assignment.effort || contract.adaptive[requestedTier].effort,
+    assignment: { tier: requestedTier, reason, source: "conductor" },
   };
 }
