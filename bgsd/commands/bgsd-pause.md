@@ -121,6 +121,18 @@ for the full resume flow.
 
 ---
 
+## Remote-initiated pause (parity)
+
+A pause can also arrive from off-box: the remote bridge's `POST /api/control`
+with `{ "action": "pause" }` runs the exact same pause harness, drops a
+`kind:"control"` item into the session-inbox, and emits a `control-in` event.
+The running Conductor honors that inbox item the same way it honors a local
+`/bgsd-pause`: stop dispatching new work, let in-flight units reach a safe point,
+and park the run. A remote pause and a local pause are the same operation on the
+same state; there is no separate "remote" code path to reason about. Resuming a
+remotely-paused run is identical: `/bgsd-resume`, or `POST /api/control` with
+`{ "action": "resume" }`.
+
 ## Safety
 
 - **A pause is non-terminal and fully reversible.** Unlike `/bgsd-abort` (a
