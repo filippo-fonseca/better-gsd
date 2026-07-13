@@ -61,6 +61,7 @@ import { fileURLToPath } from "node:url";
 
 import { classifyHeuristic } from "./classify-item.mjs";
 import { recallLive } from "./recall.mjs";
+import { resolveModelContract, exportContractEnv } from "./model-contract.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dir, "../../");
@@ -1123,6 +1124,7 @@ if (
     if (!prompt) {
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
+        '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
@@ -1143,6 +1145,13 @@ if (
     const headlessFlag = flags["headless-ui"] === true;
     const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
     const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
+    const modelContract = resolveModelContract({
+      profile: typeof flags.profile === "string" ? flags.profile : "claude",
+      buildModel: typeof flags["build-model"] === "string" ? flags["build-model"] : undefined,
+      evaluateModel: typeof flags["evaluate-model"] === "string" ? flags["evaluate-model"] : undefined,
+      proxy: flags.proxy === true,
+    });
+    Object.assign(process.env, exportContractEnv(modelContract));
 
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
@@ -1194,6 +1203,9 @@ if (
         : "code-only (gsd-verifier; Playwright UI usage testing OFF)"}\n`
     );
     process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
+    process.stdout.write(`  conductor: ${modelContract.conductor.provider}/${modelContract.conductor.model}\n`);
+    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport})\n`);
+    process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
@@ -1268,6 +1280,7 @@ if (
             state: "executing",
             stage: initialStage,
             note: plan.discuss ? "discussing decisions before fan-out" : "planning the work",
+            model_contract: modelContract,
             started_at: new Date().toISOString(),
           }, null, 2) + "\n",
           "utf8"

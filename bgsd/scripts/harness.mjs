@@ -30,6 +30,7 @@ import { join } from "node:path";
 
 import { defaultBgsdConfig, parseBgsdMd } from "./init.mjs";
 import { LATEST_OPUS } from "./decompose.mjs";
+import { contractFromEnv, laneFor, scrubApiKeyEnv } from "./model-contract.mjs";
 
 /** The harnesses bgsd knows how to drive. */
 export const HARNESSES = Object.freeze(["claude", "codex"]);
@@ -132,6 +133,11 @@ export function activeHarness(repoRoot, { env = process.env, config } = {}) {
   return detectHarness(env);
 }
 
+/** Resolve the frozen v2 runtime lane. Legacy config remains a fallback only. */
+export function activeLane(role = "build", { env = process.env, contract } = {}) {
+  return laneFor(contract ?? contractFromEnv(env), role);
+}
+
 // ---------------------------------------------------------------------------
 // Model resolution
 // ---------------------------------------------------------------------------
@@ -223,7 +229,10 @@ export function buildAgentSpawn({
   modelForClaude = true,
   instructions,
   sandbox = "workspace-write",
+  effort = "high",
+  env = process.env,
 }) {
+  const childEnv = scrubApiKeyEnv(env);
   if (harness === "codex") {
     return {
       cmd: "codex",
@@ -231,8 +240,10 @@ export function buildAgentSpawn({
         "exec",
         codexPrompt({ command, context, extraArgs, instructions }),
         ...(model ? ["--model", model] : []),
+        ...(effort ? ["--config", `model_reasoning_effort=\"${effort}\"`] : []),
         "--sandbox", sandbox,
       ],
+      env: childEnv,
     };
   }
   // Default: Claude Code.
@@ -244,6 +255,11 @@ export function buildAgentSpawn({
       ...flagPairs(context),
       ...extraArgs,
     ],
+    env: {
+      ...childEnv,
+      ...(model ? { CLAUDE_CODE_SUBAGENT_MODEL: model } : {}),
+      ...(effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort, CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "1" } : {}),
+    },
   };
 }
 

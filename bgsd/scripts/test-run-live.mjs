@@ -131,7 +131,7 @@ const PLAN = { path: "", branch: "run/unit-add-auth-ab12", port: 3157 };
 // liveSpawnFn — happy path
 // ---------------------------------------------------------------------------
 
-await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control, spawns claude with EXACT argv", async () => {
+await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control, spawns one pinned Pipeline Agent", async () => {
   const bgsdDir = makeTmpDir();
   const wtPath  = join(makeTmpDir(), "wt");
   const plan    = { ...PLAN, path: wtPath };
@@ -189,24 +189,10 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     assert.equal(cf.phase, "plan");
     assert.equal(cf.status, "running");
 
-    // L05 — fablePlan unit → TWO spawns: (1) the standalone Fable pre-planner
-    // writing the seed plan, then (2) the Opus Pipeline Agent with --seed-plan.
-    // The executor subprocess is Opus, NEVER Fable.
-    assert.equal(spawnImpl.calls.length, 2, "Fable pre-planner + Pipeline Agent");
-    const seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
-
-    const planCall = spawnImpl.calls[0];
-    assert.equal(planCall.cmd, "claude");
-    assert.deepEqual(planCall.args, [
-      "-p", "/bgsd-plan-unit",
-      "--model", "claude-fable-5", // Fable is the PRE-PLANNER only
-      "--worktree", wtPath,
-      "--unit-id", UNIT.id,
-      "--run-id", runId,
-      "--out", seedPlanPath,
-    ]);
-
-    const call = spawnImpl.calls[1];
+    // L05 — legacy fablePlan metadata no longer launches a pre-planner in v2.
+    // Seed planning belongs to the live Conductor; the build lane spawns once.
+    assert.equal(spawnImpl.calls.length, 1, "one Pipeline Agent");
+    const call = spawnImpl.calls[0];
     assert.equal(call.cmd, "claude");
     assert.deepEqual(call.args, [
       "-p", "/bgsd-run-agent",
@@ -217,7 +203,6 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
       "--control-file", controlPath,
       "--scale", "feature",
       "--port", "3157",
-      "--seed-plan", seedPlanPath, // Opus planner builds on the Fable pre-plan
     ]);
     assert.equal(call.opts.cwd, wtPath, "spawn cwd must be the worktree");
   } finally {

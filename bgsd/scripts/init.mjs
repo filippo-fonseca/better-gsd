@@ -76,7 +76,7 @@ export function defaultBgsdConfig() {
       active: "auto",
       models: {
         claude: { opus: "claude-opus-4-8", sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
-        codex:  { opus: "gpt-5-codex", sonnet: "gpt-5", haiku: "gpt-5-mini", fable: "gpt-5-codex" },
+        codex:  { opus: "gpt-5.5", sonnet: "gpt-5.4", haiku: "gpt-5.4-mini", fable: "gpt-5.5" },
       },
     },
     // Model routing — DEFAULTS ONLY. The Conductor decides per unit and adapts,
