@@ -47,12 +47,16 @@ import {
   mkdirSync,
   rmSync,
   openSync,
+  statSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
-import { latestRunId, modelForRun, readConductorIdentity } from "./gui-live.mjs";
+import { latestRunId, modelForRun, readConductorIdentity, sessionsList } from "./gui-live.mjs";
+import { readAllControlFiles, classifyHeartbeat } from "./control.mjs";
+import { loadUsage, summarize } from "./tokens.mjs";
+import { getStatus as queueStatus } from "./queue.mjs";
 import { narrate } from "./narrate.mjs";
 
 const THIS_SCRIPT = fileURLToPath(import.meta.url);
@@ -62,6 +66,8 @@ const THIS_SCRIPT = fileURLToPath(import.meta.url);
 // ---------------------------------------------------------------------------
 
 function runsDir(repoRoot) { return join(repoRoot, ".bgsd", "runs"); }
+function seshsDir(repoRoot) { return join(repoRoot, ".bgsd", "seshs"); }
+function bgsdDir(repoRoot) { return join(repoRoot, ".bgsd"); }
 function pointerPath(repoRoot) { return join(repoRoot, ".bgsd", "remote.json"); }
 function logPath(repoRoot) { return join(repoRoot, ".bgsd", "remote.log"); }
 export function outboxPath(repoRoot, runId) {
@@ -69,6 +75,34 @@ export function outboxPath(repoRoot, runId) {
 }
 export function inboxDir(repoRoot, runId) {
   return join(runsDir(repoRoot), String(runId), "session-inbox");
+}
+
+/**
+ * Resolve the on-disk directory for a run, preferring the live `runs/<id>` dir
+ * and falling back to the archived `seshs/<id>` dir. Returns null when neither
+ * exists. This is the v2 addressing rule: `?run=` may target a shipped session.
+ */
+export function resolveRunDir(repoRoot, runId) {
+  if (!runId) return null;
+  const live = join(runsDir(repoRoot), String(runId));
+  if (existsSync(live)) return live;
+  const archived = join(seshsDir(repoRoot), String(runId));
+  if (existsSync(archived)) return archived;
+  return null;
+}
+
+/** Directory names under `.bgsd/seshs/` (the archived, shipped sessions). */
+export function archivedRunIds(repoRoot) {
+  const dir = seshsDir(repoRoot);
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+  } catch (_) {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +225,201 @@ export function remoteStatePayload({ runId, model, narration }) {
 }
 
 // ---------------------------------------------------------------------------
+// v2: protocol version, capabilities, and derived read projections
+// ---------------------------------------------------------------------------
+
+/** The wire protocol version this bridge speaks. Clients gate on this + caps. */
+export const PROTOCOL_VERSION = 2;
+
+/**
+ * Read the bgsd plugin version from the plugin manifest that ships beside this
+ * script (`bgsd/.claude-plugin/plugin.json`). Returns null when unreadable so
+ * `/api/health` never fails just because the manifest moved. Pure-ish (one read).
+ */
+export function pluginVersion(scriptPath = THIS_SCRIPT) {
+  const manifest = join(dirname(scriptPath), "..", ".claude-plugin", "plugin.json");
+  try {
+    const j = JSON.parse(readFileSync(manifest, "utf8"));
+    return typeof j?.version === "string" ? j.version : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * The capability map clients use to gate UI. A read slice implements everything
+ * except `control` and `launch`, which later slices flip to true. Pure.
+ */
+export function capabilitiesMap({ control = false, launch = false } = {}) {
+  return {
+    sessions: true,
+    plan: true,
+    tokens: true,
+    queue: true,
+    agents: true,
+    logs: true,
+    control,
+    launch,
+  };
+}
+
+/**
+ * Project one agent control-file object into the `/api/agents` shape, computing
+ * a server-side heartbeat vitality. Pure — `nowFn` is injectable for tests.
+ *
+ * @param {object} cf     a validated control-file object (from readControlFile)
+ * @param {object} [opts]
+ * @param {Function} [opts.nowFn]  injected clock () => ms (default Date.now)
+ * @returns {object} the agent projection
+ */
+export function projectAgent(cf, { nowFn = Date.now } = {}) {
+  const heartbeat = classifyHeartbeat({ heartbeat_at: cf?.heartbeat_at, nowFn });
+  return {
+    agent_id: cf?.agent_id ?? null,
+    unit_id: cf?.unit_id ?? null,
+    phase: cf?.phase ?? null,
+    status: cf?.status ?? null,
+    heartbeat,
+    heartbeat_at: cf?.heartbeat_at ?? null,
+    model: cf?.model ?? null,
+    model_assignment: cf?.model_assignment ?? null,
+    worktree: cf?.worktree ?? null,
+    branch: cf?.branch ?? null,
+    progress: cf?.progress ?? null,
+    context_bytes: cf?.context_bytes ?? null,
+    context_pressure: cf?.context_pressure ?? null,
+    restart_count: cf?.restart_count ?? 0,
+    escalations: Array.isArray(cf?.escalations) ? cf.escalations : [],
+    blockers: Array.isArray(cf?.blockers) ? cf.blockers : [],
+    started_at: cf?.started_at ?? null,
+    updated_at: cf?.updated_at ?? null,
+  };
+}
+
+/**
+ * Join a run's persisted plan (run.json + units/*.json + _meta.json) with the
+ * live control files into the `/api/plan` projection. Pure — all inputs are
+ * already-read objects, so the disk seam lives in the caller.
+ *
+ * @param {object} args
+ * @param {string} args.runId
+ * @param {object|null} args.run     parsed run.json (state, scale, waves, checkpoints)
+ * @param {object[]} args.units      full unit objects (one per units/<id>.json)
+ * @param {object|null} args.meta    parsed units/_meta.json ({ scale, unit_ids })
+ * @param {object[]} args.controls   control-file objects for the run
+ * @returns {object} the plan payload
+ */
+export function buildPlanPayload({ runId, run, units, meta, controls }) {
+  const controlByUnit = new Map();
+  for (const cf of controls ?? []) {
+    if (cf && cf.unit_id) controlByUnit.set(cf.unit_id, cf);
+  }
+  const order = Array.isArray(meta?.unit_ids) && meta.unit_ids.length
+    ? meta.unit_ids
+    : (units ?? []).map((u) => u?.id).filter(Boolean);
+  const byId = new Map((units ?? []).filter((u) => u && u.id).map((u) => [u.id, u]));
+
+  const unitRows = order
+    .map((id) => byId.get(id))
+    .filter(Boolean)
+    .map((u) => {
+      const cf = controlByUnit.get(u.id) ?? null;
+      return {
+        id: u.id,
+        title: u.title ?? null,
+        scope: u.scope ?? null,
+        criteria: u.criteria ?? null,
+        touched: u.touched ?? null,
+        difficulty: u.difficulty ?? null,
+        model_assignment: u.model_assignment ?? null,
+        // live join — null before the unit's agent has spawned a control file
+        live: cf
+          ? {
+              agent_id: cf.agent_id ?? null,
+              status: cf.status ?? null,
+              phase: cf.phase ?? null,
+              worktree: cf.worktree ?? null,
+              branch: cf.branch ?? null,
+            }
+          : null,
+      };
+    });
+
+  return {
+    run_id: runId,
+    state: run?.state ?? null,
+    scale: run?.scale ?? meta?.scale ?? null,
+    waves: Array.isArray(run?.waves) ? run.waves : [],
+    checkpoints: Array.isArray(run?.checkpoints) ? run.checkpoints : [],
+    units: unitRows,
+  };
+}
+
+/**
+ * Project the queue store status into the `/api/queue` payload: per-state counts
+ * plus a lean item list (the fields a remote client needs to render a backlog).
+ * Pure — `status` is the object returned by queue.mjs getStatus().
+ */
+export function buildQueuePayload(status) {
+  const items = Array.isArray(status?.items) ? status.items : [];
+  return {
+    counts: status?.counts ?? {},
+    current: status?.current ? status.current.id ?? null : null,
+    last_verdict: status?.last_verdict ?? null,
+    items: items.map((i) => ({
+      id: i.id ?? null,
+      title: i.title ?? null,
+      state: i.state ?? null,
+      source: i.source ?? null,
+      created_at: i.created_at ?? null,
+    })),
+  };
+}
+
+/**
+ * Sanitize an agent id from a URL path segment. Rejects anything with a
+ * character outside [A-Za-z0-9._-] (defeats path traversal like `../`). Returns
+ * the id when safe, else null. Pure.
+ */
+export function sanitizeAgentId(raw) {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s || s.length > 200) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(s)) return null;
+  return s;
+}
+
+/** Max bytes a single /api/agents/<id>/log request will return. */
+export const LOG_CHUNK_BYTES = 256 * 1024;
+
+/**
+ * Read a byte-offset window from a log file, capped at LOG_CHUNK_BYTES. Returns
+ * a tail descriptor. When the file is absent, returns { exists: false }. The disk
+ * seam lives here (a single read), so callers stay thin.
+ *
+ * @param {string} filePath  absolute path to the log file
+ * @param {number} offset    starting byte offset (clamped to [0, size])
+ * @returns {{ exists: boolean, offset?: number, next_offset?: number, eof?: boolean, data?: string }}
+ */
+export function readLogTail(filePath, offset = 0) {
+  if (!existsSync(filePath)) return { exists: false };
+  let size = 0;
+  try { size = statSync(filePath).size; } catch (_) { return { exists: false }; }
+  let start = Number(offset) || 0;
+  if (start < 0) start = 0;
+  if (start > size) start = size; // caller over-read past EOF: return empty at EOF
+  const end = Math.min(size, start + LOG_CHUNK_BYTES);
+  let data = "";
+  try {
+    const buf = readFileSync(filePath);
+    data = buf.subarray(start, end).toString("utf8");
+  } catch (_) {
+    return { exists: false };
+  }
+  return { exists: true, offset: start, next_offset: end, eof: end >= size, data };
+}
+
+// ---------------------------------------------------------------------------
 // File I/O — outbox (Conductor → app)
 // ---------------------------------------------------------------------------
 
@@ -273,11 +502,58 @@ function clearPointer(repoRoot) {
 }
 
 // ---------------------------------------------------------------------------
+// v2: disk-seam readers for the derived reads (run.json, units, controls, logs)
+// ---------------------------------------------------------------------------
+
+/** Read + parse a run's run.json from its resolved dir (null when absent/bad). */
+function readRunJson(runDir) {
+  const p = join(runDir, "run.json");
+  if (!existsSync(p)) return null;
+  try { return JSON.parse(readFileSync(p, "utf8")); } catch (_) { return null; }
+}
+
+/** Read a run's units/*.json + _meta.json. Returns { present, units, meta }. */
+function readRunUnits(runDir) {
+  const dir = join(runDir, "units");
+  if (!existsSync(dir)) return { present: false, units: [], meta: null };
+  let names = [];
+  try { names = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch (_) { return { present: false, units: [], meta: null }; }
+  let meta = null;
+  const units = [];
+  for (const name of names) {
+    let obj = null;
+    try { obj = JSON.parse(readFileSync(join(dir, name), "utf8")); } catch (_) { continue; }
+    if (name === "_meta.json") { meta = obj; continue; }
+    if (obj && typeof obj === "object") units.push(obj);
+  }
+  return { present: true, units, meta };
+}
+
+/** Read all control files for a run from its resolved dir (empty when absent). */
+function readRunControls(runDir) {
+  const dir = join(runDir, "control");
+  if (!existsSync(dir)) return [];
+  try { return readAllControlFiles(dir).files; } catch (_) { return []; }
+}
+
+/** Absolute path to a per-agent log file under a resolved run dir. */
+function agentLogPath(runDir, agentId) {
+  return join(runDir, "logs", `${agentId}.log`);
+}
+
+// ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
 
+/** CORS headers applied to every response (bearer-token auth, no cookies). */
+export const CORS_HEADERS = Object.freeze({
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, x-bgsd-token, content-type",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+});
+
 function sendJson(res, code, obj) {
-  res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
+  res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...CORS_HEADERS });
   res.end(JSON.stringify(obj));
 }
 
@@ -305,7 +581,13 @@ export function startServer(repoRoot, { runId, port = 0, host = "127.0.0.1", tok
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", "http://localhost");
-      // Auth gate — every route.
+      // CORS preflight — answered BEFORE the auth gate (it carries no token and
+      // must succeed so the browser will then send the real, authed request).
+      if (req.method === "OPTIONS") {
+        res.writeHead(204, CORS_HEADERS);
+        return res.end();
+      }
+      // Auth gate — every route (OPTIONS above is the only pre-auth response).
       if (!checkAuth({ provided: extractToken(req, url), expected: token })) {
         return sendJson(res, 401, { error: "unauthorized" });
       }
@@ -326,7 +608,79 @@ export function startServer(repoRoot, { runId, port = 0, host = "127.0.0.1", tok
         return streamEvents(req, res, repoRoot, target, Number(url.searchParams.get("since") || 0));
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return sendJson(res, 200, { ok: true, run_id: target, conductor: readConductorIdentity(repoRoot) });
+        // v1 fields preserved; v2 adds protocol / bgsd_version / capabilities.
+        return sendJson(res, 200, {
+          ok: true,
+          run_id: target,
+          conductor: readConductorIdentity(repoRoot),
+          protocol: PROTOCOL_VERSION,
+          bgsd_version: pluginVersion(),
+          capabilities: capabilitiesMap({ control: false, launch: false }),
+        });
+      }
+
+      // ---- v2 read endpoints ----
+      if (req.method === "GET" && url.pathname === "/api/sessions") {
+        return sendJson(res, 200, {
+          sessions: sessionsList(repoRoot),
+          latest_run_id: latestRunId(repoRoot),
+          archived: archivedRunIds(repoRoot),
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/api/plan") {
+        if (!target) return sendJson(res, 404, { error: "unknown run" });
+        const runDir = resolveRunDir(repoRoot, target);
+        if (!runDir) return sendJson(res, 404, { error: "unknown run" });
+        const { present, units, meta } = readRunUnits(runDir);
+        if (!present) return sendJson(res, 409, { error: "not yet decomposed" });
+        const run = readRunJson(runDir);
+        const controls = readRunControls(runDir);
+        return sendJson(res, 200, buildPlanPayload({ runId: target, run, units, meta, controls }));
+      }
+      if (req.method === "GET" && url.pathname === "/api/agents") {
+        if (!target) return sendJson(res, 404, { error: "unknown run" });
+        const runDir = resolveRunDir(repoRoot, target);
+        if (!runDir) return sendJson(res, 404, { error: "unknown run" });
+        const controls = readRunControls(runDir);
+        return sendJson(res, 200, {
+          run_id: target,
+          agents: controls.map((cf) => projectAgent(cf)),
+        });
+      }
+      if (req.method === "GET" && /^\/api\/agents\/[^/]+\/log$/.test(url.pathname)) {
+        if (!target) return sendJson(res, 404, { error: "unknown run" });
+        const runDir = resolveRunDir(repoRoot, target);
+        if (!runDir) return sendJson(res, 404, { error: "unknown run" });
+        const rawId = decodeURIComponent(url.pathname.split("/")[3] || "");
+        const agentId = sanitizeAgentId(rawId);
+        if (!agentId) return sendJson(res, 400, { error: "invalid agent id" });
+        const offset = Number(url.searchParams.get("offset") || 0);
+        const tail = readLogTail(agentLogPath(runDir, agentId), offset);
+        if (!tail.exists) return sendJson(res, 404, { error: "log not found" });
+        return sendJson(res, 200, {
+          agent_id: agentId,
+          offset: tail.offset,
+          next_offset: tail.next_offset,
+          eof: tail.eof,
+          data: tail.data,
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/api/tokens") {
+        if (!target) return sendJson(res, 404, { error: "unknown run" });
+        const summary = summarize(loadUsage(bgsdDir(repoRoot), target));
+        const raw = url.searchParams.get("raw") === "1";
+        const payload = {
+          run_id: target,
+          totals: summary.totals,
+          byModel: summary.byModel,
+          byRole: summary.byRole,
+          byAgent: summary.byAgent,
+        };
+        if (raw) payload.entries = loadUsage(bgsdDir(repoRoot), target).entries ?? [];
+        return sendJson(res, 200, payload);
+      }
+      if (req.method === "GET" && url.pathname === "/api/queue") {
+        return sendJson(res, 200, buildQueuePayload(queueStatus()));
       }
 
       // ---- ingest ----
@@ -373,6 +727,7 @@ function streamEvents(req, res, repoRoot, runId, since) {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
+    ...CORS_HEADERS,
   });
   let cursor = since;
   const flush = () => {
