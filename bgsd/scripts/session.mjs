@@ -1237,20 +1237,21 @@ if (
       // install it now; if present we refresh it to latest. Resilient: any
       // failure is reported, never crashes the session.
       try {
-        const { isGsdInstalled, ensureGsdLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
-        const wasInstalled = isGsdInstalled();
-        if (wasInstalled) {
-          process.stdout.write(`  deps: gsd-core (engine) installed ✓ — refreshing to latest\n`);
-        } else {
-          process.stdout.write(`  deps: gsd-core (engine) missing — installing ${GSD_NPM_PACKAGE} now\n`);
+        const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
+        const runtimes = [...new Set([modelContract.build.harness, modelContract.evaluate.harness])];
+        for (const runtime of runtimes) {
+          const installed = isGsdInstalled({ runtime });
+          process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
         }
-        const res = ensureGsdLive({ log: (m) => process.stdout.write(`        ${m}\n`) });
-        const did = res.performed.length ? res.performed.join(", ") : "already current";
-        process.stdout.write(`  deps: gsd-core ready ✓  [${did}]\n`);
+        const results = ensureGsdRuntimesLive(runtimes, { log: (m) => process.stdout.write(`        ${m}\n`) });
+        for (const runtime of runtimes) {
+          const did = results[runtime].performed.length ? results[runtime].performed.join(", ") : "already current";
+          process.stdout.write(`  deps: ${runtime} gsd-core ready  [${did}]\n`);
+        }
       } catch (err) {
         process.stdout.write(
           `  deps: gsd-core ensure FAILED (${err.message}). ` +
-          `Install manually: npx -y @opengsd/gsd-core@latest --claude --global\n`
+          `Install manually for each selected lane: npx -y @opengsd/gsd-core@latest --claude|--codex --global\n`
         );
       }
       if (usageTesting) {
