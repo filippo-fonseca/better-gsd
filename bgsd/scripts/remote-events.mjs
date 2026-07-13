@@ -196,14 +196,18 @@ function writeSeqSidecar(repoRoot, runId, seq) {
  * @param {{ now?:()=>string }} [io]  Injectable clock for deterministic tests.
  * @returns {object|null}  The written event, or null on no-op / failure.
  */
-export function emitStructured(repoRoot, runId, { type = "narration", text = "", meta = null } = {}, io = {}) {
+export function emitStructured(repoRoot, runId, evt = {}, io = {}) {
   try {
     if (!repoRoot || !runId) return null;
+    // Guard the destructure itself: a caller may pass null/undefined explicitly,
+    // which bypasses the default and would throw before the never-throw contract.
+    const { type = "narration", text = "", meta = null } = evt && typeof evt === "object" ? evt : {};
+    const safeIo = io && typeof io === "object" ? io : {};
     const dir = runDir(repoRoot, runId);
     // No-op when the run dir is absent (nothing to observe).
     if (!existsSync(dir)) return null;
 
-    const now = typeof io.now === "function" ? io.now : () => new Date().toISOString();
+    const now = typeof safeIo.now === "function" ? safeIo.now : () => new Date().toISOString();
     const seq = nextSeq(repoRoot, runId);
     const ev = buildStructuredEvent({ seq, type, text, meta, at: now() });
 
