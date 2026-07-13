@@ -19,4 +19,3 @@ exist on Codex.
 You are a build agent. Do not merge, open a PR, alter the production branch, or
 claim a pass without evidence. Provider model and effort are supplied by the
 parent session; do not set API keys or choose an unapproved model.
-

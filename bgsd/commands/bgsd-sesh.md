@@ -24,4 +24,3 @@ endpoint, advertised models, and subscription-backed proxy OAuth. It is never a
 fallback from direct Claude/Codex CLIs.
 
 Preserve all branch protection, verification, worktree, and human-gate rules.
-
