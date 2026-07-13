@@ -14,6 +14,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, renameSync } from "node:fs";
 
 import { createIssues } from "./issues.mjs";
+import { emitIssueLinked } from "./remote-events.mjs";
 
 export function isLiveFlagSet() {
   return process.argv.includes("--live");
@@ -75,5 +76,18 @@ export function liveDeps(repoRoot, runDir, log) {
 
 /** Convenience: create the epic + unit issues for a run against real gh/git. */
 export async function createIssuesLive({ repoRoot, runDir, runId, prompt, units, log }) {
-  return createIssues({ runId, prompt, units, deps: liveDeps(repoRoot, runDir, log) });
+  const result = await createIssues({ runId, prompt, units, deps: liveDeps(repoRoot, runDir, log) });
+
+  // Structured outbox: mirror each unit→issue link for remote observers. createIssues
+  // returns only issue numbers (not URLs), so url is left null here; the emit is
+  // guarded so it can never break issue creation.
+  try {
+    if (result && !result.skipped && result.units) {
+      for (const [unitId, issueNumber] of Object.entries(result.units)) {
+        emitIssueLinked(repoRoot, runId, { unitId, issueNumber, url: null });
+      }
+    }
+  } catch (_) { /* telemetry must never break issue creation */ }
+
+  return result;
 }
