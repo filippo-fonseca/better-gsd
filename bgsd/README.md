@@ -5,8 +5,9 @@ workflow while making the execution lanes explicit and provider-neutral.
 
 Use `bgsd-sesh` to start. The Conductor detects the current session model,
 then the native selector chooses the build/evaluation profile, routing mode, and
-optional proxy transport. `bgsd-doctor` installs or verifies GSD for every
-selected runtime before work starts.
+optional proxy transport. Quick stays inside the Conductor and needs no GSD.
+For Feature and Project, `bgsd-doctor` installs or verifies GSD for every
+selected runtime before worker execution.
 
 | Profile | Build | Evaluate |
 | --- | --- | --- |
@@ -15,11 +16,14 @@ selected runtime before work starts.
 | Claude/OpenAI | Claude | OpenAI |
 | OpenAI/Claude | OpenAI | Claude |
 
-Build agents execute full GSD workflows inside isolated worktrees. Evaluation
-agents independently verify Loop 1, Loop 2, and final review. API-key billing is
-not a supported lane: child processes scrub provider API keys and use the
-subscription login for the selected CLI. The optional CLIProxyAPI transport is
-only for intentionally using the Claude Code harness against a foreign model.
+Quick uses a Conductor-owned plan, direct implementation, and direct verify/fix
+loop. Feature and Project build agents execute full GSD workflows inside isolated
+worktrees. The Conductor remains the Advisor at every worker checkpoint and can
+rewrite the worker steering directive. Evaluation agents independently verify
+Loop 1, Loop 2, and final review. API-key billing is not a supported lane: child
+processes scrub provider API keys and use the subscription login for the selected
+CLI. The optional CLIProxyAPI transport is only for intentionally using the
+Claude Code harness against a foreign model.
 
 See the repository [README](../README.md) and [docs](./docs) for setup and the
 Quick/Feature/Project workflow table.

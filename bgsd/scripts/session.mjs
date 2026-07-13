@@ -446,11 +446,10 @@ export function buildDepthPlan(scale, { prompt } = {}) {
 
   if (scale === "quick") {
     stages.push(
-      { id: "classify", engine: "classify-item.mjs", entry: "classifyItem", depth: "single" },
-      { id: "route", engine: "route-item.mjs", entry: "routeItem", depth: "single" },
-      { id: "execute", engine: "run-live.mjs", entry: "liveSpawnFn", depth: "single-agent" },
-      // VERIFY→FIX (Loop 1) — NEVER skipped, even for quick (§4.1).
-      { id: "verify_fix", engine: "loop1.mjs", entry: "runLoop1", depth: "single-worktree" },
+      { id: "conductor_plan", engine: "Conductor", entry: "authorQuickPlan", depth: "direct" },
+      { id: "conductor_execute", engine: "Conductor", entry: "implementQuickPlan", depth: "direct" },
+      // Quick still verifies, but fixes stay with the Conductor rather than GSD.
+      { id: "verify_fix", engine: "loop1.mjs", entry: "runConductorVerifyFix", depth: "direct" },
     );
     return { scale, discuss: false, verified: true, stages };
   }
@@ -604,6 +603,8 @@ export async function startSession(opts = {}) {
     bgsdDir = join(REPO_ROOT, ".bgsd"),
     verifyFn,
     fixFn,
+    quickPlanFn,
+    quickExecuteFn,
     discussFn,
     oracleFn,
     decomposeFn,
@@ -733,7 +734,7 @@ export async function startSession(opts = {}) {
 
   let result;
   if (scale === "quick") {
-    result = await runQuick({ prompt, classification, plan, verifyFn, fixFn, tick });
+    result = await runQuick({ prompt, classification, plan, verifyFn, fixFn, quickPlanFn, quickExecuteFn, tick });
   } else {
     result = await runDecomposed({
       prompt, scale, classification, plan, bgsdDir, sessionRecord,
@@ -761,54 +762,48 @@ export async function startSession(opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// quick path — classify → route → Loop 1 (still verifies; §4.1)
+// quick path — Conductor plan → direct implementation → Loop 1
 // ---------------------------------------------------------------------------
 
 /**
- * Drive the quick path: a single item through the real Loop 1 controller.
- * Reuses queue.transition + classifyItem + routeItem + runLoop1 exactly.
+ * Drive the quick path without spawning GSD. The live Conductor authors the
+ * compact plan and implements it in the current session; Loop 1 only supplies
+ * a bounded verification/retry state machine around that direct work.
  * Terminates `done` ONLY on a Tester PASS (NFR-06).
  */
-async function runQuick({ prompt, classification, plan, verifyFn, fixFn, tick }) {
+async function runQuick({ prompt, classification, plan, verifyFn, fixFn, quickPlanFn, quickExecuteFn, tick }) {
   const { transition } = await import("./queue.mjs");
-  const { classifyItem } = await import("./classify-item.mjs");
-  const { routeItem } = await import("./route-item.mjs");
   const { runLoop1 } = await import("./loop1.mjs");
 
   if (typeof verifyFn !== "function") {
     throw new Error("runQuick: verifyFn must be injected (mock in tests; loop1-live in --live)");
   }
 
-  const lines = prompt.trim().split(/\n/);
-  const title = lines[0];
-  const body = lines.slice(1).join("\n");
+  const conductorPlan = typeof quickPlanFn === "function"
+    ? await quickPlanFn({ prompt, classification, plan })
+    : { source: "conductor", prompt };
+  if (!conductorPlan || typeof conductorPlan !== "object") {
+    throw new Error("runQuick: quickPlanFn must return a Conductor plan object");
+  }
+  if (typeof quickExecuteFn === "function") {
+    await quickExecuteFn({ prompt, conductorPlan, classification, plan });
+  }
 
-  // Build a single in-memory queue item (the orchestrator stores a pointer to
-  // it; quick is single-stream, single-worktree).
+  // A small in-memory item lets the generic verification state machine track
+  // status without routing execution to GSD.
   const now = new Date().toISOString();
   const item = {
     id: `sesh-quick-${Date.now()}`,
-    title, body, source: "session",
-    state: "queued", attempts: 1,
+    title: prompt.trim().split(/\n/)[0], body: "", source: "conductor",
+    state: "routed", attempts: 1,
     created_at: now, updated_at: now,
-    trail: [{ from: null, to: "queued", at: now }],
+    trail: [{ from: null, to: "routed", at: now }],
   };
 
-  // classify → (needs_input stops here) → route → Loop 1.
-  classifyItem(item, transition);
   tick({ run: { state: "executing", run_id: item.id }, agents: [{ agent_id: item.id, status: "running", phase: "execute" }] });
 
-  if (item.state === "needs_input") {
-    return {
-      outcome: "needs_input",
-      itemState: item.state,
-      clarification_question: item.clarification_question,
-    };
-  }
-
-  routeItem(item, transition, { skipConfigWrite: true });
-
-  // VERIFY→FIX. fixFn defaults to a no-op (verifyFn drives PASS/FAIL in tests).
+  // VERIFY→FIX. The injected fix function is Conductor-owned for Quick; it
+  // must not invoke a GSD command or spawn a Pipeline Agent.
   const loopResult = await runLoop1({
     item,
     transitionFn: transition,
@@ -825,6 +820,8 @@ async function runQuick({ prompt, classification, plan, verifyFn, fixFn, tick })
     iterations: loopResult.iterations,
     itemState: item.state,
     verified: true,
+    execution: "conductor-direct",
+    conductorPlan,
   };
 }
 
@@ -1206,19 +1203,30 @@ if (
     process.stdout.write(`  scale:   ${classification.scale}   (mode=${mode}, confidence=${classification.confidence})\n`);
     process.stdout.write(`  why:     ${explainScale(classification)}\n`);
     process.stdout.write(`  signals: units≈${classification.unitCountEstimate}, surfaces=${classification.depthBreadth}\n`);
-    process.stdout.write(`  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`);
     process.stdout.write(
-      `  verify:  ${usageTesting
-        ? `full (gsd-verifier + Playwright usage testing${headless ? ", headless" : ""})`
-        : "code-only (gsd-verifier; Playwright UI usage testing OFF)"}\n`
+      classification.scale === "quick"
+        ? `  discuss: ${plan.discuss}   verified: ${plan.verified} (direct Conductor verify/fix loop)\n`
+        : `  discuss: ${plan.discuss}   verified: ${plan.verified} (Loop 1 always runs)\n`
     );
+    const verifyDescription = classification.scale === "quick"
+      ? usageTesting
+        ? `Conductor direct checks + Playwright usage testing${headless ? ", headless" : ""} (no GSD)`
+        : "Conductor direct code checks (no GSD; Playwright UI usage testing OFF)"
+      : usageTesting
+        ? `full (gsd-verifier + Playwright usage testing${headless ? ", headless" : ""})`
+        : "code-only (gsd-verifier; Playwright UI usage testing OFF)";
+    process.stdout.write(`  verify:  ${verifyDescription}\n`);
     process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
     process.stdout.write(`  conductor: ${modelContract.conductor.provider}/${modelContract.conductor.model}\n`);
-    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
-    if (modelContract.routing === "adaptive") {
-      process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
+    if (classification.scale === "quick") {
+      process.stdout.write("  workers:   none (Quick is implemented and verified by the Conductor; no GSD)\n");
+    } else {
+      process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
+      if (modelContract.routing === "adaptive") {
+        process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
+      }
+      process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
     }
-    process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
       process.stdout.write(`    - ${s.id.padEnd(11)} → ${s.engine} :: ${s.entry}  [${s.depth}]\n`);
@@ -1250,17 +1258,21 @@ if (
       // install it now; if present we refresh it to latest. Resilient: any
       // failure is reported, never crashes the session.
       try {
-        const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
-        const { harnessForLane } = await import("./model-contract.mjs");
-        const runtimes = [...new Set([harnessForLane(modelContract.build), harnessForLane(modelContract.evaluate)])];
-        for (const runtime of runtimes) {
-          const installed = isGsdInstalled({ runtime });
-          process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
-        }
-        const results = ensureGsdRuntimesLive(runtimes, { log: (m) => process.stdout.write(`        ${m}\n`) });
-        for (const runtime of runtimes) {
-          const did = results[runtime].performed.length ? results[runtime].performed.join(", ") : "already current";
-          process.stdout.write(`  deps: ${runtime} gsd-core ready  [${did}]\n`);
+        if (classification.scale === "quick") {
+          process.stdout.write("  deps: Quick uses the current Conductor directly; no GSD runtime install is needed.\n");
+        } else {
+          const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
+          const { harnessForLane } = await import("./model-contract.mjs");
+          const runtimes = [...new Set([harnessForLane(modelContract.build), harnessForLane(modelContract.evaluate)])];
+          for (const runtime of runtimes) {
+            const installed = isGsdInstalled({ runtime });
+            process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
+          }
+          const results = ensureGsdRuntimesLive(runtimes, { log: (m) => process.stdout.write(`        ${m}\n`) });
+          for (const runtime of runtimes) {
+            const did = results[runtime].performed.length ? results[runtime].performed.join(", ") : "already current";
+            process.stdout.write(`  deps: ${runtime} gsd-core ready  [${did}]\n`);
+          }
         }
       } catch (err) {
         process.stdout.write(
@@ -1270,6 +1282,8 @@ if (
       }
       if (usageTesting) {
         process.stdout.write(`  deps: Playwright (UI verification) ships with the plugin; Kiwi runs 'npx playwright install' before verifying.\n`);
+      } else if (classification.scale === "quick") {
+        process.stdout.write("  deps: Playwright skipped — direct Conductor code checks (no GSD).\n");
       } else {
         process.stdout.write(`  deps: Playwright skipped — code-only verification (gsd-verifier). No browser/UI usage testing this session.\n`);
       }

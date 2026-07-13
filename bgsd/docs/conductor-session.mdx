@@ -22,3 +22,22 @@ heavy lane is GPT-5.6 Sol medium.
 
 Every selector uses the host’s native question UI. Do not replace the setup flow
 with free-text questions. The session doctor must pass before spawning agents.
+
+## Conductor cadence
+
+Quick has no worker: the Conductor writes the compact plan, implements it in the
+current session, then drives verification and any repair directly. It never
+invokes GSD.
+
+For Feature and Project, the Conductor remains the Advisor throughout. It must
+write a seed before worker execution, inspect the worker control file and code
+evidence at every phase change, commit, blocker, and verification result, then
+rewrite the durable steering directive when the next action changes:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/advisor.mjs" steer \
+  --run-id <run-id> --unit-id <unit-id> --message "<next direction>"
+```
+
+Pipeline Agents reread that directive at their required checkpoints. The worker
+does not own product-level reasoning, routing, or integration decisions.

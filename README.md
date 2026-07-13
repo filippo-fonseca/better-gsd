@@ -2,16 +2,17 @@
 
 BGSD is a verified, worktree-based GSD conductor for Claude Code and Codex.
 You start one session with the model you want to reason with. That live session
-is the Conductor and Advisor. BGSD then runs isolated build and evaluation lanes
-on your existing Claude and ChatGPT subscriptions, verifies the result, and
-never writes directly to your production branch.
+is the Conductor and Advisor. Quick work stays in that session; Feature and
+Project work use isolated build and evaluation lanes on your existing Claude and
+ChatGPT subscriptions. BGSD verifies the result and never writes directly to
+your production branch.
 
 ## The model contract
 
 | Role | Owns | Chosen at |
 | --- | --- | --- |
 | Conductor | scope, decomposition, seeds, advisor decisions, human interaction | your current Claude Code or Codex session |
-| Build lane | Pipeline Agents, nested GSD workflow, internal reviews, repairs | BGSD session selector |
+| Build lane | Feature/Project Pipeline Agents, nested GSD workflow, internal reviews, repairs | BGSD session selector |
 | Evaluation lane | Loop 1, Loop 2, fresh final review | BGSD session selector |
 
 The default models are Claude Opus high for Claude lanes and GPT-5.6 Sol medium
@@ -87,13 +88,17 @@ node bgsd/scripts/session.mjs --prompt "Review this refactor" --profile openai -
 
 | Mode | Use it for | Pipeline | Verification |
 | --- | --- | --- | --- |
-| Quick | one contained correction | one unit, direct path | Loop 1 always |
+| Quick | one contained correction | Conductor plan, implementation, and verify/fix; no GSD | direct verification loop |
 | Feature | a scoped product change | a few worktrees; Loop 2 when needed | per-unit plus integration when applicable |
 | Project | multi-surface work | discussion, DAG, waves, full GSD units | Loop 1, Loop 2, fresh review, human gate |
 
-Every build unit can run a full GSD workflow. Complexity controls workflow depth,
-not an unannounced model downgrade. Work lands on `next`; the merge from `next`
-to `main` remains human-only.
+Quick never invokes GSD: the Conductor plans and implements it directly. Every
+Feature/Project build unit runs a full GSD workflow. In those workflows, the
+Conductor remains the Advisor: it authors seeds, reads control evidence at every
+phase/commit/blocker/verification checkpoint, and can rewrite the durable worker
+steering directive. Complexity controls workflow depth, not an unannounced model
+downgrade. Work lands on `next`; the merge from `next` to `main` remains
+human-only.
 
 ## Follow-up roadmap
 

@@ -177,6 +177,9 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     assert.equal(brief.scope, UNIT.scope);
     assert.deepEqual(brief.criteria, UNIT.criteria);
     assert.deepEqual(brief.touched, UNIT.touched);
+    assert.ok(brief.advisor_path, "brief exposes a durable Conductor steering directive");
+    assert.ok(existsSync(brief.advisor_path), "steering directive must exist before agent launch");
+    assert.ok(brief.advisor_checkpoints.includes("after every commit"));
 
     // L04 — control file written under .bgsd/runs/<runId>/control/<unitId>.json
     const controlPath = join(bgsdDir, "runs", runId, "control", `${UNIT.id}.json`);

@@ -64,7 +64,7 @@
  * for the --live path.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
@@ -73,10 +73,10 @@ import { createInterface } from "node:readline";
 import { writeUnitWorktreeConfig } from "./decompose.mjs";
 import { buildAgentSpawn } from "./harness.mjs";
 import { buildLaneForUnit, contractFromEnv, harnessForLane } from "./model-contract.mjs";
-import { createControlFile } from "./control.mjs";
+import { createControlFile, updateControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
-import { readConductorSeed } from "./advisor.mjs";
+import { ADVISOR_CHECKPOINTS, readConductorSeed, writeAdvisorDirective } from "./advisor.mjs";
 import { recordUsage } from "./tokens.mjs";
 import { harvestUsage } from "./token-harvest.mjs";
 
@@ -219,7 +219,7 @@ export function requireNotProductionBranch(opts = {}) {
  * @returns {Promise<void>}
  */
 export async function liveSpawnFn(unitId, plan, opts = {}) {
-  const spawnImpl = opts.spawnImpl ?? spawnSync;
+  const spawnImpl = opts.spawnImpl ?? spawn;
   const gitImpl   = opts.gitImpl   ?? spawnSync;
   const repoRoot  = opts.repoRoot  ?? REPO_ROOT;
   const bgsdDir   = opts.bgsdDir   ?? join(repoRoot, ".bgsd");
@@ -271,6 +271,9 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
 
   // 4. Write the unit brief the Pipeline Agent reads (.planning/bgsd-unit.json).
   const buildLane = buildLaneForUnit(contractFromEnv(), unit.model_assignment);
+  const advisorPath = runId
+    ? writeAdvisorDirective(runId, unitId, { bgsdDir, scale })
+    : null;
   const brief = {
     unit_id:  unitId,
     run_id:   runId,
@@ -281,6 +284,8 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     touched:  Array.isArray(unit.touched)  ? unit.touched  : [],
     model_assignment: buildLane.assignment,
     model: buildLane.model,
+    advisor_path: advisorPath,
+    advisor_checkpoints: ADVISOR_CHECKPOINTS,
   };
   mkdirSync(planningDir, { recursive: true });
   writeFileSync(join(planningDir, "bgsd-unit.json"), JSON.stringify(brief, null, 2), "utf8");
@@ -346,11 +351,30 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     },
   });
   const agentT0 = Date.now();
+  const usageMeta = { agentId: unitId, unitId, role: "executor", harness, model: spawnModel, effort: buildLane.effort };
+
+  // The real pipeline must stay asynchronous so the scheduler keeps polling
+  // control files and the Conductor can revise advisor directives mid-flight.
+  // Injected test spawns retain the synchronous result shape for deterministic
+  // assertions without launching subprocesses.
+  if (!opts.spawnImpl) {
+    const child = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", env: agentSpawn.env });
+    child.once("error", (error) => {
+      recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
+      try { updateControlFile(controlPath, { status: "failed", phase: "failed", progress: { iteration: 0, max_iterations: 5, note: `spawn error: ${error.message}` } }); } catch (_) { /* surfaced by scheduler */ }
+      process.stderr.write(`[run-live] Pipeline Agent failed to spawn for ${unitId}: ${error.message}\n`);
+    });
+    child.once("exit", (status, signal) => {
+      recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
+      if (status !== 0) {
+        try { updateControlFile(controlPath, { status: "failed", phase: "failed", progress: { iteration: 0, max_iterations: 5, note: `agent exited ${status ?? signal ?? "unknown"}` } }); } catch (_) { /* surfaced by scheduler */ }
+      }
+    });
+    return;
+  }
+
   const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8", env: agentSpawn.env });
-  recordSpawnUsage(bgsdDir, runId, {
-    agentId: unitId, unitId, role: "executor", harness, model: spawnModel,
-    effort: buildLane.effort,
-  }, wtPath, agentT0);
+  recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
   if (agentResult?.error) {
     throw new Error(`${agentSpawn.cmd} ${agentSpawn.args[0]} /bgsd-run-agent failed to spawn for unit "${unitId}": ${agentResult.error.message}`);
   }

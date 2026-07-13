@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Model-agnostic live Conductor advisor and durable seed-plan seam. */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function normalizeAdvisorSetting(setting) {
@@ -45,10 +45,10 @@ export const ADVISOR_DUTIES = Object.freeze([
     reads: ["seed-plan.md", "bgsd-unit.json"],
   },
   {
-    id: "checkin-commits",
-    label: "Check in on commits",
-    hook: "review distilled progress as commits land",
-    reads: ["git log --oneline", "verification-report.json"],
+    id: "steer-active-workers",
+    label: "Steer active workers",
+    hook: "at every phase change, commit, blocker, and verification result",
+    reads: ["control file", "git diff/log", "verification-report.json"],
   },
   {
     id: "author-seeds",
@@ -57,6 +57,54 @@ export const ADVISOR_DUTIES = Object.freeze([
     reads: ["upstream commit log", "verification-report.json"],
   },
 ]);
+
+export const ADVISOR_CHECKPOINTS = Object.freeze([
+  "before implementation",
+  "after planning",
+  "after every commit",
+  "on a blocker or assumption",
+  "before verification",
+  "after every verification result",
+]);
+
+export function advisorDirectivePath(runId, unitId, { bgsdDir = ".bgsd" } = {}) {
+  return join(bgsdDir, "runs", runId, "advisor", `${unitId}.md`);
+}
+
+/**
+ * Write a durable Conductor directive that a Pipeline Agent rereads at every
+ * checkpoint. Rewriting the file is the steering protocol; no provider API or
+ * extra agent is involved.
+ */
+export function writeAdvisorDirective(runId, unitId, {
+  bgsdDir = ".bgsd",
+  scale = "feature",
+  message = "Follow the approved seed and report evidence at each checkpoint.",
+  now = new Date(),
+} = {}) {
+  if (!runId || !unitId) throw new Error("writeAdvisorDirective requires runId and unitId");
+  const path = advisorDirectivePath(runId, unitId, { bgsdDir });
+  const text = [
+    "# Conductor Steering Directive",
+    "",
+    `- Run: ${runId}`,
+    `- Unit: ${unitId}`,
+    `- Scale: ${scale}`,
+    `- Updated: ${now.toISOString()}`,
+    "",
+    "## Required Checkpoints",
+    ...ADVISOR_CHECKPOINTS.map((checkpoint) => `- ${checkpoint}`),
+    "",
+    "## Latest Direction",
+    message.trim(),
+    "",
+  ].join("\n");
+  mkdirSync(join(bgsdDir, "runs", runId, "advisor"), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, text, "utf8");
+  renameSync(tmp, path);
+  return path;
+}
 
 export function conductorSeedPath(runId, unitId, { bgsdDir = ".bgsd" } = {}) {
   return join(bgsdDir, "runs", runId, "seeds", `${unitId}.md`);
@@ -80,6 +128,19 @@ if (invokedDirectly) {
     process.stdout.write(`advisor: ${decision.active ? "ON" : "off"} - ${decision.reason}\n`);
     process.exit(0);
   }
-  process.stderr.write("Usage: node advisor.mjs gate [--provider claude|openai] [--model <id>] [--setting auto|true|false]\n");
+  if (argv[0] === "steer") {
+    const runId = value("run-id");
+    const unitId = value("unit-id");
+    const message = value("message");
+    const bgsdDir = value("bgsd-dir") || ".bgsd";
+    if (!runId || !unitId || !message) {
+      process.stderr.write("advisor steer requires --run-id, --unit-id, and --message\n");
+      process.exit(1);
+    }
+    const path = writeAdvisorDirective(runId, unitId, { bgsdDir, message });
+    process.stdout.write(`advisor: wrote steering directive ${path}\n`);
+    process.exit(0);
+  }
+  process.stderr.write("Usage: node advisor.mjs gate [--provider claude|openai] [--model <id>] [--setting auto|true|false]\n       node advisor.mjs steer --run-id <id> --unit-id <id> --message <text> [--bgsd-dir <path>]\n");
   process.exit(1);
 }

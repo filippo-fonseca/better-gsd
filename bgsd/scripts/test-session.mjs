@@ -221,14 +221,16 @@ await test("U1: Haiku seam nudges at most one step and never overrides a flag", 
 // U1 — buildDepthPlan table (quick STILL verifies)
 // ---------------------------------------------------------------------------
 
-await test("U1: buildDepthPlan(quick) includes Loop 1 verification; no discuss", () => {
+await test("U1: buildDepthPlan(quick) stays Conductor-direct and verifies", () => {
   const plan = buildDepthPlan("quick");
   assert.equal(plan.discuss, false);
   assert.equal(plan.verified, true);
   const ids = plan.stages.map((s) => s.id);
+  assert.deepEqual(ids, ["conductor_plan", "conductor_execute", "verify_fix"]);
   assert.ok(ids.includes("verify_fix"), "quick MUST include verify_fix");
   const vf = plan.stages.find((s) => s.id === "verify_fix");
-  assert.equal(vf.entry, "runLoop1");
+  assert.equal(vf.entry, "runConductorVerifyFix");
+  assert.equal(ids.includes("schedule"), false, "quick must not schedule a GSD worker");
 });
 
 await test("U1: buildDepthPlan(feature) — engines + verification, no discuss", () => {
@@ -266,15 +268,20 @@ await test("U1: EVERY scale's plan has verified=true (verification never skipped
 // ---------------------------------------------------------------------------
 
 await test("U2: quick path runs Loop 1 and reaches done ONLY on Tester PASS", async () => {
+  const calls = [];
   const res = await startSession({
     prompt: "Fix the typo in the footer",
     bgsdDir: tmpBgsd(),
+    quickPlanFn: async () => { calls.push("plan"); return { steps: ["edit footer"] }; },
+    quickExecuteFn: async () => { calls.push("execute"); },
     verifyFn: async () => ({ verdict: "PASS", defects: [] }),
   });
   assert.equal(res.scale, "quick");
   assert.equal(res.outcome, "done");
   assert.equal(res.verified, true);
   assert.equal(res.itemState, "done");
+  assert.equal(res.execution, "conductor-direct");
+  assert.deepEqual(calls, ["plan", "execute"]);
 });
 
 await test("U2: quick path with FAIL→fix→PASS still ends done (verified)", async () => {

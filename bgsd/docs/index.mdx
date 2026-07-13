@@ -5,13 +5,16 @@ Conductor is whichever Claude Code or Codex session you started. It scopes the
 work, authors seed plans, makes advisory decisions, and asks every user-facing
 question through the native selector UI.
 
-The build lane runs full GSD workflows in isolated worktrees. The evaluation
-lane performs Loop 1, Loop 2, and final fresh review. Both lanes use existing
-subscriptions, not provider API keys.
+Quick stays in the Conductor: it uses a compact Conductor plan, direct
+implementation, and a direct verify/fix loop without invoking GSD. Feature and Project build
+lanes run full GSD workflows in isolated worktrees; the Conductor remains the
+Advisor at every plan, commit, blocker, and verification checkpoint. The
+evaluation lane performs Loop 1, Loop 2, and final fresh review. Both lanes use
+existing subscriptions, not provider API keys.
 
 | Mode | Best for | Build path | Evidence |
 | --- | --- | --- | --- |
-| Quick | one contained fix | one unit | Loop 1 |
+| Quick | one contained fix | Conductor direct; no GSD | direct verify/fix |
 | Feature | a scoped change | a few units, integrate when needed | Loop 1 plus Loop 2 when applicable |
 | Project | multi-surface product work | discuss, DAG, waves, full GSD units | Loop 1, Loop 2, fresh review, human gate |
 
