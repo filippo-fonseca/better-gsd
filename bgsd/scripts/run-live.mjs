@@ -71,7 +71,8 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { writeUnitWorktreeConfig } from "./decompose.mjs";
-import { activeLane, buildAgentSpawn } from "./harness.mjs";
+import { buildAgentSpawn } from "./harness.mjs";
+import { buildLaneForUnit, contractFromEnv } from "./model-contract.mjs";
 import { createControlFile } from "./control.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
@@ -272,6 +273,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   writeUnitWorktreeConfig(planningDir, unit);
 
   // 4. Write the unit brief the Pipeline Agent reads (.planning/bgsd-unit.json).
+  const buildLane = buildLaneForUnit(contractFromEnv(), unit.model_assignment);
   const brief = {
     unit_id:  unitId,
     run_id:   runId,
@@ -280,6 +282,8 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     scope:    unit.scope ?? "",
     criteria: Array.isArray(unit.criteria) ? unit.criteria : [],
     touched:  Array.isArray(unit.touched)  ? unit.touched  : [],
+    model_assignment: buildLane.assignment,
+    model: buildLane.model,
   };
   mkdirSync(planningDir, { recursive: true });
   writeFileSync(join(planningDir, "bgsd-unit.json"), JSON.stringify(brief, null, 2), "utf8");
@@ -289,7 +293,6 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   // harnesses mid-project (e.g. to dodge a usage limit) is seamless — the next
   // spawn simply follows. Recorded on the control file + brief so we know which
   // harness ran each unit; the durable .bgsd/ state is harness-independent.
-  const buildLane = activeLane("build");
   const harness = buildLane.harness;
 
   // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
@@ -303,13 +306,14 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     phase:    "plan",
     status:   "running",
     harness,
+    model: buildLane.model,
+    model_assignment: buildLane.assignment,
   });
 
-  // The concrete model for this unit's worktree subprocess, resolved for the
-  // active harness (opus-tier → the harness's opus equivalent). The executor is
-  // NEVER Fable (too token-heavy on the highest-VOLUME role): Opus by default,
-  // or Sonnet on trivial (< 0.2) units when --sonnet is opted in.
+  // Fixed routing uses the session build model. Adaptive routing uses only the
+  // Conductor's persisted unit assignment and otherwise fails safe to heavy.
   const spawnModel = buildLane.model;
+  log(`liveSpawnFn: model ${spawnModel} (${buildLane.assignment.tier}; ${buildLane.assignment.reason})`);
 
   // 6. The live Conductor/Advisor owns seed planning in v2. There is no separate
   //    pre-planner subprocess. If the Conductor authored a seed, copy it into the

@@ -11,12 +11,13 @@ Before execution, use `request_user_input` for the native session selector. Neve
 
 1. Pipeline profile: Claude, OpenAI, Claude build/OpenAI evaluate, or OpenAI build/Claude evaluate.
 2. Optional custom build/evaluation model IDs through the selector's free-form Other field.
-3. Pipeline and verifier depth when the task warrants it.
+3. Routing: Fixed (default) or Adaptive. In Adaptive mode, the Conductor assigns each build unit to the validated heavy/light catalog and records a reason; unassigned work remains heavy. Evaluation stays fixed.
+4. Pipeline and verifier depth when the task warrants it.
 
 Run BGSD Doctor using the `bgsd-doctor` skill. Offer native Install & Continue if anything is missing. Then export both `BGSD_PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT` to the resolved plugin root and invoke:
 
 ```bash
-node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --profile <profile> [scale/mode flags] [--build-model <id>] [--evaluate-model <id>] [--proxy]
+node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --profile <profile> [scale/mode flags] [--build-model <id>] [--evaluate-model <id>] [--routing fixed|adaptive] [--light-build-model <id>] [--proxy]
 ```
 
 The live session model is the Conductor and authors all unit seeds. Do not launch a separate pre-planner. Pipeline Agents and repair agents use the build lane; Loop 1/Loop 2 verification and final fresh review use the evaluation lane. Keep every Conductor interaction in the configured Kiwi persona and preserve all branch, verification, and human-gate rules from the Conductor contract.

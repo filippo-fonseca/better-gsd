@@ -25,6 +25,8 @@
  *   blockers:      Blocker[]
  *   escalations:   Escalation[]
  *   restart_count: number   — how many times this agent has been restarted
+ *   model:         string|null — concrete model selected for this agent
+ *   model_assignment: object|null — adaptive tier, source, and reason
  *   inbox_path:    string|null — path to <agent-id>.inbox.md when the Conductor answered a blocker
  *   context_bytes:    number   — accumulated context size (byte proxy for tokens)
  *                               in this agent's window. The Conductor reads this
@@ -288,6 +290,8 @@ export function createControlFile(controlPath, fields) {
     status      = "running",
     progress    = { iteration: 0, max_iterations: 5, note: "" },
     commits     = [],
+    model       = null,
+    model_assignment = null,
   } = fields;
 
   const now = new Date().toISOString();
@@ -305,6 +309,8 @@ export function createControlFile(controlPath, fields) {
     updated_at:    now,
     progress,
     commits,
+    model,
+    model_assignment,
     assumptions:   [],
     blockers:      [],
     escalations:   [],

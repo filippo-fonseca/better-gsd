@@ -1125,6 +1125,7 @@ if (
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
         '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
+        '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
@@ -1148,7 +1149,9 @@ if (
     const modelContract = resolveModelContract({
       profile: typeof flags.profile === "string" ? flags.profile : "claude",
       buildModel: typeof flags["build-model"] === "string" ? flags["build-model"] : undefined,
+      lightBuildModel: typeof flags["light-build-model"] === "string" ? flags["light-build-model"] : undefined,
       evaluateModel: typeof flags["evaluate-model"] === "string" ? flags["evaluate-model"] : undefined,
+      routing: typeof flags.routing === "string" ? flags.routing : "fixed",
       proxy: flags.proxy === true,
     });
     Object.assign(process.env, exportContractEnv(modelContract));
@@ -1204,7 +1207,10 @@ if (
     );
     process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
     process.stdout.write(`  conductor: ${modelContract.conductor.provider}/${modelContract.conductor.model}\n`);
-    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport})\n`);
+    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
+    if (modelContract.routing === "adaptive") {
+      process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
+    }
     process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
