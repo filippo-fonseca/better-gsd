@@ -2,10 +2,11 @@
 
 BGSD is a verified, worktree-based GSD conductor for Claude Code and Codex.
 You start one session with the model you want to reason with. That live session
-is the Conductor and Advisor. Quick work stays in that session; Feature and
-Project work use isolated build and evaluation lanes on your existing Claude and
-ChatGPT subscriptions. BGSD verifies the result and never writes directly to
-your production branch.
+is the Conductor and Advisor. Every BGSD session delegates code changes to
+isolated Pipeline Agents on your existing Claude and ChatGPT subscriptions.
+Quick uses a lightweight direct-worker pipeline; Feature and Project use full
+GSD build and evaluation lanes. BGSD verifies the result and never writes
+directly to your production branch.
 
 ## The model contract
 
@@ -102,17 +103,19 @@ node bgsd/scripts/session.mjs --prompt "Review this refactor" --profile openai -
 
 | Mode | Use it for | Pipeline | Verification |
 | --- | --- | --- | --- |
-| Quick | one contained correction | Conductor plan, implementation, and verify/fix; no GSD | direct verification loop |
+| Quick | one contained correction | Conductor-planned direct workers, adaptive fan-out; no GSD | worker verify/fix plus Conductor evidence review |
 | Feature | a scoped product change | a few worktrees; Loop 2 when needed | per-unit plus integration when applicable |
 | Project | multi-surface work | discussion, DAG, waves, full GSD units | Loop 1, Loop 2, fresh review, human gate |
 
-Quick never invokes GSD: the Conductor plans and implements it directly. Every
-Feature/Project build unit runs a full GSD workflow. In those workflows, the
-Conductor remains the Advisor: it authors seeds, reads control evidence at every
-phase/commit/blocker/verification checkpoint, and can rewrite the durable worker
-steering directive. Complexity controls workflow depth, not an unannounced model
-downgrade. Work lands on `next`; the merge from `next` to `main` remains
-human-only.
+Quick never invokes GSD, but it is still a BGSD session: the Conductor writes a
+compact plan, decides whether one or several direct Pipeline Agents are needed,
+and can run them serially or in parallel in isolated worktrees. Those workers,
+not the expensive Conductor, edit and repair code. The Conductor remains the
+Advisor at every worker plan, commit, blocker, and verification checkpoint and
+can rewrite the durable steering directive. Every Feature/Project build unit
+runs a full GSD workflow under that same advisory contract. Complexity controls
+workflow depth, not an unannounced model downgrade. Work lands on `next`; the
+merge from `next` to `main` remains human-only.
 
 ## Follow-up roadmap
 

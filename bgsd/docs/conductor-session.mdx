@@ -25,9 +25,11 @@ with free-text questions. The session doctor must pass before spawning agents.
 
 ## Conductor cadence
 
-Quick has no worker: the Conductor writes the compact plan, implements it in the
-current session, then drives verification and any repair directly. It never
-invokes GSD.
+Quick has an adaptive set of direct Pipeline Agents. The Conductor writes the
+compact plan, decides whether one or several units are warranted, and chooses
+serial or parallel execution. Workers edit, verify, and repair code in isolated
+worktrees without invoking GSD. The Conductor reviews their evidence and steers
+them; it never edits code during a BGSD session.
 
 For Feature and Project, the Conductor remains the Advisor throughout. It must
 write a seed before worker execution, inspect the worker control file and code

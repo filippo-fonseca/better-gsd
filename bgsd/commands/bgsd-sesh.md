@@ -20,8 +20,16 @@ ambiguous, present the native Quick/Feature/Project selector with a brief scope
 summary. Never make the user type an unstructured answer, and do not mistake a
 descriptive phrase such as "this is a quick fix" for an explicit override.
 
-`--quick` stays in the Conductor session: author a compact plan, implement it
-directly, and run Loop 1. Do not install, invoke, or spawn GSD for Quick.
+`--quick` is a lightweight adaptive Pipeline Agent run, not a Conductor coding
+run. Author a compact plan, choose one or more small direct-work units and their
+serial/parallel execution, then delegate every edit and repair to those workers
+in isolated worktrees. Do not install or invoke GSD for Quick. Inspect worker
+evidence and rewrite steering directives before execution and after every
+verification result; the Conductor never edits session code.
+
+This rule applies to every `/bgsd-sesh` mode. A live Conductor may edit only
+outside BGSD when the user directly asks for a genuinely trivial, a-few-lines
+change; that is ordinary harness work, not a BGSD session.
 
 `--feature` and `--project` spawn build-lane agents that run full GSD workflows
 in isolated worktrees. The Conductor remains the Advisor throughout: author a

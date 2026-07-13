@@ -21,6 +21,12 @@ mode` in the request. A flag wins over natural language; clear natural language
 wins over automatic sizing. If neither is explicit and scope is unclear, BGSD
 uses the host-native Quick/Feature/Project selector.
 
+Quick is still a BGSD session. The Conductor writes a compact plan and delegates
+every edit and repair to one or more direct Pipeline Agents in isolated
+worktrees. It can run them serially or in parallel and steer them from their
+evidence. Quick skips GSD phases and GSD installation; it does not turn the live
+Conductor into the code editor.
+
 ```sh
 node bgsd/scripts/session.mjs --prompt "Add export filters" --profile claude-openai
 ```

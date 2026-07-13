@@ -241,16 +241,17 @@ await test("U1: Haiku seam nudges at most one step and never overrides a flag", 
 // U1 — buildDepthPlan table (quick STILL verifies)
 // ---------------------------------------------------------------------------
 
-await test("U1: buildDepthPlan(quick) stays Conductor-direct and verifies", () => {
+await test("U1: buildDepthPlan(quick) delegates adaptive direct workers and verifies", () => {
   const plan = buildDepthPlan("quick");
   assert.equal(plan.discuss, false);
   assert.equal(plan.verified, true);
   const ids = plan.stages.map((s) => s.id);
-  assert.deepEqual(ids, ["conductor_plan", "conductor_execute", "verify_fix"]);
+  assert.deepEqual(ids, ["conductor_plan", "quick_decompose", "quick_fanout", "quick_workers", "conductor_review", "verify_fix", "merge"]);
   assert.ok(ids.includes("verify_fix"), "quick MUST include verify_fix");
+  assert.ok(ids.includes("quick_workers"), "quick MUST delegate code changes to workers");
   const vf = plan.stages.find((s) => s.id === "verify_fix");
-  assert.equal(vf.entry, "runConductorVerifyFix");
-  assert.equal(ids.includes("schedule"), false, "quick must not schedule a GSD worker");
+  assert.equal(vf.entry, "runDirectVerifyFix");
+  assert.equal(ids.includes("schedule"), false, "quick must not schedule full GSD workflow workers");
 });
 
 await test("U1: buildDepthPlan(feature) — engines + verification, no discuss", () => {
@@ -287,21 +288,49 @@ await test("U1: EVERY scale's plan has verified=true (verification never skipped
 // U2 — startSession quick path: only reaches done on a Tester PASS
 // ---------------------------------------------------------------------------
 
-await test("U2: quick path runs Loop 1 and reaches done ONLY on Tester PASS", async () => {
+await test("U2: quick path delegates adaptive workers, reviews them, and reaches done ONLY on Tester PASS", async () => {
   const calls = [];
   const res = await startSession({
     prompt: "Fix the typo in the footer",
     bgsdDir: tmpBgsd(),
-    quickPlanFn: async () => { calls.push("plan"); return { steps: ["edit footer"] }; },
-    quickExecuteFn: async () => { calls.push("execute"); },
+    quickPlanFn: async () => { calls.push("plan"); return { steps: ["edit footer"], parallel: true }; },
+    quickDecomposeFn: async () => [{ id: "copy" }, { id: "link" }],
+    quickWorkerFn: async ({ unit }) => { calls.push(`worker:${unit.id}`); return { unit: unit.id, commit: `c-${unit.id}` }; },
+    quickReviewFn: async ({ event }) => { calls.push(`review:${event}`); return { event }; },
     verifyFn: async () => ({ verdict: "PASS", defects: [] }),
   });
   assert.equal(res.scale, "quick");
   assert.equal(res.outcome, "done");
   assert.equal(res.verified, true);
-  assert.equal(res.itemState, "done");
-  assert.equal(res.execution, "conductor-direct");
-  assert.deepEqual(calls, ["plan", "execute"]);
+  assert.equal(res.execution, "delegated-direct-pipeline");
+  assert.equal(res.units.length, 2);
+  assert.deepEqual(res.workers.map((worker) => worker.commit), ["c-copy", "c-link"]);
+  assert.ok(calls.includes("review:after-worker-execution"));
+  assert.equal(calls.filter((call) => call.startsWith("review:after-verification")).length, 2);
+});
+
+await test("U2: quick path refuses to let the Conductor become the code executor", async () => {
+  await assert.rejects(
+    () => startSession({
+      prompt: "Fix the typo in the footer",
+      bgsdDir: tmpBgsd(),
+      verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    }),
+    /quickWorkerFn must delegate Quick code changes to Pipeline Agents/
+  );
+});
+
+await test("U2: Quick lets the Conductor serialize direct workers when needed", async () => {
+  const order = [];
+  await startSession({
+    prompt: "Fix the route and update its matching copy",
+    bgsdDir: tmpBgsd(),
+    quickPlanFn: async () => ({ parallel: false }),
+    quickDecomposeFn: async () => [{ id: "route" }, { id: "copy" }],
+    quickWorkerFn: async ({ unit }) => { order.push(unit.id); return { unit: unit.id }; },
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+  });
+  assert.deepEqual(order, ["route", "copy"]);
 });
 
 await test("U2: quick path with FAIL→fix→PASS still ends done (verified)", async () => {
@@ -309,6 +338,7 @@ await test("U2: quick path with FAIL→fix→PASS still ends done (verified)", a
   const res = await startSession({
     prompt: "Fix the broken nav link",
     bgsdDir: tmpBgsd(),
+    quickWorkerFn: async () => ({ commit: "quick-nav" }),
     verifyFn: async () => {
       calls++;
       // First verify FAILs (distinct defect), then PASS after a fix.
@@ -326,6 +356,7 @@ await test("U2: quick path NEVER reports done on a non-PASS verdict", async () =
   const res = await startSession({
     prompt: "Fix the crash on startup",
     bgsdDir: tmpBgsd(),
+    quickWorkerFn: async () => ({ commit: "quick-crash" }),
     verifyFn: async () => ({ verdict: "BLOCKED", defects: [] }),
   });
   assert.notEqual(res.outcome, "done");
@@ -382,6 +413,7 @@ await test("DEFAULT: startSession with no planOnly runs the orchestration (reach
     prompt: "Fix the typo in the footer",
     // planOnly: not set (defaults to false per startSession signature)
     bgsdDir: tmpBgsd(),
+    quickWorkerFn: async () => ({ commit: "quick-footer" }),
     verifyFn: async () => { verifyInvoked = true; return { verdict: "PASS", defects: [] }; },
   });
   assert.equal(res.action, "run", "default (no planOnly) must produce action=run, not plan");
@@ -395,6 +427,7 @@ await test("DEFAULT: planOnly=false explicitly also runs the orchestration", asy
     prompt: "Fix the broken nav link",
     planOnly: false,
     bgsdDir: tmpBgsd(),
+    quickWorkerFn: async () => ({ commit: "quick-nav" }),
     verifyFn: async () => { verifyInvoked = true; return { verdict: "PASS", defects: [] }; },
   });
   assert.equal(res.action, "run");

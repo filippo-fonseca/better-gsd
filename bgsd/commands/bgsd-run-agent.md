@@ -10,11 +10,14 @@ assigned control file. The live Conductor may have supplied a seed plan; validat
 it against the worktree, then use it as guidance rather than redoing advisory
 reasoning.
 
-Run the full installed GSD workflow appropriate to the unit: inspect, research,
-plan, implement, verify locally, commit focused changes, and update the control
-file with progress, assumptions, blockers, and commit hashes. On Codex, invoke
-the installed `gsd-*` skills directly. Claude slash commands are not assumed to
-exist on Codex.
+When `scale` is `quick`, this is a direct-work unit: inspect only the relevant
+surface, follow the Conductor seed precisely, implement and verify the change,
+commit focused work, and update the control file. Do not invoke any GSD phase
+or Claude slash command. For `feature` and `project`, run the full installed GSD
+workflow: inspect, research, plan, implement, verify locally, commit focused
+changes, and update the control file with progress, assumptions, blockers, and
+commit hashes. On Codex, invoke installed `gsd-*` skills directly; Claude slash
+commands are not assumed to exist on Codex.
 
 You are not fire-and-forget. If `advisor_path` appears in the unit brief, read
 it before implementation, after planning, after every commit, on a blocker or
