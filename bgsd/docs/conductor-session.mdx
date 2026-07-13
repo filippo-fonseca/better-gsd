@@ -20,6 +20,15 @@ depth but no longer chooses a model by itself. “Heavy” is a routing label fo
 the selected default build lane, not a promise of high effort: OpenAI's default
 heavy lane is GPT-5.6 Sol medium.
 
+Adaptive routing is how the expensive-Conductor / cheaper-workers economy is
+realized, so the Conductor is expected to make the call rather than default
+everything to heavy. It uses difficulty as a hint, not a trigger: clearly
+mechanical work (a rename, a copy change, a templated edit with an obvious
+verification path) takes the light tier with a recorded reason; ordinary scoped
+work takes the default; judgment-heavy, cross-cutting, or security-relevant work
+stays heavy. Evaluation-lane routing stays fixed regardless — verification
+quality is never traded for tokens.
+
 Every selector uses the host’s native question UI. Do not replace the setup flow
 with free-text questions. The session doctor must pass before spawning agents.
 
