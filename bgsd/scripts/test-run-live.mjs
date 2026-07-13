@@ -39,7 +39,8 @@ import { tmpdir } from "node:os";
 process.env.BGSD_HARNESS = "claude";
 
 import { liveSpawnFn, liveMergeFn } from "./run-live.mjs";
-import { LATEST_OPUS } from "./decompose.mjs";
+import { DEFAULT_MODELS } from "./model-contract.mjs";
+const LATEST_OPUS = DEFAULT_MODELS.claude.model;
 import { persistRunUnits } from "./run-units.mjs";
 
 // ---------------------------------------------------------------------------
@@ -159,9 +160,9 @@ await test("L01–L05: liveSpawnFn creates worktree, writes seams+brief+control,
     const cfgPath = join(wtPath, ".planning", "config.json");
     assert.ok(existsSync(cfgPath), ".planning/config.json must exist");
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
-    assert.ok(cfg.bgsd_unit_posture, "bgsd_unit_posture seam present");
-    assert.equal(cfg.bgsd_unit_posture.unit_id, UNIT.id);
-    assert.equal(cfg.bgsd_unit_posture.executor.model, "opus");
+    assert.ok(cfg.bgsd_model_assignment, "bgsd_model_assignment seam present");
+    assert.equal(cfg.bgsd_model_assignment.unit_id, UNIT.id);
+    assert.equal(cfg.bgsd_model_assignment.assignment, null);
     assert.ok(cfg.bgsd_phase_config, "bgsd_phase_config seam present");
     assert.equal(cfg.bgsd_phase_config.unit_id, UNIT.id);
 

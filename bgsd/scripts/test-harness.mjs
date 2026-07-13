@@ -18,7 +18,8 @@ import {
   resolveModel,
   buildAgentSpawn,
 } from "./harness.mjs";
-import { LATEST_OPUS } from "./decompose.mjs";
+import { DEFAULT_MODELS } from "./model-contract.mjs";
+const LATEST_OPUS = DEFAULT_MODELS.claude.model;
 
 let passed = 0;
 let failed = 0;

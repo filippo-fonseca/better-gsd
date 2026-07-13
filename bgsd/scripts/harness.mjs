@@ -29,7 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { defaultBgsdConfig, parseBgsdMd } from "./init.mjs";
-import { LATEST_OPUS } from "./decompose.mjs";
+import { DEFAULT_MODELS } from "./model-contract.mjs";
 import { contractFromEnv, laneFor, scrubApiKeyEnv } from "./model-contract.mjs";
 
 /** The harnesses bgsd knows how to drive. */
@@ -42,7 +42,7 @@ export const HARNESSES = Object.freeze(["claude", "codex"]);
  * change. Claude's opus tier reuses the single LATEST_OPUS source of truth.
  */
 export const DEFAULT_HARNESS_MODELS = Object.freeze({
-  claude: { opus: LATEST_OPUS, sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
+  claude: { opus: DEFAULT_MODELS.claude.model, sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
   // Codex equivalents (GPT-5 family, July 2026). Tier mapping by price + SWE-bench:
   //   fable/opus → gpt-5.5 ($5/MTok input, OpenAI's top tier; no higher model exists)
   //   sonnet     → gpt-5.4 ($2.50/MTok input, balanced speed+quality mid-tier)
@@ -186,6 +186,7 @@ function flagPairs(context = {}) {
 function codexPrompt({ command, context = {}, extraArgs = [], instructions }) {
   const lines = [];
   lines.push(`Run the bgsd "${command}" workflow for this worktree.`);
+  lines.push("This is a Codex-native execution. Use the installed bgsd and gsd-* skills directly; Claude slash commands are labels for the workflow, not shell syntax.");
   const ctxEntries = Object.entries(context).filter(([, v]) => v !== null && v !== undefined);
   if (ctxEntries.length) {
     lines.push("", "Context:");

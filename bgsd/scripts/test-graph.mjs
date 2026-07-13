@@ -77,7 +77,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 import {
   generateUnitId,
   difficultyScore,
-  deriveModelPosture,
+  normalizeModelAssignment,
   parseDecompositionResponse,
   buildUnits,
   serializeUnits,
@@ -179,7 +179,7 @@ function cyclicGraph() {
 process.stdout.write("\nbgsd graph unit tests (Phase 1: GRAPH-01..04)\n\n");
 process.stdout.write("--- decompose.mjs ---\n");
 
-await test("D01: buildUnits produces correct unit shape (id, title, scope, touched, deps, difficulty, model_posture)", () => {
+await test("D01: buildUnits produces provider-neutral unit shape", () => {
   const units = threeUnits();
   assert.equal(units.length, 3, "must produce 3 units");
   for (const u of units) {
@@ -190,10 +190,7 @@ await test("D01: buildUnits produces correct unit shape (id, title, scope, touch
     assert.ok(Array.isArray(u.deps), "deps must be an array");
     assert.ok(typeof u.difficulty === "number" && u.difficulty >= 0 && u.difficulty <= 1,
       `difficulty must be in [0,1], got ${u.difficulty}`);
-    assert.ok(u.model_posture && typeof u.model_posture === "object", "model_posture must be an object");
-    assert.ok(u.model_posture.executor, "model_posture.executor must exist");
-    assert.ok(u.model_posture.researcher, "model_posture.researcher must exist");
-    assert.ok(u.model_posture.verifier, "model_posture.verifier must exist");
+    assert.equal(u.model_assignment, null, "fixed routing units have no assignment");
   }
 });
 
@@ -285,65 +282,25 @@ await test("D13: difficultyScore increases with more touched entries", () => {
   assert.ok(high > low, `higher touched count must yield higher score (${high} > ${low})`);
 });
 
-await test("D14: deriveModelPosture(>=0.5) -> executor=opus/xhigh, NO fablePlan by default", () => {
-  const posture = deriveModelPosture(0.8);
-  assert.equal(posture.executor.model, "opus"); // NEVER fable
-  assert.equal(posture.executor.effort, "xhigh");
-  assert.equal(posture.spawnModel, "opus");     // subprocess is Opus
-  assert.equal(posture.fablePlan, false);        // default is plain Opus GSD, no pre-plan
-  // --fable turns the pre-plan on for the session:
-  assert.equal(deriveModelPosture(0.8, { fable: true }).fablePlan, true);
+await test("D14: model assignment requires a tier or model and reason", () => {
+  assert.throws(() => normalizeModelAssignment({ tier: "light" }), /reason/);
+  assert.throws(() => normalizeModelAssignment({ reason: "easy" }), /tier/);
 });
 
-await test("D15: deriveModelPosture(0.2..0.5) -> executor=opus/xhigh, no fablePlan", () => {
-  const posture = deriveModelPosture(0.35);
-  assert.equal(posture.executor.model, "opus");
-  assert.equal(posture.executor.effort, "xhigh");
-  assert.equal(posture.spawnModel, "opus");
-  assert.equal(posture.fablePlan, false);
+await test("D15: light assignment is normalized without provider assumptions", () => {
+  assert.deepEqual(normalizeModelAssignment({ tier: "light", reason: "isolated docs" }), {
+    tier: "light", reason: "isolated docs",
+  });
 });
 
-await test("D16: deriveModelPosture(<0.2) -> executor still opus (sonnet only with --sonnet)", () => {
-  const posture = deriveModelPosture(0.15);
-  assert.equal(posture.executor.model, "opus");  // default: Opus even on trivial
-  assert.equal(posture.spawnModel, "opus");
-  const sonnetOptIn = deriveModelPosture(0.15, { sonnet: true });
-  assert.equal(sonnetOptIn.executor.model, "sonnet"); // opt-in -> Sonnet on trivial
-  assert.equal(sonnetOptIn.spawnModel, "sonnet");
+await test("D16: explicit model assignment is preserved", () => {
+  assert.deepEqual(normalizeModelAssignment({ model: "gpt-5.5", effort: "high", reason: "specialized" }), {
+    model: "gpt-5.5", effort: "high", reason: "specialized",
+  });
 });
 
-await test("D16b: fablePlan is OFF by default at every difficulty; --fable turns it on", () => {
-  assert.equal(deriveModelPosture(0.8).fablePlan, false);  // high difficulty, still off
-  assert.equal(deriveModelPosture(0.5).fablePlan, false);
-  assert.equal(deriveModelPosture(0.1).fablePlan, false);
-  assert.equal(deriveModelPosture(0.1, { fable: true }).fablePlan, true); // flag turns it on
-  assert.equal(deriveModelPosture(0.8, { fable: true }).fablePlan, true);
-  assert.equal(deriveModelPosture(0.8).executor.model, "opus"); // executor never Fable
-});
-
-await test("D16c: planner is always opus/high (Fable seeds it externally, never inline)", () => {
-  assert.equal(deriveModelPosture(0.8).planner.model, "opus");
-  assert.equal(deriveModelPosture(0.5).planner.model, "opus");
-  assert.equal(deriveModelPosture(0.1).planner.model, "opus");
-  assert.equal(deriveModelPosture(0.8).planner.effort, "high");
-});
-
-await test("D16d: scout/researcher floors at Opus — explore quality gates plan quality", () => {
-  assert.equal(deriveModelPosture(0.8).researcher.model, "opus");
-  assert.equal(deriveModelPosture(0.8).researcher.effort, "high");
-  assert.equal(deriveModelPosture(0.3).researcher.model, "opus");
-  assert.equal(deriveModelPosture(0.1).researcher.model, "opus"); // trivial still Opus
-  assert.equal(deriveModelPosture(0.1).researcher.effort, "medium"); // eased effort
-});
-
-await test("D17: deriveModelPosture always yields verifier=opus/medium regardless of score", () => {
-  for (const score of [0.0, 0.4, 0.7, 1.0]) {
-    const posture = deriveModelPosture(score);
-    assert.equal(posture.verifier.model, "opus",
-      `verifier.model must always be opus at score=${score}`);
-    assert.equal(posture.verifier.effort, "medium",
-      `verifier.effort must always be medium at score=${score}`);
-  }
+await test("D17: difficulty does not auto-assign a model", () => {
+  for (const score of [0.0, 0.4, 0.7, 1.0]) assert.equal(normalizeModelAssignment(null, score), null);
 });
 
 await test("D18: serializeUnits produces non-empty markdown containing unit ids", () => {
@@ -356,23 +313,17 @@ await test("D18: serializeUnits produces non-empty markdown containing unit ids"
   assert.ok(md.includes("## Decomposition"), "markdown must include ## Decomposition heading");
 });
 
-await test("D19: writeUnitConfig writes bgsd_unit_posture to config.json (config seam, NFR-04)", () => {
+await test("D19: writeUnitConfig writes the adaptive assignment seam", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "bgsd-test-"));
   const planningDir = join(tmpDir, ".planning");
   try {
-    const posture = deriveModelPosture(0.8, { fable: true }); // exercise fablePlan serialization
-    const configPath = writeUnitConfig(planningDir, posture, "unit-test-xx");
+    const assignment = { tier: "light", reason: "isolated docs" };
+    const configPath = writeUnitConfig(planningDir, assignment, "unit-test-xx");
 
     const config = JSON.parse(readFileSync(configPath, "utf8"));
-    assert.ok(config.bgsd_unit_posture, "config must have bgsd_unit_posture");
-    assert.equal(config.bgsd_unit_posture.unit_id, "unit-test-xx");
-    assert.equal(config.bgsd_unit_posture.executor.model, "opus"); // executor never Fable
-    assert.equal(config.bgsd_unit_posture.fablePlan, true);        // --fable -> Fable pre-plan
-    assert.equal(config.bgsd_unit_posture.verifier.model, "opus");
-
-    // Confirm it ONLY writes under bgsd_unit_posture — does not touch GSD keys
-    const keys = Object.keys(config);
-    assert.ok(keys.includes("bgsd_unit_posture"), "must have bgsd_unit_posture key");
+    assert.equal(config.bgsd_model_assignment.unit_id, "unit-test-xx");
+    assert.deepEqual(config.bgsd_model_assignment.assignment, assignment);
+    assert.equal("bgsd_unit_posture" in config, false);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -641,7 +592,7 @@ await test("G26: full integration — decompose fixture -> buildUnits -> buildGr
   const units = buildUnits(descriptors);
   assert.equal(units.length, 5, "must build 5 units");
   for (const u of units) {
-    assert.ok(u.id && u.difficulty >= 0 && u.model_posture.executor, "each unit must have id, difficulty, and posture");
+    assert.ok(u.id && u.difficulty >= 0 && u.model_assignment === null, "each unit has id, difficulty, and neutral assignment");
   }
 
   // Step 3: build graph (GRAPH-02)

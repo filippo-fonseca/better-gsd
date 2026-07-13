@@ -199,11 +199,8 @@ export function requireNotProductionBranch(opts = {}) {
  *   4. Writes the unit's .planning/config.json via the config seams (NFR-04).
  *   5. Writes the unit brief to .planning/bgsd-unit.json.
  *   6. Creates the agent control file under .bgsd/runs/<runId>/control/.
- *   7. (optional) Runs a standalone Fable pre-planner (`claude -p /bgsd-plan-unit
- *      --model claude-fable-5`) when the unit is flagged fablePlan, writing
- *      .planning/fable-plan.md to seed the Opus agent.
- *   8. Launches a headless `claude -p /bgsd-run-agent` Opus Pipeline Agent
- *      (with --seed-plan when a Fable pre-plan was produced).
+ *   7. Copies a Conductor-authored seed plan, when one exists.
+ *   8. Launches the selected build-lane Pipeline Agent.
  *
  * Every child-process step checks status/error and throws on failure — no
  * silent green (NFR-06). The child-process + git boundaries are INJECTABLE so
@@ -320,21 +317,18 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   //    worktree and hand it to the Pipeline Agent.
   let seedPlanPath = null;
 
-  // 6a. Fable-as-Advisor: if the Conductor (running on Fable) authored this
-  //     unit's seed itself, use it directly and SKIP the redundant standalone
-  //     pre-planner subprocess — Kiwi already spent Fable's reasoning on the
+  // 6a. The live Conductor owns advisory reasoning and can author a durable seed
   //     plan. The seed lives at .bgsd/runs/<runId>/seeds/<unitId>.md.
   const conductorSeed = runId ? readConductorSeed(runId, unitId, { bgsdDir }) : null;
   if (conductorSeed) {
     seedPlanPath = join(wtPath, ".planning", "fable-plan.md");
     mkdirSync(dirname(seedPlanPath), { recursive: true });
     copyFileSync(conductorSeed, seedPlanPath);
-    log(`liveSpawnFn: using Conductor-authored Fable seed for unit "${unitId}" → ${seedPlanPath} (advisor mode; pre-planner skipped)`);
+    log(`liveSpawnFn: using Conductor-authored seed for unit "${unitId}" → ${seedPlanPath}`);
   }
 
   // 7. Spawn the headless Pipeline Agent on the active harness (NFR-06: throw on
-  //    non-zero/error). If a Fable pre-plan was written, pass it via seed-plan so
-  //    the planner builds on it rather than planning from scratch.
+  //    non-zero/error). A Conductor-authored seed is passed to avoid redundant planning.
   const agentSpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-run-agent",

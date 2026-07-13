@@ -521,8 +521,8 @@ export async function liveFix(defects, opts = {}) {
       log: (m) => process.stderr.write(`[loop2-live] ${m}\n`),
     });
 
-    // 2. Spawn the fix agent in the worktree on the active harness (NFR-06:
-    //    throw on failure). Fix agents run sonnet/medium per Part 11.
+    // 2. Spawn the fix agent in the worktree on the selected build lane (NFR-06:
+    //    throw on failure).
     const laneF = activeLane("build");
     const harnessF = laneF.harness;
     const fixSpawn = buildAgentSpawn({

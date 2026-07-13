@@ -33,14 +33,13 @@
 
 /**
  * The shipped bgsd defaults. BGSD.md renders these; the user edits the file to
- * override. The model-posture matrix here is the configurable home of what is
- * currently derived in decompose.mjs (deriveModelPosture).
+ * override. Model choice is a session contract, not a difficulty-derived tier.
  *
  * @returns {object} a fresh deep copy of the default config
  */
 export function defaultBgsdConfig() {
   return {
-    version: 1,
+    version: 2,
     // The standing integration branch. It IS the rehearsal/integration mirror
     // of main; worktree branches merge here; next -> main is human-only.
     integration_branch: "next",
@@ -65,78 +64,19 @@ export function defaultBgsdConfig() {
       // Skip all issue/PR machinery when the repo has no GitHub remote.
       require_remote: true,
     },
-    // Harness — bgsd is LLM/CLI agnostic. A sesh runs identically under Claude
-    // Code or Codex, and you can switch between them mid-project (e.g. to dodge
-    // one provider's usage limits): all durable state is in .bgsd/ files, so
-    // switching back and forth just works. `active: "auto"` detects the harness
-    // from the environment (AGENT=codex → codex; else claude); pin it to
-    // "claude"/"codex" to force one. `models` maps bgsd's semantic tiers to each
-    // harness's equivalents — retune here if provider model names drift.
-    harness: {
-      active: "auto",
-      models: {
-        claude: { opus: "claude-opus-4-8", sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
-        codex:  { opus: "gpt-5.5", sonnet: "gpt-5.4", haiku: "gpt-5.4-mini", fable: "gpt-5.5" },
+    // v2 session contract. The live CLI session is the Conductor. Build and
+    // evaluation lanes can independently use Claude or OpenAI subscription auth.
+    model_contract: {
+      profile: "claude",
+      routing: "fixed",
+      build: { provider: "claude", model: "claude-opus-4-8", effort: "high" },
+      evaluate: { provider: "claude", model: "claude-opus-4-8", effort: "high" },
+      adaptive: {
+        heavy: { model: "claude-opus-4-8", effort: "high" },
+        light: { model: "sonnet", effort: "high" },
       },
-    },
-    // Model routing — DEFAULTS ONLY. The Conductor decides per unit and adapts,
-    // and ultimately YOU have the final say: override per-unit, per-session, by
-    // flag, in this file, or by just telling the Conductor.
-    //
-    // DOCTRINE: Opus is the standard for every role. Fable is NEVER the executor
-    // (highest-VOLUME role — it guzzles tokens there). Instead:
-    //   - The Conductor is your live session; bgsd does NOT force its model, it
-    //     only nudges both ways. Its in-session reasoning (decompose, oracle,
-    //     routing) runs on YOUR session model — Fable only if you're on Fable.
-    //   - Fable's per-unit value is captured by a SEPARATE upstream pre-planner:
-    //     a standalone `claude -p --model claude-fable-5` that writes a plan
-    //     markdown, which then SEEDS the Opus pipeline agent (--seed-plan). Fable
-    //     plans; Opus executes. The token-heavy build subprocess is never Fable.
-    //   - Sonnet appears only on trivial fixes (< 0.2) and only when opted in
-    //     (--sonnet or a Conductor call).
-    model_posture: {
-      // The live Conductor session — NOT enforced; whatever you start with. bgsd
-      // nudges both ways at start (on Opus for a heavy prompt -> suggest Fable; on
-      // Fable for a light one -> suggest Opus to save), and again once it has
-      // sized the prompt, asking to confirm before it continues.
-      conductor: { model: "session" },
-      // Routing bands (mirror decompose.mjs). fable = the bar at/above which a
-      // separate Fable pre-planner runs; sonnet = the ceiling below which a
-      // trivial unit's executor may drop to Sonnet (only with --sonnet).
-      thresholds: { fable: 0.5, sonnet: 0.2 },
-      // The unit's worktree subprocess model (= executor tier), passed to
-      // `claude -p --model`. NEVER Fable. plan + execute share it:
-      executor: {
-        default: { model: "opus",   effort: "xhigh" }, // the standard, all units
-        easiest: { model: "sonnet", effort: "xhigh" }, // score < 0.2, only with --sonnet
-      },
-      // The IN-PIPELINE planner is always Opus. Fable's reasoning arrives as a
-      // seed plan from the separate pre-planner below, not by running here on Fable.
-      planner: { model: "opus", effort: "high" },
-      // The separate upstream Fable pre-planner. OFF by default (the plain path
-      // is normal GSD on Opus). Turned on for the whole session by --fable, or
-      // opted in per-unit by the Conductor. It is launched as a standalone
-      // `claude -p /bgsd-plan-unit --model claude-fable-5` SUBPROCESS (never via
-      // the in-session agent tool, which can't run Fable); it writes
-      // .planning/fable-plan.md, which seeds the Opus pipeline agent. Plans only.
-      fable_plan: { model: "fable", effort: "high", default: false },
-      // Decompose + oracle are the Conductor's OWN in-session reasoning, so they
-      // run on your session model (Fable if you're on Fable). Here for clarity.
-      decompose: { model: "session", effort: "high" },
-      oracle:    { model: "session", effort: "high" },
-      // Per-unit scout (the explore step): reads raw source, distills a brief.
-      // Explore quality gates plan quality, so the floor is Opus (latest) — the
-      // one place we do NOT trade reasoning for tokens. Effort eases to medium on
-      // trivial units. (Conductor-WIDE exploring uses the session model instead.)
-      scout: { model: "opus", effort: "high", trivial: { model: "opus", effort: "medium" } },
-      // Code review, FRESH context — an unbiased second read of the diff.
-      reviewer:  { model: "opus", effort: "high" },
-      // Goal-backward code verification + Playwright driving. Opus is the standard.
-      verifier:  { model: "opus", effort: "medium" },
-      tester:    { model: "opus", effort: "medium" },
-      // Loop-2 merge-conflict resolution (bounded) + scoped integration fixes.
-      conflict:  { model: "opus", effort: "high" },
-      loop2_fix: { model: "opus", effort: "medium" },
+      transport: "direct",
+      auth: "subscription-only",
     },
     // How thoroughly bgsd verifies. The goal-backward code verification
     // (gsd-verifier: "did it build what was asked, is everything proper") ALWAYS
@@ -196,11 +136,9 @@ export function defaultBgsdConfig() {
       narrate: true,
       // At every human gate, suggest the exact command to run next.
       suggest_gate_commands: true,
-      // Fable-as-Advisor mode. "auto" (default) follows the three-criteria gate:
-      // the Conductor advises across the pipeline when its brain IS Fable, OR
-      // --fable was passed, OR the user approved a proposal — otherwise OFF.
-      // Set true to force it on, false to hard-disable even on Fable.
-      fable_advisor: "auto",
+      // The live Conductor is the advisor for every provider. Set false only to
+      // disable plan review/steering while preserving orchestration.
+      advisor: "auto",
       // The Conductor is the ONLY human-facing session. When its own context
       // window crosses this fraction it self-compacts (after writing a handoff
       // note) and keeps going, so a long sesh never dies of context exhaustion.
@@ -292,37 +230,17 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **model_posture** — which model + effort each role runs at. These are
-  **defaults only**: the Conductor decides per unit and adapts, and you have the
-  final say — override any role, tier, or threshold here, per-session with a
-  flag, or by just telling the Conductor (it adapts on the fly). The principle:
-  **Opus is the standard for every role.** Fable is never the executor (it guzzles
-  tokens on the highest-volume role); its reasoning is leveraged only as a separate
-  upstream pre-plan that seeds Opus. Sonnet shows up only on trivial fixes.
-  - **conductor** \`session\` — bgsd does NOT force the Conductor's model; it's
-    whatever you launch the session with. It only nudges, both ways: on Opus for a
-    heavy prompt it suggests Fable; on Fable for a light one it suggests dropping
-    to Opus to save. It nudges again once it has sized your prompt, and asks to
-    confirm before continuing. The Conductor's own reasoning (decompose, oracle)
-    therefore runs on your session model.
-  - **executor** is the unit's worktree-subprocess model (passed to
-    \`claude -p --model\`): \`opus/xhigh\` for every unit — **never Fable** —
-    dropping to \`sonnet/xhigh\` only on trivial units (< 0.2) and only with
-    \`--sonnet\`. plan + execute share it.
-  - **planner** \`opus/high\` always (the in-pipeline planner).
-  - **fable_plan** the separate upstream Fable pre-planner: **off by default** (the
-    plain path is normal GSD on Opus). \`--fable\` turns it on for the session, or the
-    Conductor can opt a specific unit in. It is launched as a standalone
-    \`claude -p /bgsd-plan-unit --model claude-fable-5\` **subprocess** (never the
-    in-session agent tool, which can't run Fable); it writes \`.planning/fable-plan.md\`,
-    which seeds the Opus pipeline agent (\`--seed-plan\`). It only plans, never builds.
-  - **scout** (research / explore) \`opus/high\`, \`opus/medium\` when trivial — the
-    explore floor is Opus latest, since explore quality gates plan quality.
-    Conductor-wide exploring in the session uses the Conductor's own model.
-  - **reviewer** \`opus/high\` (fresh context), **verifier**/**tester**
-    \`opus/medium\`, **conflict** \`opus/high\`, **loop2_fix** \`opus/medium\` —
-    Opus across the board. Fable, when it runs per-unit, is only the standalone
-    pre-planner subprocess; the in-session agent tool offers only opus/sonnet/haiku.
+- **model_contract** — the v2 Conductor/build/evaluation contract. The live
+  Claude Code or Codex session is the Conductor and Advisor. The build lane owns
+  Pipeline Agents, nested GSD phases, internal review, and repairs. The evaluation
+  lane owns Loop 1/Loop 2 verification and final fresh review. \`routing: fixed\`
+  pins every unit to the build model. \`routing: adaptive\` lets the Conductor
+  explicitly assign a validated heavy or light model per unit and records why;
+  unassigned work stays heavy. Evaluation remains fixed by default.
+- **model_contract.auth** — always \`subscription-only\`. BGSD Doctor verifies
+  Claude and Codex subscription login, and child processes scrub provider API-key
+  variables. The optional proxy changes transport, not billing, and never becomes
+  a silent fallback.
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI
   usage-testing but STILL runs the goal-backward code verification
@@ -360,7 +278,7 @@ Notes section and Kiwi will respect them.
   \`/bgsd-modify-memory\` ("rename yourself to Jarvis", "change your emoji to
   🤖"), or by just asking the
   Conductor. The Conductor runs on whatever model you launched the session with
-  (bgsd never forces it — see \`model_posture.conductor\`); it only nudges.
+  (bgsd detects and records the model contract but never replaces the session model).
   \`narrate\` streams stage-aware live updates; \`suggest_gate_commands\`
   makes it hand you the exact command at every human gate. \`self_compact_at\` is
   the context fraction (0–1) at which the Conductor — the one human-facing
