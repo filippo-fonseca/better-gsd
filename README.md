@@ -24,7 +24,9 @@ are validated against the selected provider and never silently fall back.
 `fixed` routing is the default: every build unit uses the build model. In
 `adaptive` routing, the Conductor may explicitly assign a heavy or light model
 to a unit and records its reason. No assignment means heavy, never an invisible
-downgrade. Evaluation remains fixed.
+downgrade. Here “heavy” means the profile's default build lane, not necessarily
+high reasoning effort: the OpenAI heavy default is GPT-5.6 Sol medium.
+Evaluation remains fixed.
 
 ## Why the proxy exists
 

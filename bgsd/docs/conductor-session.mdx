@@ -16,7 +16,9 @@ GPT-5.6 high remains at that effort while it directs those independent lanes.
 `fixed` routing keeps all build units on the selected build model. In `adaptive`
 routing, the Conductor must write a unit assignment with a reason. A missing
 assignment resolves to the heavy model. Complexity still changes GSD workflow
-depth but no longer chooses a model by itself.
+depth but no longer chooses a model by itself. “Heavy” is a routing label for
+the selected default build lane, not a promise of high effort: OpenAI's default
+heavy lane is GPT-5.6 Sol medium.
 
 Every selector uses the host’s native question UI. Do not replace the setup flow
 with free-text questions. The session doctor must pass before spawning agents.
