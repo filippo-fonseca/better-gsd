@@ -58,6 +58,9 @@ import { readAllControlFiles, classifyHeartbeat } from "./control.mjs";
 import { loadUsage, summarize } from "./tokens.mjs";
 import { getStatus as queueStatus } from "./queue.mjs";
 import { narrate } from "./narrate.mjs";
+import { pauseRun, resumePausedRun } from "./pause.mjs";
+import { abortRun, runJsonPath } from "./run.mjs";
+import { emitStructured } from "./remote-events.mjs";
 
 const THIS_SCRIPT = fileURLToPath(import.meta.url);
 
@@ -261,6 +264,42 @@ export function capabilitiesMap({ control = false, launch = false } = {}) {
     control,
     launch,
   };
+}
+
+// ---------------------------------------------------------------------------
+// v2 control: the allowlist + the inbox item a POST /api/control drops.
+// ---------------------------------------------------------------------------
+
+/** The control actions a remote client may drive. Anything else is a 400. */
+export const CONTROL_ACTIONS = Object.freeze(["pause", "resume", "abort"]);
+
+/** True when `action` is a recognized control action. Pure. */
+export function isControlAction(action) {
+  return typeof action === "string" && CONTROL_ACTIONS.includes(action);
+}
+
+/**
+ * Shape the `{kind:"control", ...}` inbox item that session.mjs drains. This is
+ * the SAME session-inbox the interjection path uses, so the running session
+ * loop reacts to it on its next tick with no new transport. Pure — `now` is
+ * injectable. `reason`/`note` are carried through when present.
+ *
+ * @param {"pause"|"resume"|"abort"} action
+ * @param {{ reason?:string, note?:string, now?:()=>string }} [opts]
+ * @returns {{ id, kind:"control", action, source:"remote", reason?, note?, at }}
+ */
+export function buildControlInboxItem(action, { reason = null, note = null, now = () => new Date().toISOString() } = {}) {
+  const at = now();
+  const item = {
+    id: `remote-control-${Date.now()}-${randomBytes(4).toString("hex")}`,
+    kind: "control",
+    action,
+    source: "remote",
+    at,
+  };
+  if (typeof reason === "string" && reason.trim()) item.reason = reason.trim();
+  if (typeof note === "string" && note.trim()) item.note = note.trim();
+  return item;
 }
 
 /**
@@ -615,7 +654,7 @@ export function startServer(repoRoot, { runId, port = 0, host = "127.0.0.1", tok
           conductor: readConductorIdentity(repoRoot),
           protocol: PROTOCOL_VERSION,
           bgsd_version: pluginVersion(),
-          capabilities: capabilitiesMap({ control: false, launch: false }),
+          capabilities: capabilitiesMap({ control: true, launch: false }),
         });
       }
 
@@ -698,6 +737,80 @@ export function startServer(repoRoot, { runId, port = 0, host = "127.0.0.1", tok
           meta: { source: "remote", answersUnit: msg.answersUnit ?? null },
         });
         return sendJson(res, 202, { accepted: true, id: msg.id, kind: msg.kind, path });
+      }
+
+      // ---- v2 control (capability-gated: capabilities.control === true) ----
+      if (req.method === "POST" && url.pathname === "/api/control") {
+        if (!target) return sendJson(res, 409, { error: "no active run to control" });
+        const body = await readBody(req);
+        if (body.__invalid) return sendJson(res, 400, { error: "invalid JSON body" });
+        const action = typeof body.action === "string" ? body.action.trim() : "";
+        if (!isControlAction(action)) {
+          return sendJson(res, 400, { error: `unknown control action; allowed: ${CONTROL_ACTIONS.join(", ")}` });
+        }
+        const reason = typeof body.reason === "string" ? body.reason : null;
+        const note = typeof body.note === "string" ? body.note : null;
+        const bd = bgsdDir(repoRoot);
+
+        // Dual write for every control action: (1) drive the run's on-disk state
+        // through the same core the local commands use, (2) drop a control item
+        // into the SAME session-inbox the loop drains, and (3) mirror a
+        // `control-in` structured event so remote observers see it in the stream.
+        const dropControl = () => {
+          const item = buildControlInboxItem(action, { reason, note });
+          const path = writeInboxMessage(repoRoot, target, item);
+          emitStructured(repoRoot, target, {
+            type: "control-in",
+            text: `remote control: ${action}${reason ? ` (${reason})` : ""}`,
+            meta: { action, source: "remote", reason: reason ?? null, note: note ?? null, at: item.at },
+          });
+          return path;
+        };
+
+        try {
+          if (action === "pause") {
+            const summary = pauseRun({ runId: target, bgsdDir: bd, reason: reason ?? "remote_pause", note });
+            const path = dropControl();
+            return sendJson(res, 200, { ok: true, action, run_id: target, resume_state: summary.resume_state, inbox: path });
+          }
+
+          if (action === "abort") {
+            // Idempotent: abortRun no-ops on an already-aborted run.
+            const updated = abortRun(runJsonPath(bd, target), reason ?? "remote_abort");
+            const path = dropControl();
+            return sendJson(res, 200, { ok: true, action, run_id: target, state: updated.state, inbox: path });
+          }
+
+          // resume: restore the paused run, then check control-file liveness. If
+          // any agent's heartbeat still classifies alive the running loop can pick
+          // the resume item up cooperatively; otherwise the run needs a fresh
+          // Conductor launched to re-enter the stage.
+          resumePausedRun({ runId: target, bgsdDir: bd });
+          const runDir = resolveRunDir(repoRoot, target);
+          const controls = runDir ? readRunControls(runDir) : [];
+          const anyAlive = controls.some(
+            (cf) => classifyHeartbeat({ heartbeat_at: cf?.heartbeat_at, nowFn: Date.now }) === "alive"
+          );
+          if (anyAlive) {
+            const path = dropControl();
+            return sendJson(res, 200, { resumed: true, mode: "cooperative", run_id: target, inbox: path });
+          }
+          // No live Conductor to receive the inbox item — a human must launch one.
+          emitStructured(repoRoot, target, {
+            type: "control-in",
+            text: `remote control: resume (needs-conductor)`,
+            meta: { action, source: "remote", mode: "needs-conductor", reason: reason ?? null, at: new Date().toISOString() },
+          });
+          return sendJson(res, 202, {
+            resumed: true,
+            mode: "needs-conductor",
+            run_id: target,
+            hint: "launch a Conductor with /bgsd-resume",
+          });
+        } catch (err) {
+          // pauseRun throws on a terminal run → map to 409 with its message.
+          return sendJson(res, 409, { error: String((err && err.message) || err) });
+        }
       }
 
       return sendJson(res, 404, { error: "not found" });

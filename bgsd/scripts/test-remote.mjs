@@ -420,7 +420,7 @@ await test_("V12 — GET /api/health carries protocol 2 + version + capabilities
   assert.equal(r.json.protocol, 2);
   assert.equal(typeof r.json.bgsd_version, "string");
   assert.equal(r.json.capabilities.sessions, true);
-  assert.equal(r.json.capabilities.control, false);
+  assert.equal(r.json.capabilities.control, true, "control is enabled by the control slice");
   assert.equal(r.json.capabilities.launch, false);
 });
 
