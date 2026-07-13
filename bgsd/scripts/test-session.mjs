@@ -26,6 +26,9 @@ import {
   EXECUTION_MODES,
   explainScale,
   refineScaleWithModel,
+  SESSION_CONTROL_ACTIONS,
+  classifyControlMessage,
+  applyControlMessages,
 } from "./session.mjs";
 
 let passed = 0;
@@ -576,6 +579,127 @@ await test("U3: interjected inbox message is INGESTED without halting + can answ
   assert.equal(byId["u-a"], "done");
   assert.equal(byId["u-block"], "done", "interjected answer should unblock + complete the unit");
   assert.equal(res.outcome, "done");
+});
+
+// ---------------------------------------------------------------------------
+// Remote-control inbox items (kind:"control") — pure core + loop behavior
+// ---------------------------------------------------------------------------
+
+await test("CTL: classifyControlMessage flags control items and ignores non-control", () => {
+  assert.equal(classifyControlMessage({ kind: "control", action: "pause", source: "remote" }).action, "pause");
+  assert.equal(classifyControlMessage({ kind: "control", action: "pause" }).known, true);
+  assert.equal(classifyControlMessage({ kind: "control", action: "wat" }).known, false);
+  assert.equal(classifyControlMessage({ answersUnit: "u", text: "hi" }), null, "an answer is not control");
+  assert.equal(classifyControlMessage({ text: "hi" }), null, "a message is not control");
+  assert.equal(classifyControlMessage(null), null);
+  assert.deepEqual([...SESSION_CONTROL_ACTIONS].sort(), ["abort", "pause", "resume"]);
+});
+
+await test("CTL: applyControlMessages folds a batch (abort supersedes pause; unknown/resume logged)", () => {
+  assert.deepEqual(applyControlMessages([{ kind: "control", action: "pause" }]).stop, "pause");
+  assert.deepEqual(applyControlMessages([{ kind: "control", action: "abort" }]).stop, "abort");
+  // abort in the same batch supersedes a pause regardless of order
+  assert.equal(applyControlMessages([{ kind: "control", action: "pause" }, { kind: "control", action: "abort" }]).stop, "abort");
+  assert.equal(applyControlMessages([{ kind: "control", action: "abort" }, { kind: "control", action: "pause" }]).stop, "abort");
+  // resume on a running loop is a no-op (no stop), but is logged
+  const resume = applyControlMessages([{ kind: "control", action: "resume" }]);
+  assert.equal(resume.stop, false);
+  assert.ok(resume.log.some((l) => /resume/.test(l)));
+  // unknown action ignored (forward-compat) but logged
+  const unknown = applyControlMessages([{ kind: "control", action: "explode" }]);
+  assert.equal(unknown.stop, false);
+  assert.ok(unknown.log.some((l) => /unknown control action/.test(l)));
+  // non-control messages contribute nothing
+  assert.equal(applyControlMessages([{ text: "hi" }, { answersUnit: "u", answer: "y" }]).stop, false);
+});
+
+await test("CTL: a remote pause parks the decomposed session (outcome=paused, no PR)", async () => {
+  // Deliver a control:pause item on the SECOND inbox read so at least one tick
+  // renders first; the loop must then stop dispatching new work.
+  let reads = 0;
+  const inboxReaderFn = () => {
+    reads++;
+    return reads === 2 ? [{ kind: "control", action: "pause", source: "remote" }] : [];
+  };
+  let prCalled = false;
+  const res = await startSession({
+    prompt: "Build api and db",
+    mode: "feature",
+    bgsdDir: tmpBgsd(),
+    decomposeFn: async () => ([{ id: "u-a" }, { id: "u-b" }]),
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => "approve",
+    prFn: async () => { prCalled = true; return { pr: "mock" }; },
+    inboxReaderFn,
+  });
+  assert.equal(res.outcome, "paused", "a remote pause parks the session");
+  assert.equal(res.control?.stopped, "pause");
+  assert.equal(prCalled, false, "no PR is opened on a paused session");
+  assert.ok(res.controlLog.some((l) => /pause/.test(l)), "the pause is logged");
+  assert.ok(res.ingestedMessages.some((m) => m.kind === "control"), "the control item is ingested");
+});
+
+await test("CTL: a remote abort marks the decomposed session aborted (terminal)", async () => {
+  let reads = 0;
+  const inboxReaderFn = () => {
+    reads++;
+    return reads === 2 ? [{ kind: "control", action: "abort", source: "remote" }] : [];
+  };
+  let reviewCalled = false;
+  const res = await startSession({
+    prompt: "Build api and db",
+    mode: "feature",
+    bgsdDir: tmpBgsd(),
+    decomposeFn: async () => ([{ id: "u-a" }, { id: "u-b" }]),
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => { reviewCalled = true; return "approve"; },
+    prFn: async () => ({ pr: "mock" }),
+    inboxReaderFn,
+  });
+  assert.equal(res.outcome, "aborted");
+  assert.equal(res.control?.stopped, "abort");
+  assert.equal(reviewCalled, false, "no review gate on an aborted session");
+});
+
+await test("CTL: an unknown control action does NOT stop the loop (forward-compat)", async () => {
+  let reads = 0;
+  const inboxReaderFn = () => {
+    reads++;
+    return reads === 2 ? [{ kind: "control", action: "teleport", source: "remote" }] : [];
+  };
+  const res = await startSession({
+    prompt: "Build api and db",
+    mode: "feature",
+    bgsdDir: tmpBgsd(),
+    decomposeFn: async () => ([{ id: "u-a" }, { id: "u-b" }]),
+    verifyFn: async () => ({ verdict: "PASS", defects: [] }),
+    reviewFn: async () => "approve",
+    prFn: async () => ({ pr: "mock" }),
+    inboxReaderFn,
+  });
+  assert.equal(res.outcome, "done", "an unrecognized action is ignored; the session completes");
+  assert.equal(res.control, null, "no stop was recorded");
+  assert.ok(res.controlLog.some((l) => /unknown control action/.test(l)));
+});
+
+await test("CTL: a remote pause on the quick path parks before verify/fix", async () => {
+  // The quick path calls tick() once after workers run and before Loop 1; a
+  // control:pause delivered by then must short-circuit into a paused outcome.
+  const inboxReaderFn = () => [{ kind: "control", action: "pause", source: "remote" }];
+  let verifyCalled = false;
+  const res = await startSession({
+    prompt: "Fix the footer copy",
+    mode: "quick",
+    bgsdDir: tmpBgsd(),
+    quickPlanFn: async () => ({ parallel: true }),
+    quickDecomposeFn: async () => [{ id: "copy" }],
+    quickWorkerFn: async ({ unit }) => ({ unit: unit.id }),
+    verifyFn: async () => { verifyCalled = true; return { verdict: "PASS", defects: [] }; },
+    inboxReaderFn,
+  });
+  assert.equal(res.outcome, "paused", "the quick session parks on a remote pause");
+  assert.equal(res.control?.stopped, "pause");
+  assert.equal(verifyCalled, false, "verify/fix is not dispatched after a pause");
 });
 
 // ---------------------------------------------------------------------------
