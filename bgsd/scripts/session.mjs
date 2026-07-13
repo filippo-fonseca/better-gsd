@@ -198,16 +198,19 @@ export function lengthBand(prompt) {
  *   - never turns a needs-clarification (scale=null) into a silent guess,
  *   - the deterministic heuristic is ALWAYS computed first and is the fallback.
  *
- * Until activated this throws; classifyScale catches and keeps the heuristic.
+ * Until activated this is a NO-OP: it returns null so the heuristic scale stands
+ * as the floor. It must never throw — a dormant seam can't be allowed to crash a
+ * session even if `refine:true` is passed.
  *
  * @param {string} _prompt
  * @param {{ scale: string }} _heuristicResult
- * @returns {Promise<{ scale: string }>}
+ * @returns {Promise<{ scale: string } | null>}
  */
 // eslint-disable-next-line no-unused-vars
 export async function refineScaleWithModel(_prompt, _heuristicResult) {
   // --- HAIKU SEAM: replace with a real one-step nudge call. ---
-  throw new Error("refineScaleWithModel: Haiku scale-refiner seam not yet activated (Part 11 TODO)");
+  // Not yet activated → no model nudge; the heuristic classification wins.
+  return null;
 }
 
 /**
@@ -1352,6 +1355,29 @@ if (
         for (const n of pf.notes) process.stdout.write(`  preflight note: ${n}\n`);
       } catch (err) {
         process.stdout.write(`  preflight skipped (${err.message})\n`);
+      }
+      // BGSD Doctor gate: subscription-only preflight. Runs for EVERY scale
+      // (Quick still needs the build CLI + a subscription login), and is a hard
+      // gate — a genuine failure throws and nothing is spawned. GSD itself is
+      // auto-installed just below, so it is reported but not required here
+      // (requireGsd:false); the proxy path stays fail-closed via runDoctor.
+      try {
+        const { runDoctor } = await import("./doctor.mjs");
+        const doctor = await runDoctor({ contract: modelContract, requireGsd: false });
+        if (!doctor.ok) {
+          const fails = [];
+          for (const [rt, r] of Object.entries(doctor.cli)) if (!r.ok) fails.push(`${rt} CLI not found`);
+          for (const [pv, r] of Object.entries(doctor.auth)) if (!r.ok) fails.push(`${pv} subscription login required (${r.mode ?? "missing"})`);
+          if (doctor.proxy.enabled !== false && !doctor.proxy.ok) fails.push(`proxy: ${doctor.proxy.reason}`);
+          throw new Error(
+            `BGSD Doctor: setup required — ${fails.join("; ")}. ` +
+            `Fix these and re-run (subscription login only; API keys are not accepted).`
+          );
+        }
+        process.stdout.write(`  doctor: subscription + CLI ready (${Object.keys(doctor.auth).join(", ")})\n`);
+      } catch (err) {
+        if (/BGSD Doctor: setup required/.test(err.message)) throw err;
+        process.stdout.write(`  doctor: preflight check skipped (${err.message})\n`);
       }
       // Conductor dependency preflight: ENSURE the engine is present + current,
       // out of the box. gsd-core is the npm package @opengsd/gsd-core, installed

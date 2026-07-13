@@ -25,6 +25,7 @@ import {
   resolveHeadless,
   EXECUTION_MODES,
   explainScale,
+  refineScaleWithModel,
 } from "./session.mjs";
 
 let passed = 0;
@@ -67,6 +68,14 @@ await test("U1: natural-language mode requests are explicit but narrow", () => {
   assert.equal(naturalLanguageMode("Make this quick, not project mode."), null);
 });
 
+await test("U1: dormant Haiku refiner seam is a no-op (returns null, never throws)", async () => {
+  const out = await refineScaleWithModel("anything", { scale: "feature" });
+  assert.equal(out, null);
+});
+await test("U1: refine:true can never crash classification (heuristic stands)", async () => {
+  const r = await classifyScale({ prompt: "Fix the typo in the README", refine: true });
+  assert.equal(r.scale, "quick");
+});
 await test("U1: selection precedence is flag, natural language, then Conductor sizing", async () => {
   const natural = await classifyScale({ prompt: "Treat this as a project, even though it is only a typo." });
   assert.equal(natural.scale, "project");

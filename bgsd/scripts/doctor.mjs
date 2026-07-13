@@ -32,7 +32,7 @@ export async function probeProxy({ env = process.env, fetchImpl = globalThis.fet
   }
 }
 
-export async function runDoctor({ contract, env = process.env, spawn = spawnSync, fetchImpl } = {}) {
+export async function runDoctor({ contract, env = process.env, spawn = spawnSync, fetchImpl, requireGsd = true, now = () => new Date().toISOString() } = {}) {
   const c = contract ?? resolveModelContract({ profile: env.BGSD_PIPELINE_PROFILE || "claude", proxy: env.BGSD_PROXY === "1", env });
   const providers = [...new Set([c.build.provider, c.evaluate.provider])];
   const runtimes = [...new Set([harnessForLane(c.build), harnessForLane(c.evaluate)])];
@@ -45,8 +45,15 @@ export async function runDoctor({ contract, env = process.env, spawn = spawnSync
   const proxy = c.build.transport === "proxy"
     ? await probeProxy({ env, fetchImpl, models: [c.build.model, c.evaluate.model] })
     : { ok: true, enabled: false };
-  const ok = Object.values(cli).every((x) => x.ok) && Object.values(auth).every((x) => x.ok) && Object.values(gsd).every((x) => x.ok) && proxy.ok;
-  return { ok, contract: c, cli, auth, gsd, proxy };
+  const cliOk = Object.values(cli).every((x) => x.ok);
+  const authOk = Object.values(auth).every((x) => x.ok);
+  // GSD can be auto-installed by the session, so callers running inside a live
+  // session pass requireGsd:false — GSD rows are still reported, just not gating.
+  const gsdOk = requireGsd ? Object.values(gsd).every((x) => x.ok) : true;
+  const ok = cliOk && authOk && gsdOk && proxy.ok;
+  // Stamp the auditable auth-verification time onto the contract when logins pass.
+  if (authOk && c.auth) c.auth = { ...c.auth, verified_at: now() };
+  return { ok, contract: c, cli, auth, gsd, proxy, requireGsd };
 }
 
 function parseFlags(args) {
