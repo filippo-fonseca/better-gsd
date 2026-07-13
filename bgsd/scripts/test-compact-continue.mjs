@@ -87,6 +87,30 @@ function runHook(cwd, source = "compact") {
   rmSync(repo, { recursive: true, force: true });
 }
 
+// C08: run.json terminal (done) but a stale non-terminal control file → silent.
+//      run.json state is authoritative; a leftover control file can't resurrect it.
+{
+  const repo = makeRepo();
+  const runDir = join(repo, ".bgsd", "runs", "run-terminal");
+  const controlDir = join(runDir, "control");
+  mkdirSync(controlDir, { recursive: true });
+  writeFileSync(join(runDir, "run.json"), JSON.stringify({ state: "done" }));
+  writeFileSync(join(controlDir, "u1.json"), JSON.stringify({ agent_id: "u1", status: "running" }));
+  ok(runHook(repo) === "", "C08 done run.json + stale running control → silent");
+  rmSync(repo, { recursive: true, force: true });
+}
+
+// C09: run.json failed but a leftover handoff → silent (stale handoff not resurrected).
+{
+  const repo = makeRepo();
+  const runDir = join(repo, ".bgsd", "runs", "run-failed");
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(join(runDir, "run.json"), JSON.stringify({ state: "failed" }));
+  writeFileSync(join(runDir, "compact-handoff.json"), "{}");
+  ok(runHook(repo) === "", "C09 failed run.json + stale handoff → silent");
+  rmSync(repo, { recursive: true, force: true });
+}
+
 // C07: pure helpers
 ok(findInFlightRun("/nonexistent-path-xyz") === null, "C07 findInFlightRun missing dir → null");
 ok(directive({ runId: "r1", hasHandoff: false }).includes("control files"), "C07 directive without handoff cites control files");

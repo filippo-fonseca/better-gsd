@@ -20,6 +20,9 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { TERMINAL_AGENT_STATUSES } from "./resume.mjs";
 
+/** run.json lifecycle states that mean the run is finished — never auto-resumed. */
+const RUN_TERMINAL_STATES = ["done", "failed", "aborted", "completed"];
+
 function readStdin() {
   try {
     return readFileSync(0, "utf8");
@@ -66,20 +69,26 @@ export function findInFlightRun(runsDir) {
     }
     const handoffPath = join(dir, "compact-handoff.json");
     const hasHandoff = existsSync(handoffPath);
-    let inFlight = hasHandoff;
-    if (!inFlight) {
-      const run = readJson(join(dir, "run.json"));
-      if (run?.state === "paused") inFlight = false; // paused is deliberate; don't auto-continue
-      else {
-        const controlDir = join(dir, "control");
-        if (existsSync(controlDir)) {
-          for (const f of readdirSync(controlDir)) {
-            if (!f.endsWith(".json")) continue;
-            const c = readJson(join(controlDir, f));
-            if (c && !TERMINAL_AGENT_STATUSES.includes(c.status)) {
-              inFlight = true;
-              break;
-            }
+    // run.json's own state is authoritative and checked FIRST: a run that has
+    // finished (done/failed/aborted/completed) is never resurrected, even if it
+    // left a stale non-terminal control file or a leftover handoff. "paused" is
+    // a deliberate stop, also not auto-continued.
+    const run = readJson(join(dir, "run.json"));
+    let inFlight;
+    if (RUN_TERMINAL_STATES.includes(run?.state) || run?.state === "paused") {
+      inFlight = false;
+    } else if (hasHandoff) {
+      inFlight = true;
+    } else {
+      inFlight = false;
+      const controlDir = join(dir, "control");
+      if (existsSync(controlDir)) {
+        for (const f of readdirSync(controlDir)) {
+          if (!f.endsWith(".json")) continue;
+          const c = readJson(join(controlDir, f));
+          if (c && !TERMINAL_AGENT_STATUSES.includes(c.status)) {
+            inFlight = true;
+            break;
           }
         }
       }
