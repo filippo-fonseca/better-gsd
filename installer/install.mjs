@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// better-gsd launcher: a tiny installer for the bgsd Claude Code plugin.
-// It does NOT bundle the plugin source. The plugin ships from the public
-// GitHub marketplace filippo-fonseca/better-gsd; this script just wires it up.
+// better-gsd v2 launcher for Claude Code, Codex, or both runtimes.
 import { spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const HELP = args.includes("--help") || args.includes("-h");
+const CLAUDE_ONLY = args.includes("--claude") && !args.includes("--codex") && !args.includes("--all");
+const CODEX_ONLY = args.includes("--codex") && !args.includes("--claude") && !args.includes("--all");
+const INSTALL_CLAUDE = !CODEX_ONLY;
+const INSTALL_CODEX = !CLAUDE_ONLY;
 
 // ANSI helpers (kept minimal, no external deps).
 const c = (code, s) => `[${code}m${s}[0m`;
@@ -18,24 +20,38 @@ const dim = (s) => c("2", s);
 
 // The commands this launcher runs, in order.
 const STEPS = [
-  {
+  ...(INSTALL_CLAUDE ? [{
     label: "Add the bgsd marketplace (idempotent)",
     cmd: "claude",
     cmdArgs: ["plugin", "marketplace", "add", "filippo-fonseca/better-gsd"],
     needsClaude: true,
-  },
-  {
+  }, {
     label: "Install the bgsd plugin (user scope)",
     cmd: "claude",
     cmdArgs: ["plugin", "install", "bgsd@better-gsd", "--scope", "user"],
     needsClaude: true,
-  },
-  {
-    label: "Install the gsd-core engine (global, non-interactive)",
+  }, {
+    label: "Install GSD for Claude Code",
     cmd: "npx",
     cmdArgs: ["-y", "@opengsd/gsd-core@latest", "--claude", "--global"],
     needsClaude: false,
-  },
+  }] : []),
+  ...(INSTALL_CODEX ? [{
+    label: "Add the bgsd Codex marketplace (idempotent)",
+    cmd: "codex",
+    cmdArgs: ["plugin", "marketplace", "add", "filippo-fonseca/better-gsd"],
+    needsCodex: true,
+  }, {
+    label: "Install the bgsd Codex plugin",
+    cmd: "codex",
+    cmdArgs: ["plugin", "add", "bgsd@better-gsd"],
+    needsCodex: true,
+  }, {
+    label: "Install GSD for Codex",
+    cmd: "npx",
+    cmdArgs: ["-y", "@opengsd/gsd-core@latest", "--codex", "--global"],
+    needsCodex: false,
+  }] : []),
 ];
 
 function banner() {
@@ -66,12 +82,15 @@ function splash() {
 
 function help() {
   banner();
-  console.log("Usage: " + bold("npx better-gsd@latest") + " [--dry-run] [--help]");
+  console.log("Usage: " + bold("npx better-gsd@latest") + " [--all | --claude | --codex] [--dry-run]");
   console.log("");
-  console.log("  Installs the bgsd Claude Code plugin and the gsd-core engine.");
+  console.log("  Installs BGSD v2 and GSD for Claude Code, Codex, or both (default).");
   console.log("");
   console.log("Flags:");
   console.log("  --dry-run   Print the commands that would run, then exit.");
+  console.log("  --all       Install both runtimes (default).");
+  console.log("  --claude    Install only Claude Code support.");
+  console.log("  --codex     Install only Codex support.");
   console.log("  --help, -h  Show this help.");
   console.log("");
 }
@@ -97,6 +116,13 @@ function ensureClaude() {
   }
 }
 
+function ensureCodex() {
+  const probe = spawnSync("codex", ["--version"], { stdio: "ignore" });
+  if (probe.error || probe.status !== 0) {
+    fail("the 'codex' CLI was not found. Install Codex first: https://developers.openai.com/codex/cli");
+  }
+}
+
 function run(step) {
   console.log(cyan("  → ") + step.label);
   console.log(dim("    " + fmt(step)));
@@ -111,9 +137,9 @@ function nextSteps() {
   console.log(green("  bgsd is installed."));
   console.log("");
   console.log("  Next steps:");
-  console.log("    1. In Claude Code, run " + bold("/reload-plugins"));
-  console.log("    2. In your repo, run " + bold("/bgsd-init"));
-  console.log("    3. Kick off a session: " + bold('/bgsd-sesh "build me X"'));
+  if (INSTALL_CLAUDE) console.log("    Claude Code: /reload-plugins, then " + bold('/bgsd-sesh "build me X"'));
+  if (INSTALL_CODEX) console.log("    Codex: start a new task, then " + bold('$bgsd-sesh "build me X"'));
+  console.log("    Check setup any time with " + bold("$bgsd-doctor") + " or the Claude doctor command.");
   console.log("");
 }
 
@@ -136,6 +162,7 @@ function main() {
   }
 
   if (STEPS.some((s) => s.needsClaude)) ensureClaude();
+  if (STEPS.some((s) => s.needsCodex)) ensureCodex();
   for (const step of STEPS) run(step);
   nextSteps();
 }

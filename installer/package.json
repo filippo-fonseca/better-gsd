@@ -1,7 +1,7 @@
 {
   "name": "better-gsd",
-  "version": "0.11.0",
-  "description": "One-line launcher for bgsd: installs the bgsd Claude Code plugin from the public GitHub marketplace and sets up the gsd-core engine. Run with npx better-gsd@latest.",
+  "version": "2.0.0",
+  "description": "One-line BGSD v2 launcher for subscription-backed Claude Code and Codex GSD pipelines.",
   "bin": {
     "better-gsd": "./install.mjs"
   },
@@ -28,6 +28,7 @@
     "gsd",
     "claude-code",
     "claude-code-plugin",
+    "codex-plugin",
     "orchestration",
     "autonomous",
     "verification",
