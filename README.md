@@ -99,4 +99,3 @@ to `main` remains human-only.
 
 The detailed docs live in [bgsd/docs](./bgsd/docs), and the explainer site lives
 in [bgsd/site](./bgsd/site).
-
