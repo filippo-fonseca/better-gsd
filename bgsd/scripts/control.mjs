@@ -292,6 +292,7 @@ export function createControlFile(controlPath, fields) {
     commits     = [],
     model       = null,
     model_assignment = null,
+    log_path    = null,
   } = fields;
 
   const now = new Date().toISOString();
@@ -311,6 +312,9 @@ export function createControlFile(controlPath, fields) {
     commits,
     model,
     model_assignment,
+    // Absolute path to the agent's stdio transcript (run-live redirects the
+    // pipeline agent's stdout/stderr here). null when logging is unavailable.
+    log_path,
     assumptions:   [],
     blockers:      [],
     escalations:   [],
