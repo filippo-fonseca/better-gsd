@@ -235,13 +235,15 @@ The v1 fields (`ok`, `run_id`, `conductor`) are unchanged; v2 adds three:
   "capabilities": {
     "sessions": true, "plan": true, "tokens": true, "queue": true,
     "agents": true, "logs": true,
-    "control": false, "launch": false
+    "control": true, "launch": false
   }
 }
 ```
 
-`control` and `launch` are `false` in this slice; a client should hide any
-control or launch affordances until they read `true`.
+`control` is `true` once the control slice is present (it enables
+`POST /api/control`, below); `launch` remains `false` until a later slice. A
+client should hide any affordance whose capability reads `false`. Gate on the
+capability, never on the protocol version.
 
 ### `GET /api/sessions`
 
@@ -369,13 +371,70 @@ The bgsd fix-stream queue (per-repo, at `.bgsd/queue/queue.json`):
 Item bodies are intentionally omitted from this projection; fetch the queue store
 directly on-box if you need them.
 
+### `POST /api/control`
+
+Drive a run's lifecycle from off-box. This is the one **write** endpoint that
+changes run state, so it is **capability-gated**: only send it when
+`capabilities.control` reads `true` on `GET /api/health` (hide the affordance
+otherwise). It honors the same token gate and the same `?run=<id>` addressing as
+every other POST.
+
+```jsonc
+// request
+{ "action": "pause" | "resume" | "abort", "reason": "...", "note": "..." }
+```
+
+`action` is required and allowlisted; anything else is a `400`. `reason` and
+`note` are optional and carried onto the state record and the emitted event.
+
+**Dual-write semantics.** Every accepted action does two things: it drives the
+run's on-disk state through the same core the local commands use, *and* it drops
+a `{ "kind": "control", "action", "source": "remote", ... }` item into the
+run's `session-inbox/` — the SAME inbox the session loop drains each tick — and
+mirrors a `control-in` outbox event so observers see it in the stream. A live
+Conductor reacts to the inbox item on its next tick; the on-disk flip means the
+change is durable even if no Conductor is currently attached.
+
+- **`pause`** → parks the run (non-terminal, resumable). Response `200`:
+
+  ```jsonc
+  { "ok": true, "action": "pause", "run_id": "…", "resume_state": "executing", "inbox": ".bgsd/runs/…/session-inbox/remote-control-….json" }
+  ```
+
+  A run that is already **terminal** (`done` / `aborted` / `blocked` /
+  `needs_input`) has nothing to pause → `409 { "error": "…nothing to pause" }`.
+
+- **`abort`** → terminal stop. **Idempotent** (aborting an already-aborted run
+  succeeds and is a no-op). Response `200`:
+
+  ```jsonc
+  { "ok": true, "action": "abort", "run_id": "…", "state": "aborted", "inbox": "…" }
+  ```
+
+- **`resume`** → restores a paused run, then checks the run's control-file
+  heartbeats:
+  - If **any** agent's heartbeat still classifies `alive`, a live Conductor can
+    pick up the resume cooperatively. Response `200`:
+
+    ```jsonc
+    { "resumed": true, "mode": "cooperative", "run_id": "…", "inbox": "…" }
+    ```
+
+  - If **all** heartbeats are dead or absent, there is no attached Conductor to
+    receive the inbox item, so a human must start one. Response `202`:
+
+    ```jsonc
+    { "resumed": true, "mode": "needs-conductor", "run_id": "…", "hint": "launch a Conductor with /bgsd-resume" }
+    ```
+
 ### v2 errors
 
 | Code | Meaning |
 |---|---|
-| `400` | Invalid agent id (path traversal) on the log endpoint |
+| `400` | Invalid agent id (path traversal) on the log endpoint; unknown/missing `action` on `/api/control` |
 | `404` | Unknown run, or a log file that does not exist yet |
-| `409` | `/api/plan` on a run that exists but has not been decomposed |
+| `409` | `/api/plan` on a run that exists but has not been decomposed; `/api/control pause` on a terminal run; no active run to control |
+| `202` | `/api/control resume` when the run has no live Conductor (`needs-conductor`) |
 
 All other status codes match the v1 table above.
 ## v2 addendum: structured events + agent log files
