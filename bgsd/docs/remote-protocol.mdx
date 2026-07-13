@@ -186,3 +186,195 @@ If you're an agent on the same box you can bypass HTTP and use the files directl
 That's the whole contract. Build the client against these shapes; the bridge is
 intentionally small and file-backed so it's easy to reason about and hard to
 wedge.
+
+## API v2 (additive)
+
+Version 2 layers richer read endpoints on top of everything above. It is strictly
+additive: every v1 route and every event shape is preserved unchanged. Two rules
+make v2 clients forward-compatible with future slices:
+
+- **Gate on capabilities, never on the version.** Read the `capabilities` map from
+  `GET /api/health` and light up UI only for the capabilities that are `true`.
+  A later slice flips `control` and `launch` on without a protocol bump.
+- **Ignore what you don't recognize.** Skip unknown JSON keys in any response and
+  unknown `type` values in the event stream. New keys and new event types will be
+  added over time; a client that tolerates them keeps working.
+
+All v2 reads honor the same auth and the same `?run=<run-id>` addressing as v1,
+with one extension: `?run=` now resolves a live run under `.bgsd/runs/` first,
+then falls back to an archived, shipped session under `.bgsd/seshs/`. Omit `?run=`
+to target the latest live run.
+
+### CORS and preflight
+
+Every response (including the SSE stream and error responses) carries:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: authorization, x-bgsd-token, content-type
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+```
+
+A CORS preflight (`OPTIONS <any path>`) returns `204` with those headers and is
+answered **before** the auth gate, so a browser can complete its preflight and
+then send the real, token-bearing request. `OPTIONS` is the only response the
+bridge produces without a token; every other route stays token-gated exactly as
+in v1.
+
+### `GET /api/health` (extended)
+
+The v1 fields (`ok`, `run_id`, `conductor`) are unchanged; v2 adds three:
+
+```jsonc
+{
+  "ok": true,
+  "run_id": "run-fixture",
+  "conductor": { "name": "Kiwi", "emoji": "🥝" },
+  "protocol": 2,
+  "bgsd_version": "2.0.0",
+  "capabilities": {
+    "sessions": true, "plan": true, "tokens": true, "queue": true,
+    "agents": true, "logs": true,
+    "control": false, "launch": false
+  }
+}
+```
+
+`control` and `launch` are `false` in this slice; a client should hide any
+control or launch affordances until they read `true`.
+
+### `GET /api/sessions`
+
+Every run the bridge can see, plus the latest live run and the archived sessions:
+
+```jsonc
+{
+  "sessions": [ { "run_id": "…", "title": "…", "scale": "feature", "state": "executing", "stage": "loop1", "status": "…", "counts": {…}, "updated_at": "…" } ],
+  "latest_run_id": "run-fixture",       // newest live run by mtime, or null
+  "archived": ["sesh-old"]              // directory names under .bgsd/seshs/
+}
+```
+
+`sessions` is newest-first. `archived` ids are addressable with `?run=`.
+
+### `GET /api/plan?run=<id>`
+
+The persisted plan for a run, joined with the live control files:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "state": "executing",
+  "scale": "feature",
+  "waves": [ { "wave": 0, "units": ["auth"] } ],
+  "checkpoints": [],
+  "units": [
+    {
+      "id": "auth", "title": "Auth", "scope": "OAuth",
+      "criteria": ["login works"], "touched": null, "difficulty": 0.4,
+      "model_assignment": { "tier": "opus" },
+      "live": {                          // null before the unit's agent spawns
+        "agent_id": "agent-auth", "status": "running", "phase": "execute",
+        "worktree": "/wt/auth", "branch": "feat/auth"
+      }
+    }
+  ]
+}
+```
+
+Units are ordered by `units/_meta.json`'s `unit_ids`. Each unit's `live` block is
+`null` until its agent writes a control file, then reflects the current status.
+
+- `409 { "error": "not yet decomposed" }` when the run exists but has not been
+  decomposed yet (no `units/` directory).
+- `404 { "error": "unknown run" }` for a run id that resolves to no directory.
+
+### `GET /api/agents?run=<id>`
+
+The full projection of the run's control files, with a server-computed heartbeat:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "agents": [
+    {
+      "agent_id": "agent-auth", "unit_id": "auth",
+      "phase": "execute", "status": "running",
+      "heartbeat": "alive",              // "alive" | "stale" | "dead"
+      "heartbeat_at": "…",
+      "model": "claude-opus-4-8", "model_assignment": { "tier": "opus" },
+      "worktree": "/wt/auth", "branch": "feat/auth",
+      "progress": { "iteration": 1, "max_iterations": 5, "note": "" },
+      "context_bytes": 2048, "context_pressure": "normal",
+      "restart_count": 0, "escalations": [], "blockers": [],
+      "started_at": "…", "updated_at": "…"
+    }
+  ]
+}
+```
+
+`heartbeat` is classified server-side from `heartbeat_at`: `alive` under ~2 min,
+`stale` under ~5 min, `dead` beyond that (or never set).
+
+### `GET /api/agents/<agentId>/log?run=<id>&offset=<n>`
+
+A pull-based, byte-offset tail of a per-agent log file
+(`.bgsd/runs/<run-id>/logs/<agentId>.log`):
+
+```jsonc
+// GET …/log?run=run-fixture&offset=6
+{ "agent_id": "agent-auth", "offset": 6, "next_offset": 15, "eof": true, "data": "log world" }
+```
+
+Poll by passing the previous response's `next_offset` back as `offset`; `eof`
+tells you whether you've reached the end. Each request returns at most 256KB of
+`data`. `agentId` is allowlisted to `[A-Za-z0-9._-]` (path traversal is rejected
+with `400`). A `404` means the log file does not exist yet (log files are created
+lazily by the run).
+
+### `GET /api/tokens?run=<id>[&raw=1]`
+
+Token + cost accounting for a run, rolled up:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "totals":  { "calls": 1, "input": 1000, "output": 200, "cacheRead": 0, "cost": 0.01, "costKnown": true },
+  "byModel": { "claude-opus-4-8": { "calls": 1, "input": 1000, "output": 200, "cacheRead": 0, "cost": 0.01, "costKnown": true } },
+  "byRole":  { "executor": { … } },
+  "byAgent": { "agent-auth": { … } }
+  // "entries": [ … ]   ← present ONLY when raw=1
+}
+```
+
+`costKnown: false` on a bucket means at least one call had no known pricing, so
+its `cost` is a floor. Pass `raw=1` to also get the individual ledger rows in
+`entries`; omit it for the rollup only.
+
+### `GET /api/queue`
+
+The bgsd fix-stream queue (per-repo, at `.bgsd/queue/queue.json`):
+
+```jsonc
+{
+  "counts": { "queued": 1, "classified": 0, "…": 0 },
+  "current": "item-abc123",              // id of the item being worked, or null
+  "last_verdict": "done",                // most recent terminal state, or null
+  "items": [
+    { "id": "item-abc123", "title": "Fix the nav bug", "state": "queued", "source": "manual", "created_at": "…" }
+  ]
+}
+```
+
+Item bodies are intentionally omitted from this projection; fetch the queue store
+directly on-box if you need them.
+
+### v2 errors
+
+| Code | Meaning |
+|---|---|
+| `400` | Invalid agent id (path traversal) on the log endpoint |
+| `404` | Unknown run, or a log file that does not exist yet |
+| `409` | `/api/plan` on a run that exists but has not been decomposed |
+
+All other status codes match the v1 table above.
