@@ -1,0 +1,14 @@
+{
+  "name": "bgsd-v2-site",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "devDependencies": {
+    "astro": "^5.0.0"
+  }
+}

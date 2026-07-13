@@ -65,8 +65,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/feedback.mjs" --live --run-id bgsd-0001-my-f
 **SKIPS the loops.** The Conductor spawns fix agents directly off the feedback
 items with **no computer-use verification**:
 
-- For a single trivial (low-severity) item: one agent (Sonnet/low effort).
-- For multiple or non-trivial items: parallel agents (Opus/medium effort).
+- For a single trivial item: one build-lane agent.
+- For multiple or non-trivial items: parallel build-lane agents.
 
 Fixes are applied to `next`. The run then returns to the User
 Review Gate; the human is the verification for `--fast`.
@@ -171,7 +171,7 @@ For `--fast`:
     "mode":                  "fast",
     "loops":                 ["fast_fix"],
     "agent_strategy":        "parallel",
-    "model_hint":            "Opus/medium",
+    "model_hint":            "build-lane/default",
     "verified":              false,
     "verification_skipped":  true,
     "result_status":         "UNVERIFIED",
