@@ -3,9 +3,10 @@
 BGSD is a verified, worktree-based GSD conductor. You start one session with the
 model you want to reason with — that live session is the **Conductor and
 Advisor**. By default, Pipeline Agents execute through **Cursor Agent CLI**:
-Composer 2.5 Standard for routine work and Grok 4.5 base for hard work. Fresh
-verification gathers evidence; the Conductor adjudicates. BGSD never writes
-directly to your production branch.
+Composer 2.5 Standard for routine work and Grok 4.5 base for hard work. You can
+instead run **Claude Code / Codex** workers with `--no-cursor` — an equal
+alternative, not a fallback. Fresh verification gathers evidence; the Conductor
+adjudicates. BGSD never writes directly to your production branch.
 
 ## Architecture
 
@@ -15,13 +16,14 @@ flowchart TD
     C --> P[Plan, decompose, seed, route]
     P -->|Routine| CO[Cursor Agent<br/>Composer 2.5 Standard]
     P -->|Hard, recorded reason| GR[Cursor Agent<br/>Grok 4.5 base]
+    P -->|Optional explicit assignment| CC[Claude Code / Codex workers]
     CO --> WT[Isolated worktrees]
     GR --> WT
+    CC --> WT
     WT --> EV[Fresh verification agents<br/>Loop 1 and Loop 2 evidence]
     EV --> C
     C -->|Repair| P
     C -->|Accept| HG[Human review and merge gate]
-    C -->|Exceptional explicit fallback| LG[Legacy Claude/Codex lane]
 ```
 
 ### Roles
@@ -29,8 +31,9 @@ flowchart TD
 | Role | Owns | Chosen at |
 | --- | --- | --- |
 | Conductor | scope, decomposition, seeds, routing reasons, evidence adjudication, human gates | your current live session (never switched by BGSD) |
-| Routine workers | contained implementation via `cursor-agent` + Composer 2.5 Standard (`composer-2.5`) | session default |
+| Routine workers | contained implementation via `cursor-agent` + Composer 2.5 Standard (`composer-2.5`) | session default when Cursor is enabled |
 | Hard workers | ambiguous / cross-cutting work via `cursor-agent` + Grok 4.5 base (`cursor-grok-4.5-high`) | Conductor assignment with recorded reason |
+| Claude/Codex workers | Claude Code and/or Codex build & evaluation lanes | `--no-cursor`, or an explicit `claude-codex` assignment |
 | Verifiers | deterministic checks first; optional fresh Composer semantic evidence | session policy |
 | Human | `next → main` merge and contestable gates | always |
 
@@ -42,27 +45,27 @@ adjudication — PASS/FAIL evidence is never a silent product decision.
 **Fast model variants and Auto are never silently selected.** Doctor fails
 closed if Standard versus Fast cannot be distinguished.
 
-## Legacy Claude/Codex (`--no-cursor`)
+## Claude Code / Codex (`--no-cursor`)
 
 ```mermaid
 flowchart TD
-    F[--no-cursor] --> V2[Existing BGSD v2 behavior]
-    V2 --> CC[Claude Code lanes]
-    V2 --> CX[Codex lanes]
-    V2 --> HY[Existing hybrid profiles]
+    F[--no-cursor] --> P[Claude/Codex pipeline profiles]
+    P --> CC[Claude Code lanes]
+    P --> CX[Codex lanes]
+    P --> HY[Hybrid Claude/OpenAI profiles]
 ```
 
 ```sh
 # Default: Cursor workers (Composer routine / Grok hard)
 node bgsd/scripts/session.mjs --prompt "Build an audit log"
 
-# Exact legacy Claude/Codex behavior — zero Cursor probes or spawns
+# Claude Code / Codex workers — equal alternative; zero Cursor probes or spawns
 node bgsd/scripts/session.mjs --prompt "Build an audit log" --no-cursor
 ```
 
-With `--no-cursor`, BGSD restores the previous Claude/Codex profile, routing,
-proxy, authentication, build-lane, and evaluation-lane behavior. It does not
-probe `cursor-agent`, check Cursor login, install GSD for Cursor, or spawn
+With `--no-cursor`, BGSD uses Claude/Codex profile, routing, proxy,
+authentication, build-lane, and evaluation-lane behavior. It does not probe
+`cursor-agent`, check Cursor login, install GSD for Cursor, or spawn
 Composer/Grok.
 
 ## Doctor and setup
@@ -73,14 +76,14 @@ BGSD Doctor checks the selected runtime before a session:
   (`cursor-agent login` — API keys rejected), configured Composer Standard and
   Grok base selectors present in `cursor-agent --list-models`, and (for
   Feature/Project) Open GSD installed for Cursor.
-- **Legacy (`--no-cursor`):** Claude and/or Codex CLIs + subscription login +
+- **Claude/Codex (`--no-cursor`):** Claude and/or Codex CLIs + subscription login +
   GSD for those runtimes. Optional CLIProxyAPI only with `--proxy`.
 
 ```sh
 # Cursor GSD (Feature/Project)
 npx -y @opengsd/gsd-core@latest --cursor --global
 
-# Legacy runtimes
+# Claude Code / Codex runtimes
 npx -y @opengsd/gsd-core@latest --claude --global
 npx -y @opengsd/gsd-core@latest --codex --global
 ```
@@ -104,8 +107,8 @@ codex plugin add bgsd@better-gsd
 
 Use the `bgsd-sesh` skill. Native selectors cover:
 
-1. **Execution backend** — Cursor workers (recommended) or Legacy Claude/Codex
-2. Legacy profile (when needed) — Claude/Claude, OpenAI/OpenAI, or hybrids
+1. **Execution backend** — Cursor workers, or Claude Code / Codex workers
+2. Claude/OpenAI profile when using Claude/Codex (or as optional cross-backend)
 3. Routing / verification depth as warranted
 
 ```sh
