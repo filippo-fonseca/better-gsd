@@ -1225,13 +1225,13 @@ if (
     if (!prompt) {
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
-        '        [--no-cursor]  # disable Cursor; exact legacy Claude/Codex behavior\n' +
+        '        [--no-cursor]  # Claude Code / Codex workers instead of Cursor\n' +
         '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
         '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
         '        [--cursor-routine-model <id>] [--cursor-hard-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
-        '  Default: Cursor workers (Composer routine / Grok hard). --no-cursor: legacy Claude/Codex only.\n' +
+        '  Default: Cursor workers (Composer routine / Grok hard). --no-cursor: Claude/Codex workers.\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
       );
       process.exit(1);
@@ -1341,9 +1341,9 @@ if (
       process.stdout.write(`  cursor:    enabled  routine=${modelContract.cursor.routine.model}  hard=${modelContract.cursor.hard.model}\n`);
       process.stdout.write(`  workers:   Cursor Agent CLI (Composer routine / Grok hard; Fast never selected)\n`);
       process.stdout.write(`  verify:    deterministic-first; Conductor adjudicates evidence\n`);
-      process.stdout.write(`  legacy:    profile=${modelContract.legacy.profile} (explicit fallback only)\n`);
+      process.stdout.write(`  claude/codex: profile=${(modelContract.claude_codex || modelContract.legacy).profile} (equal alternative)\n`);
     } else {
-      process.stdout.write(`  cursor:    disabled (--no-cursor)\n`);
+      process.stdout.write(`  cursor:    disabled (--no-cursor → Claude/Codex workers)\n`);
       process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
       if (modelContract.routing === "adaptive") {
         process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
@@ -1399,7 +1399,7 @@ if (
           throw new Error(
             `BGSD Doctor: setup required — ${fails.join("; ")}. ` +
             (modelContract.cursor?.enabled
-              ? `Fix these and re-run (Cursor browser-login only; API keys are not accepted). Or restart with --no-cursor for legacy Claude/Codex.`
+              ? `Fix these and re-run (Cursor browser-login only; API keys are not accepted). Or restart with --no-cursor for Claude/Codex workers.`
               : `Fix these and re-run (subscription login only; API keys are not accepted).`)
           );
         }

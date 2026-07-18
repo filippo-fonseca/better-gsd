@@ -319,7 +319,7 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     model_assignment: buildLane.assignment,
   });
 
-  // Cursor: routine/hard from Conductor assignment. Legacy: fixed/adaptive.
+  // Cursor: routine/hard from Conductor assignment. Claude/Codex: fixed/adaptive.
   const spawnModel = buildLane.model;
   log(`liveSpawnFn: model ${spawnModel} (${buildLane.assignment.tier}; ${buildLane.assignment.reason})`);
 

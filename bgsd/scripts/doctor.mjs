@@ -114,7 +114,7 @@ export async function probeProxy({ env = process.env, fetchImpl = globalThis.fet
  *
  * When Cursor is enabled: probes cursor-agent, login auth, and model selectors.
  * When `--no-cursor` / cursor.enabled=false: performs ZERO Cursor probes and
- * uses the existing Claude/Codex profile behavior.
+ * uses Claude Code / Codex profile behavior — an equal alternative backend.
  */
 export async function runDoctor({
   contract,
@@ -158,7 +158,7 @@ export async function runDoctor({
 
   const proxyNeeded =
     !cursorEnabled &&
-    (c.build?.transport === "proxy" || c.legacy?.build?.transport === "proxy");
+    (c.build?.transport === "proxy" || c.claude_codex?.build?.transport === "proxy" || c.legacy?.build?.transport === "proxy");
   const proxy = proxyNeeded
     ? await probeProxy({
       env,
@@ -220,9 +220,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (result.cursorEnabled) {
       process.stdout.write(`  cursor:    enabled (routine=${contract.cursor.routine.model}, hard=${contract.cursor.hard.model})\n`);
       process.stdout.write(`  evaluate:  deterministic-first; semantic verifier=${contract.evaluate.model}; adjudicator=live-conductor\n`);
-      process.stdout.write(`  legacy:    profile=${contract.legacy.profile} (explicit fallback only)\n`);
+      process.stdout.write(`  claude/codex: profile=${(contract.claude_codex || contract.legacy).profile} (equal alternative backend)\n`);
+      process.stdout.write(`  workers:   Cursor Agent CLI (Composer routine / Grok hard)\n`);
     } else {
-      process.stdout.write(`  cursor:    disabled (--no-cursor)\n`);
+      process.stdout.write(`  cursor:    disabled (--no-cursor → Claude/Codex workers)\n`);
       process.stdout.write(`  build:     ${contract.build.provider}/${contract.build.model} (${contract.build.transport})\n`);
       process.stdout.write(`  evaluate:  ${contract.evaluate.provider}/${contract.evaluate.model} (${contract.evaluate.transport})\n`);
     }
@@ -232,7 +233,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       process.stdout.write(`  cursor models: ${result.cursorModels.ok ? "ready" : result.cursorModels.reason}\n`);
     }
     for (const [runtime, row] of Object.entries(result.gsd)) process.stdout.write(`  ${runtime} GSD: ${row.ok ? "ready" : "install required"}\n`);
-    if (contract.build.transport === "proxy" || contract.legacy?.build?.transport === "proxy") {
+    if (contract.build.transport === "proxy" || contract.claude_codex?.build?.transport === "proxy" || contract.legacy?.build?.transport === "proxy") {
       process.stdout.write(`  proxy: ${result.proxy.ok ? "ready" : result.proxy.reason}\n`);
     }
   }

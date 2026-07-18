@@ -133,18 +133,19 @@ export function normalizeModelAssignment(value) {
     throw new Error("model_assignment must be an object");
   }
   const rawTier = String(value.tier ?? "").trim().toLowerCase();
-  // Cursor vocabulary: routine | hard | legacy. Legacy Claude/Codex: heavy | light.
-  // Accept light→routine and heavy→hard aliases when callers mix vocabularies.
+  // Cursor vocabulary: routine | hard | claude-codex.
+  // Claude/Codex vocabulary: heavy | light.
+  // Accept historical "legacy" as an alias for claude-codex.
   let tier = null;
-  if (["routine", "hard", "legacy", "heavy", "light"].includes(rawTier)) {
-    tier = rawTier;
+  if (["routine", "hard", "claude-codex", "legacy", "heavy", "light"].includes(rawTier)) {
+    tier = rawTier === "legacy" ? "claude-codex" : rawTier;
   }
   if (!tier && !value.model) {
-    throw new Error("model_assignment requires tier=routine|hard|legacy|heavy|light or a model id");
+    throw new Error("model_assignment requires tier=routine|hard|claude-codex|heavy|light or a model id");
   }
   const reason = String(value.reason ?? "").trim();
   if (!reason) throw new Error("model_assignment requires a Conductor reason");
-  // Non-default Cursor tiers (hard/legacy) and adaptive light always need reasons
+  // Non-default Cursor tiers (hard/claude-codex) and adaptive light always need reasons
   // (already enforced above). Return the normalized assignment.
   return {
     ...(tier ? { tier } : {}),
