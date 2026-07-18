@@ -65,6 +65,11 @@ export const PRICING = Object.freeze({
   "gpt-5.4":          { input: 2.5,  output: 15,   cacheRead: 0.25 },
   "gpt-5.4-mini":     { input: 0.75, output: 4.5,  cacheRead: 0.075 },
   "gpt-5.4-nano":     { input: 0.15, output: 1.2,  cacheRead: 0.015 },
+  // Cursor subscription models (dated Jul 2026 — included usage rates vary by plan;
+  // these are placeholders for ledger display only; override via --cost / BGSD.md).
+  "composer-2.5":            { input: 0, output: 0, cacheRead: 0 },
+  "cursor-grok-4.5-high":    { input: 0, output: 0, cacheRead: 0 },
+  "cursor-grok-4.5-medium":  { input: 0, output: 0, cacheRead: 0 },
 });
 
 /**

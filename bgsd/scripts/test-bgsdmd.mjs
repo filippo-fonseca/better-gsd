@@ -25,16 +25,16 @@ function test(name, fn) {
 test("BM01 — setConfigValue deep-sets the v2 model contract", () => {
   const cfg = defaultBgsdConfig();
   const { config, oldValue } = setConfigValue(cfg, "model_contract.evaluate.model", "gpt-5.5");
-  assert.equal(oldValue, "claude-opus-4-8");
+  assert.equal(oldValue, "composer-2.5");
   assert.equal(config.model_contract.evaluate.model, "gpt-5.5");
   // original not mutated
-  assert.equal(cfg.model_contract.evaluate.model, "claude-opus-4-8");
+  assert.equal(cfg.model_contract.evaluate.model, "composer-2.5");
 });
 
 test("BM02 — applySetting updates the json block while preserving prose", () => {
   const text = renderBgsdMd(defaultBgsdConfig());
   const res = applySetting(text, "model_contract.evaluate.model", "gpt-5.5");
-  assert.equal(res.oldValue, "claude-opus-4-8");
+  assert.equal(res.oldValue, "composer-2.5");
   assert.equal(res.newValue, "gpt-5.5");
   // settings round-trip reflects the change
   assert.equal(parseBgsdMd(res.text).model_contract.evaluate.model, "gpt-5.5");

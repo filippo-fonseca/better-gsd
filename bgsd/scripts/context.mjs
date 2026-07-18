@@ -630,17 +630,41 @@ export async function liveRelaunch({ agentId, manifestPath, worktreePath }) {
   // read + spawn invocation) is fully wired here; it becomes a live process the
   // moment liveSpawnFn's spawn is uncommented. We invoke through spawnSync so
   // the seam is real and observable rather than a "would re-launch" no-op.
-  // Re-launch on the active harness (claude: `claude -p /bgsd-run-agent …`;
-  // codex: `codex exec …`). The relaunched pipeline agent runs on the opus-equiv.
-  const relaunchRoot = worktreePath ?? process.cwd();
-  const lane = activeLane("build");
-  const harness = harnessForLane(lane);
+  // Re-launch on the unit's recorded harness/model assignment. Never silently
+  // change Composer→Grok or fall through to Claude for an unknown harness.
+  let lane = activeLane("build");
+  let harness = harnessForLane(lane);
+  let spawnModel = lane.model;
+  let effort = lane.effort;
+  let proxy = lane.transport === "proxy";
+  try {
+    const { loadContractForRun, buildLaneForUnit, harnessForLane: hfl } = await import("./model-contract.mjs");
+    const assignmentJson = process.env.BGSD_UNIT_ASSIGNMENT_JSON;
+    const assignment = assignmentJson ? JSON.parse(assignmentJson) : null;
+    const runDir = process.env.BGSD_RUN_DIR || null;
+    if (runDir) {
+      const contract = loadContractForRun(runDir);
+      const resolved = buildLaneForUnit(contract, assignment);
+      lane = resolved;
+      harness = hfl(resolved);
+      spawnModel = resolved.model;
+      effort = resolved.effort;
+      proxy = resolved.transport === "proxy";
+    }
+  } catch (_) {
+    // Fall back to activeLane — still must not invent Cursor→Claude.
+  }
   const relaunchSpawn = buildAgentSpawn({
     harness,
     command: "/bgsd-run-agent",
-    model: lane.model,
-    effort: lane.effort,
-    proxy: lane.transport === "proxy",
+    model: spawnModel,
+    effort,
+    proxy,
+    context: {
+      worktree: worktreePath ?? "",
+      "agent-id": agentId,
+      "resume-manifest": manifestPath,
+    },
     extraArgs: [
       "--worktree", worktreePath ?? "",
       "--agent-id", agentId,

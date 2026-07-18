@@ -62,17 +62,46 @@ to ask anything as plain text, stop and re-shape it as a selector first.
 
 ## Setup
 
-First choose the
-pipeline profile, optional custom model ids, fixed or adaptive routing, and
-verification depth. Run BGSD Doctor before any work; for Feature and Project
-scale, Doctor is a hard code gate enforced by the engine, not a courtesy check.
-If setup is missing, offer the native Install and Continue selector action.
+First choose the **execution backend**:
 
-Lane defaults: Claude lanes run Opus 4.8 at high effort; OpenAI lanes run
-GPT-5.6 Sol at medium effort. These are pipeline-lane defaults only; the
-Conductor stays on whatever model the user launched. The resolved model
-contract is persisted on `run.json` and rehydrated from it on resume, so a
-paused session comes back with the same lane assignments.
+1. **Cursor workers — Composer routine, Grok hard (Recommended)**
+2. **Legacy Claude/Codex only** (`--no-cursor`)
+
+When Cursor is selected, ordinary units execute through `cursor-agent`:
+Composer 2.5 Standard (`composer-2.5`) for routine work and Grok 4.5 base
+(`cursor-grok-4.5-high`) for hard work with a recorded reason. Fast variants
+and Auto are never silently selected. The Claude/OpenAI profile selector then
+controls only the explicit legacy/fallback contract.
+
+When Legacy / `--no-cursor` is selected, choose the pipeline profile, optional
+custom model ids, fixed or adaptive routing, and verification depth — the exact
+prior Claude/Codex behavior. With `--no-cursor`, BGSD performs zero Cursor
+probes, auth checks, model checks, or spawns.
+
+Run BGSD Doctor before any work; for Feature and Project scale, Doctor is a
+hard code gate enforced by the engine, not a courtesy check. Cursor-enabled
+Doctor requires `cursor-agent`, browser login (`cursor-agent login` — API keys
+rejected), and both configured model selectors. If setup is missing, offer the
+native Install and Continue selector action.
+
+The live session model remains the Conductor — never switched by BGSD. The
+resolved model contract is persisted on `run.json` and rehydrated from it on
+resume, so a paused session comes back with the same Cursor enabled/disabled
+state and lane assignments.
+
+## Verification and adjudication
+
+Verification is **deterministic-first**: tests, typecheck, lint, build, and
+Playwright before spawning another model. Fresh evaluator processes gather
+independent evidence (optional Composer semantic verifier when needed). The
+**live Conductor adjudicates** — accept, repair/retry Composer, escalate to
+Grok with a recorded reason, or block. No silent green; no silent Opus/GPT
+fallback. The human review/merge gate remains mandatory (`next → main` is
+human-only).
+
+Lane defaults under `--no-cursor`: Claude lanes run Opus 4.8 at high effort;
+OpenAI lanes run GPT-5.6 Sol at medium effort. These are pipeline-lane defaults
+only; the Conductor stays on whatever model the user launched.
 
 ## Resolving scale
 
@@ -109,11 +138,13 @@ change; that is ordinary harness work, not a BGSD session.
 ## Feature and Project sessions
 
 `--feature` and `--project` spawn build-lane agents that run full GSD workflows
-in isolated worktrees. The Conductor remains the Advisor throughout: author a
-seed before execution, inspect every worker control file, diff/commit, blocker,
-and verification result, and update the worker steering directive whenever the
-next step should change. Never treat a worker as fire-and-forget. Evaluation
-lane agents own Loop 1, Loop 2, and final fresh review.
+in isolated worktrees (Cursor Open GSD by default; Claude/Codex GSD under
+`--no-cursor`). The Conductor remains the Advisor throughout: author a seed
+before execution, inspect every worker control file, diff/commit, blocker, and
+verification result, and update the worker steering directive whenever the next
+step should change. Never treat a worker as fire-and-forget. Fresh evaluator
+processes gather Loop 1 / Loop 2 evidence; the live Conductor owns final
+adjudication.
 
 Write a new directive with:
 

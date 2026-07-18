@@ -10,10 +10,29 @@ codex plugin marketplace add filippo-fonseca/better-gsd
 codex plugin add bgsd@better-gsd
 ```
 
-Start `bgsd-sesh` inside a git repository. The session selector chooses one of
-four provider profiles, fixed or adaptive build routing, verification depth, and
-any custom provider-valid model id. BGSD Doctor verifies subscription login and
-installs `gsd-core` for every selected runtime.
+Start `bgsd-sesh` inside a git repository. By default, Pipeline Agents run
+through **Cursor Agent CLI**: Composer 2.5 Standard for routine work and Grok
+4.5 base for hard work (recorded reason required). The live session model stays
+the Conductor and Advisor. Fast variants and Auto are never silently selected.
+
+The setup selector chooses:
+
+1. Execution backend — Cursor workers (recommended) or Legacy Claude/Codex
+2. When legacy: one of four provider profiles, fixed/adaptive routing, optional custom models
+3. Verification depth as warranted
+
+BGSD Doctor verifies the selected runtime. For Cursor: `cursor-agent`, browser
+login (`cursor-agent login` — API keys rejected), and both model selectors.
+Feature/Project also install `gsd-core` for the selected runtime
+(`--cursor`, `--claude`, or `--codex`).
+
+```sh
+# Default: Cursor workers
+node bgsd/scripts/session.mjs --prompt "Add export filters"
+
+# Exact legacy Claude/Codex behavior
+node bgsd/scripts/session.mjs --prompt "Add export filters" --no-cursor --profile claude-openai
+```
 
 The live Conductor owns workflow depth unless you override it. You can use a
 flag, or say `Treat this as a project`, `Run it as a feature`, or `Use quick
@@ -22,16 +41,12 @@ wins over automatic sizing. If neither is explicit and scope is unclear, BGSD
 uses the host-native Quick/Feature/Project selector.
 
 Quick is still a BGSD session. The Conductor writes a compact plan and delegates
-every edit and repair to one or more direct Pipeline Agents in isolated
-worktrees. It can run them serially or in parallel and steer them from their
-evidence. Quick skips GSD phases and GSD installation; it does not turn the live
-Conductor into the code editor.
+every edit and repair to direct workers in isolated worktrees. Quick skips GSD
+phases and GSD installation; it does not turn the live Conductor into the code
+editor. Verification is deterministic-first; the Conductor adjudicates evidence.
 
-```sh
-node bgsd/scripts/session.mjs --prompt "Add export filters" --profile claude-openai
-```
-
-The normal path launches the relevant CLI directly. Use `--proxy` only when you
-want Claude Code's harness to call a foreign model through a local verified
-CLIProxyAPI endpoint. Set `BGSD_PROXY_URL` and `BGSD_PROXY_TOKEN`; the doctor
-checks `/v1/models` before work starts.
+Under `--no-cursor`, the normal path launches Claude Code or Codex directly.
+Use `--proxy` only when you want Claude Code's harness to call a foreign model
+through a local verified CLIProxyAPI endpoint. Set `BGSD_PROXY_URL` and
+`BGSD_PROXY_TOKEN`; the doctor checks `/v1/models` before work starts. Proxy is
+never used for Cursor.

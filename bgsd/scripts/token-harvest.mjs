@@ -2,23 +2,9 @@
 /**
  * token-harvest.mjs — read REAL token usage off a harness's own transcript.
  *
- * bgsd spawns coding agents with `stdio: "inherit"` so the live colorful
- * terminal is untouched. To learn what a spawn actually cost WITHOUT spending
- * any tokens of our own, we read the transcript the harness already wrote to
- * disk after the subprocess exits and sum the usage numbers. Pure file parsing:
- * no model call, no re-reading, no extra spend.
- *
- * Claude Code writes one JSONL session file per `-p` run under
- *   ~/.claude/projects/<sanitized-cwd>/<session-uuid>.jsonl
- * where each assistant line carries `message.usage` for that turn. Each turn is
- * a separately-billed API call, so summing per-turn tokens across turns is the
- * accurate total (cached input is genuinely re-billed at the cache rate each
- * turn). We locate the file by cwd + mtime rather than reconstructing the
- * sanitized folder name, which is more robust to Claude's path encoding.
- *
- * Codex harvesting is best-effort (rollout logs under ~/.codex/sessions); when
- * a transcript can't be found or parsed we return null and the caller records
- * model/effort with no token numbers (source "none") — never throws.
+ * Claude Code and Codex write disk transcripts; Cursor stream-json can be
+ * parsed from captured output. Unknown harnesses return null — never fall
+ * through to the Claude parser. Never fabricates usage.
  */
 
 import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
@@ -59,10 +45,6 @@ function parseLine(line) {
   return safe(() => JSON.parse(line), null);
 }
 
-/**
- * Sum usage across every assistant turn in a Claude Code JSONL transcript.
- * Returns null when the file has no usable usage rows.
- */
 function sumClaudeTranscript(path) {
   let input = 0;
   let output = 0;
@@ -80,8 +62,6 @@ function sumClaudeTranscript(path) {
     cacheCreation += Number(u.cache_creation_input_tokens || 0);
   }
   if (!saw) return null;
-  // tokens.mjs treats cacheReadTokens as a SUBSET of inputTokens (it nets it
-  // out at the discounted rate), so fold every input bucket into inputTokens.
   return {
     inputTokens: input + cacheCreation + cacheRead,
     outputTokens: output,
@@ -91,7 +71,6 @@ function sumClaudeTranscript(path) {
   };
 }
 
-/** True when a transcript's first line reports the given cwd. */
 function transcriptCwd(path) {
   for (const line of readLines(path).slice(0, 5)) {
     const obj = parseLine(line);
@@ -100,11 +79,6 @@ function transcriptCwd(path) {
   return null;
 }
 
-/**
- * Harvest Claude Code usage for a subprocess that ran in `cwd`, started at or
- * after `sinceMs`. Prefers the newest transcript whose recorded cwd matches;
- * falls back to the newest recent transcript. Returns null if none found.
- */
 export function harvestClaudeUsage(cwd, sinceMs) {
   const root = join(homedir(), ".claude", "projects");
   const candidates = recentJsonl(root, sinceMs);
@@ -114,10 +88,6 @@ export function harvestClaudeUsage(cwd, sinceMs) {
   return sumClaudeTranscript(chosen.path);
 }
 
-/**
- * Harvest Codex usage — best-effort. Codex rollout logs vary by version; we
- * look for token_count/usage-shaped fields and sum them, else return null.
- */
 export function harvestCodexUsage(cwd, sinceMs) {
   const root = join(homedir(), ".codex", "sessions");
   const candidates = recentJsonl(root, sinceMs);
@@ -142,16 +112,109 @@ export function harvestCodexUsage(cwd, sinceMs) {
 }
 
 /**
- * Dispatch by harness. Never throws — returns null when nothing is harvestable
- * so the caller can still record model/effort (source "none").
- *
- * @param {"claude"|"codex"} harness
- * @param {string} cwd       the worktree the subprocess ran in
- * @param {number} sinceMs   Date.now() captured just before the spawn
+ * Parse Cursor Agent stream-json / JSONL usage events.
+ * Only extracts token counts when the schema is known. Never fabricates.
  */
-export function harvestUsage(harness, cwd, sinceMs) {
-  return safe(
-    () => (harness === "codex" ? harvestCodexUsage(cwd, sinceMs) : harvestClaudeUsage(cwd, sinceMs)),
-    null
-  );
+export function parseCursorStreamUsage(textOrLines) {
+  const lines = Array.isArray(textOrLines)
+    ? textOrLines
+    : String(textOrLines ?? "").split("\n").filter(Boolean);
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let saw = false;
+  let model = null;
+  let apiKeySource = null;
+
+  for (const line of lines) {
+    const obj = typeof line === "string" ? parseLine(line) : line;
+    if (!obj || typeof obj !== "object") continue;
+
+    if (obj.apiKeySource) apiKeySource = obj.apiKeySource;
+    if (obj.model && typeof obj.model === "string") model = obj.model;
+
+    const u =
+      obj.usage ||
+      obj.message?.usage ||
+      obj.result?.usage ||
+      null;
+    if (!u || typeof u !== "object") continue;
+
+    const it = Number(
+      u.input_tokens ?? u.inputTokens ?? u.prompt_tokens ?? u.promptTokens ?? 0
+    );
+    const ot = Number(
+      u.output_tokens ?? u.outputTokens ?? u.completion_tokens ?? u.completionTokens ?? 0
+    );
+    const cr = Number(
+      u.cache_read_input_tokens ?? u.cacheReadTokens ?? u.cache_read_tokens ?? 0
+    );
+    if (!it && !ot && !cr) continue;
+    saw = true;
+    input += it;
+    output += ot;
+    cacheRead += cr;
+  }
+
+  if (!saw) {
+    return {
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      source: "none",
+      model,
+      apiKeySource,
+    };
+  }
+  return {
+    inputTokens: input + cacheRead,
+    outputTokens: output,
+    cacheReadTokens: cacheRead,
+    cacheCreationTokens: 0,
+    source: "measured",
+    model,
+    apiKeySource,
+  };
+}
+
+export function harvestCursorUsage(cwd, sinceMs, { streamText } = {}) {
+  if (streamText != null) {
+    const parsed = parseCursorStreamUsage(streamText);
+    if (parsed.source === "measured") return parsed;
+    return null;
+  }
+  const captureCandidates = [];
+  if (cwd) {
+    captureCandidates.push(join(cwd, ".bgsd", "cursor-stream.jsonl"));
+    captureCandidates.push(join(cwd, ".cursor-agent-stream.jsonl"));
+  }
+  for (const path of captureCandidates) {
+    if (existsSync(path)) {
+      const parsed = parseCursorStreamUsage(readFileSync(path, "utf8"));
+      if (parsed.source === "measured") return parsed;
+    }
+  }
+  const root = join(homedir(), ".cursor", "projects");
+  const candidates = recentJsonl(root, sinceMs);
+  for (const c of candidates) {
+    const parsed = parseCursorStreamUsage(readFileSync(c.path, "utf8"));
+    if (parsed.source === "measured") return parsed;
+  }
+  return null;
+}
+
+/**
+ * Dispatch by harness. Never throws. Unknown harness → null (not Claude).
+ *
+ * @param {"claude"|"codex"|"cursor"} harness
+ * @param {string} cwd
+ * @param {number} sinceMs
+ */
+export function harvestUsage(harness, cwd, sinceMs, opts = {}) {
+  return safe(() => {
+    if (harness === "cursor") return harvestCursorUsage(cwd, sinceMs, opts);
+    if (harness === "codex") return harvestCodexUsage(cwd, sinceMs);
+    if (harness === "claude") return harvestClaudeUsage(cwd, sinceMs);
+    return null;
+  }, null);
 }

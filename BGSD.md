@@ -25,18 +25,27 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **harness** — bgsd is LLM/CLI **agnostic**. A sesh runs identically whether
-  you drive it from **Claude Code** or **Codex**, and you can switch between them
-  mid-project (e.g. to dodge one provider's usage limits) with zero friction: all
-  durable state lives in `.bgsd/` files, so switching back and forth just works.
-  `harness.active: "auto"` detects the harness from the environment (`AGENT=codex`
-  → Codex; otherwise Claude Code); pin it to `"claude"`/`"codex"` to force one.
-  `harness.models` maps bgsd's semantic tiers (opus/sonnet/haiku/fable) to each
-  harness's model equivalents — retune here if a provider's model names drift.
-- **model_posture** — the per-unit model + effort routing. Executor uses the
-  unit's difficulty tier; researcher drops one tier (capped at `medium`);
-  verifier is fixed. Override any tier, threshold, or role here. The tier names
-  resolve to the ACTIVE harness's models via `harness.models` above.
+- **cursor** — Cursor Agent CLI workers (default on). `models.routine` is
+  Composer 2.5 Standard (`composer-2.5`); `models.hard` is Grok 4.5 base
+  (`cursor-grok-4.5-high`). Fast variants and Auto are never silently selected.
+  Pass `--no-cursor` to disable Cursor entirely and restore legacy Claude/Codex
+  lanes. Doctor validates selectors against `cursor-agent --list-models`.
+- **harness** — Claude Code, Codex, and Cursor are first-class harnesses.
+  `harness.active: "auto"` detects from the environment; pin to
+  `claude`/`codex`/`cursor` to force one. `harness.models` maps semantic
+  tiers to concrete ids per harness.
+- **model_contract** — the session Conductor/worker/evaluation contract. The live
+  session model is always the Conductor and Advisor. With Cursor enabled, routine
+  units use Composer and hard units use Grok (recorded reasons required for hard
+  and legacy). Verification is deterministic-first; a fresh Composer verifier
+  gathers semantic evidence only when needed; the live Conductor adjudicates.
+  `--no-cursor` restores the legacy Claude/Codex build and evaluation lanes.
+- **model_contract.auth** — always `subscription-only`. BGSD Doctor verifies
+  Cursor browser-login (`cursor-agent login`) when Cursor is enabled, or Claude
+  and Codex subscription login for legacy runs. Child processes scrub provider
+  API-key variables including `CURSOR_API_KEY`. The optional proxy changes
+  transport for legacy Claude-hosted foreign models only, never becomes a silent
+  fallback, and is never used for Cursor.
 - **verification.usage_testing** — `true` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). `false` skips that UI
   usage-testing but STILL runs the goal-backward code verification
@@ -44,15 +53,42 @@ Notes section and Kiwi will respect them.
   testing. Toggle per-session with `--no-usage-verification`, or tell Kiwi
   ("stop UI-testing quick fixes") and it sets this for you. It never disables
   code verification — "no silent green" still holds.
-- **conductor** — persona + narration. `narrate` streams stage-aware live
-  updates; `suggest_gate_commands` makes Kiwi hand you the exact command at
-  every human gate. `fable_advisor` controls **Fable-as-Advisor mode**: when on,
-  Kiwi actively reviews each wave unit's sealed plan, steers before execution,
-  checks in on commits, and authors the next wave's seed plans itself (reviewing
-  distilled artifacts only, never raw diffs). `"auto"` (default) follows the
-  three-criteria gate — on when your brain IS Fable, OR `--fable` was passed, OR
-  you approved a proposal; off otherwise. Set `true` to force on, `false` to
-  hard-disable even on Fable.
+- **verification.headless** — `true` drives Playwright headless, no visible
+  browser or server window pops up on your machine (discreet). `false` lets it
+  run headed. Toggle per-session with `--headless-ui`, or tell Kiwi ("always
+  verify headless").
+- **gui.auto** — start and open the live web dashboard automatically for
+  feature- and project-scale seshs; quick seshs stay terminal-only. Opt out for
+  one session with `--no-gui`, or set `false` here to keep it manual
+  (`/bgsd-gui` still opens it on demand).
+- **notifications.os** — fire a native macOS notification the moment the
+  pipeline needs your input (an escalated question, a human gate), so you can
+  walk away from long seshs and still get pinged. Fail-silent, and a no-op off
+  macOS.
+- **remote.enabled / remote.host / remote.port** — expose a local HTTP bridge
+  (`/bgsd-remote`) so you can watch and steer a live sesh from a phone app:
+  stream the Conductor's output, send it messages, and answer its questions
+  remotely. `host` is `loopback` (127.0.0.1, tunnel it for true remote) or
+  `lan` (0.0.0.0 on your network); a token is generated at start and required
+  for any non-loopback bind. `port: 0` lets the OS pick. Off by default.
+- **modes.pipeline / modes.verifier** — how much work each role does, three
+  levels: `fast` (pipeline skips research; verifier code-only), `thorough`
+  (pipeline researches every unit; verifier full driver ladder), or `adaptive`
+  (the Conductor decides per unit and adapts). `adaptive` is the default and
+  recommended. Override per-session with `--mode` / `--verify-mode`, or
+  persist here. A manually-passed flag always wins over this file.
+- **conductor** — the Conductor's identity + behavior. `name` and `emoji`
+  are the name pill on every message it sends (default `🥝` `Kiwi`); you pick
+  them at `/bgsd-init`, and can change them any time here, via
+  `/bgsd-modify-memory` ("rename yourself to Jarvis", "change your emoji to
+  🤖"), or by just asking the
+  Conductor. The Conductor runs on whatever model you launched the session with
+  (bgsd detects and records the model contract but never replaces the session model).
+  `narrate` streams stage-aware live updates; `suggest_gate_commands`
+  makes it hand you the exact command at every human gate. `self_compact_at` is
+  the context fraction (0–1) at which the Conductor — the one human-facing
+  session — auto-compacts itself and continues, so a long sesh never runs out of
+  room.
 - **context** — per-subagent context-window management. `max_window_tokens`
   is the model's full window (Pipeline Agents run on ~1M tokens). When an
   agent's usage crosses `compact_at` (fraction of the window) Kiwi compacts it
@@ -62,7 +98,7 @@ Notes section and Kiwi will respect them.
 
 ```json bgsd-settings
 {
-  "version": 1,
+  "version": 2,
   "integration_branch": "next",
   "base_branch": null,
   "git": {
@@ -81,46 +117,113 @@ Notes section and Kiwi will respect them.
     "issues": true,
     "require_remote": true
   },
+  "cursor": {
+    "enabled": true,
+    "models": {
+      "routine": "composer-2.5",
+      "hard": "cursor-grok-4.5-high"
+    }
+  },
   "harness": {
     "active": "auto",
     "models": {
-      "claude": { "opus": "claude-opus-4-8", "sonnet": "sonnet", "haiku": "haiku", "fable": "claude-fable-5" },
-      "codex":  { "opus": "gpt-5-codex", "sonnet": "gpt-5", "haiku": "gpt-5-mini", "fable": "gpt-5-codex" }
+      "claude": {
+        "opus": "claude-opus-4-8",
+        "sonnet": "sonnet",
+        "haiku": "haiku",
+        "fable": "claude-fable-5"
+      },
+      "codex": {
+        "opus": "gpt-5.5",
+        "sonnet": "gpt-5.4",
+        "haiku": "gpt-5.4-mini",
+        "fable": "gpt-5.5"
+      },
+      "cursor": {
+        "routine": "composer-2.5",
+        "hard": "cursor-grok-4.5-high",
+        "opus": "cursor-grok-4.5-high",
+        "sonnet": "composer-2.5",
+        "haiku": "composer-2.5",
+        "fable": "cursor-grok-4.5-high"
+      }
     }
   },
-  "model_posture": {
-    "thresholds": {
-      "high": 0.7,
-      "medium": 0.4
+  "model_contract": {
+    "profile": "claude",
+    "routing": "cursor",
+    "build": {
+      "provider": "cursor",
+      "model": "composer-2.5",
+      "effort": null
     },
-    "tiers": {
-      "high": {
-        "model": "opus",
-        "effort": "xhigh"
+    "evaluate": {
+      "provider": "cursor",
+      "model": "composer-2.5",
+      "effort": null
+    },
+    "adaptive": {
+      "routine": {
+        "model": "composer-2.5",
+        "effort": null
       },
-      "medium": {
-        "model": "sonnet",
+      "hard": {
+        "model": "cursor-grok-4.5-high",
+        "effort": null
+      },
+      "heavy": {
+        "model": "claude-opus-4-8",
         "effort": "high"
       },
-      "low": {
-        "model": "haiku",
-        "effort": "medium"
+      "light": {
+        "model": "sonnet",
+        "effort": "high"
       }
     },
-    "researcher": "one-tier-below",
-    "verifier": {
-      "model": "haiku",
-      "effort": "low"
+    "transport": "direct",
+    "auth": "subscription-only",
+    "legacy": {
+      "profile": "claude",
+      "routing": "fixed",
+      "build": {
+        "provider": "claude",
+        "model": "claude-opus-4-8",
+        "effort": "high"
+      },
+      "evaluate": {
+        "provider": "claude",
+        "model": "claude-opus-4-8",
+        "effort": "high"
+      }
     }
   },
   "verification": {
-    "usage_testing": true
+    "usage_testing": true,
+    "headless": false
+  },
+  "gui": {
+    "auto": true
+  },
+  "notifications": {
+    "os": true
+  },
+  "remote": {
+    "enabled": false,
+    "host": "loopback",
+    "port": 0
+  },
+  "modes": {
+    "pipeline": "adaptive",
+    "verifier": "adaptive"
   },
   "conductor": {
+    "name": "Kiwi",
+    "emoji": "🥝",
     "persona": "kiwi",
     "narrate": true,
     "suggest_gate_commands": true,
-    "fable_advisor": "auto"
+    "advisor": "auto",
+    "self_compact_at": 0.9
   },
   "context": {
     "max_window_tokens": 1000000,

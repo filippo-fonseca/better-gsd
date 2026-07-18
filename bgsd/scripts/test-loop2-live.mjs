@@ -38,6 +38,8 @@ import { join } from "node:path";
 // Pin the harness so exact-argv assertions are deterministic regardless of the
 // runner's environment (a Codex/CI env would otherwise flip detection).
 process.env.BGSD_HARNESS = "claude";
+process.env.BGSD_NO_CURSOR = "1";
+process.env.BGSD_CURSOR = "0";
 
 import {
   isLiveFlagSet,

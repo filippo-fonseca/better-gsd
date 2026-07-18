@@ -67,7 +67,7 @@ export const GSD_NPM_SPEC = `${GSD_NPM_PACKAGE}@latest`;
  * Code runtime and `--global` picks the global config dir, so there are no
  * prompts. Re-running it updates to latest (install === update).
  */
-export const GSD_RUNTIMES = Object.freeze(["claude", "codex"]);
+export const GSD_RUNTIMES = Object.freeze(["claude", "codex", "cursor"]);
 export function gsdInstallArgs(runtime = "claude") {
   if (!GSD_RUNTIMES.includes(runtime)) throw new Error(`unsupported GSD runtime: ${runtime}`);
   return ["-y", GSD_NPM_SPEC, `--${runtime}`, "--global"];
@@ -112,8 +112,16 @@ export function resolveCodexConfigDir({ env = process.env, home = homedir } = {}
   return join(home(), ".codex");
 }
 
+export function resolveCursorConfigDir({ env = process.env, home = homedir } = {}) {
+  const fromEnv = env && env.CURSOR_CONFIG_DIR;
+  if (typeof fromEnv === "string" && fromEnv.trim() !== "") return fromEnv;
+  return join(home(), ".cursor");
+}
+
 export function resolveRuntimeConfigDir(runtime = "claude", opts = {}) {
-  return runtime === "codex" ? resolveCodexConfigDir(opts) : resolveClaudeConfigDir(opts);
+  if (runtime === "codex") return resolveCodexConfigDir(opts);
+  if (runtime === "cursor") return resolveCursorConfigDir(opts);
+  return resolveClaudeConfigDir(opts);
 }
 
 // ---------------------------------------------------------------------------

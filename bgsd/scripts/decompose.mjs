@@ -132,14 +132,27 @@ export function normalizeModelAssignment(value) {
   if (typeof value !== "object" || Array.isArray(value)) {
     throw new Error("model_assignment must be an object");
   }
-  const tier = value.tier === "light" ? "light" : value.tier === "heavy" ? "heavy" : null;
-  if (!tier && !value.model) throw new Error("model_assignment requires tier=heavy|light or a model id");
+  const rawTier = String(value.tier ?? "").trim().toLowerCase();
+  // Cursor vocabulary: routine | hard | legacy. Legacy Claude/Codex: heavy | light.
+  // Accept light→routine and heavy→hard aliases when callers mix vocabularies.
+  let tier = null;
+  if (["routine", "hard", "legacy", "heavy", "light"].includes(rawTier)) {
+    tier = rawTier;
+  }
+  if (!tier && !value.model) {
+    throw new Error("model_assignment requires tier=routine|hard|legacy|heavy|light or a model id");
+  }
   const reason = String(value.reason ?? "").trim();
   if (!reason) throw new Error("model_assignment requires a Conductor reason");
+  // Non-default Cursor tiers (hard/legacy) and adaptive light always need reasons
+  // (already enforced above). Return the normalized assignment.
   return {
     ...(tier ? { tier } : {}),
     ...(value.model ? { model: String(value.model) } : {}),
     ...(value.effort ? { effort: String(value.effort) } : {}),
+    ...(value.backend ? { backend: String(value.backend) } : {}),
+    ...(value.attempt != null ? { attempt: Number(value.attempt) || 1 } : {}),
+    ...(value.source ? { source: String(value.source) } : {}),
     reason,
   };
 }
