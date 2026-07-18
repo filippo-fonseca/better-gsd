@@ -290,17 +290,17 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     touched:  Array.isArray(unit.touched)  ? unit.touched  : [],
     model_assignment: buildLane.assignment,
     model: buildLane.model,
+    harness: harnessForLane(buildLane),
+    provider: buildLane.provider,
+    backend: buildLane.assignment?.backend ?? harnessForLane(buildLane),
     advisor_path: advisorPath,
     advisor_checkpoints: ADVISOR_CHECKPOINTS,
   };
   mkdirSync(planningDir, { recursive: true });
   writeFileSync(join(planningDir, "bgsd-unit.json"), JSON.stringify(brief, null, 2), "utf8");
 
-  // Resolve the active HARNESS for this sesh (Claude Code or Codex) and its
-  // model equivalents. `auto` detects from the environment, so switching
-  // harnesses mid-project (e.g. to dodge a usage limit) is seamless — the next
-  // spawn simply follows. Recorded on the control file + brief so we know which
-  // harness ran each unit; the durable .bgsd/ state is harness-independent.
+  // Resolve the active HARNESS for this unit from the model contract lane
+  // (Cursor / Claude / Codex). Recorded on the control file + brief.
   const harness = harnessForLane(buildLane);
 
   // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
@@ -314,12 +314,12 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     phase:    "plan",
     status:   "running",
     harness,
+    provider: buildLane.provider,
     model: buildLane.model,
     model_assignment: buildLane.assignment,
   });
 
-  // Fixed routing uses the session build model. Adaptive routing uses only the
-  // Conductor's persisted unit assignment and otherwise fails safe to heavy.
+  // Cursor: routine/hard from Conductor assignment. Legacy: fixed/adaptive.
   const spawnModel = buildLane.model;
   log(`liveSpawnFn: model ${spawnModel} (${buildLane.assignment.tier}; ${buildLane.assignment.reason})`);
 

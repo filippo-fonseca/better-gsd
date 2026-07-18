@@ -1,47 +1,92 @@
-# better-gsd v2
+# better-gsd
 
-BGSD is a verified, worktree-based GSD conductor for Claude Code and Codex.
-You start one session with the model you want to reason with. That live session
-is the Conductor and Advisor. Every BGSD session delegates code changes to
-isolated Pipeline Agents on your existing Claude and ChatGPT subscriptions.
-Quick uses a lightweight direct-worker pipeline; Feature and Project use full
-GSD build and evaluation lanes. BGSD verifies the result and never writes
+BGSD is a verified, worktree-based GSD conductor. You start one session with the
+model you want to reason with — that live session is the **Conductor and
+Advisor**. By default, Pipeline Agents execute through **Cursor Agent CLI**:
+Composer 2.5 Standard for routine work and Grok 4.5 base for hard work. Fresh
+verification gathers evidence; the Conductor adjudicates. BGSD never writes
 directly to your production branch.
 
-## The model contract
+## Architecture
+
+```mermaid
+flowchart TD
+    U[User] --> C[Live Conductor / Advisor<br/>Fable or current session model]
+    C --> P[Plan, decompose, seed, route]
+    P -->|Routine| CO[Cursor Agent<br/>Composer 2.5 Standard]
+    P -->|Hard, recorded reason| GR[Cursor Agent<br/>Grok 4.5 base]
+    CO --> WT[Isolated worktrees]
+    GR --> WT
+    WT --> EV[Fresh verification agents<br/>Loop 1 and Loop 2 evidence]
+    EV --> C
+    C -->|Repair| P
+    C -->|Accept| HG[Human review and merge gate]
+    C -->|Exceptional explicit fallback| LG[Legacy Claude/Codex lane]
+```
+
+### Roles
 
 | Role | Owns | Chosen at |
 | --- | --- | --- |
-| Conductor | scope, decomposition, seeds, advisor decisions, human interaction | your current Claude Code or Codex session |
-| Build lane | Feature/Project Pipeline Agents, nested GSD workflow, internal reviews, repairs | BGSD session selector |
-| Evaluation lane | Loop 1, Loop 2, fresh final review | BGSD session selector |
+| Conductor | scope, decomposition, seeds, routing reasons, evidence adjudication, human gates | your current live session (never switched by BGSD) |
+| Routine workers | contained implementation via `cursor-agent` + Composer 2.5 Standard (`composer-2.5`) | session default |
+| Hard workers | ambiguous / cross-cutting work via `cursor-agent` + Grok 4.5 base (`cursor-grok-4.5-high`) | Conductor assignment with recorded reason |
+| Verifiers | deterministic checks first; optional fresh Composer semantic evidence | session policy |
+| Human | `next → main` merge and contestable gates | always |
 
-The default models are Claude Opus high for Claude lanes and GPT-5.6 Sol medium
-for OpenAI lanes. The Conductor is never changed by that default: it remains the
-model and effort of the Claude Code or Codex session you started. Choose one of
-four profiles: Claude/Claude, OpenAI/OpenAI,
-Claude build/OpenAI evaluate, or OpenAI build/Claude evaluate. Custom model ids
-are validated against the selected provider and never silently fall back.
+Verification is **deterministic-first**: tests, typecheck, lint, build, and
+Playwright run before spawning another model. A fresh Composer verifier is used
+only when semantic inspection is necessary. The live Conductor owns final
+adjudication — PASS/FAIL evidence is never a silent product decision.
 
-`fixed` routing is the default: every build unit uses the build model. In
-`adaptive` routing, the Conductor may explicitly assign a heavy or light model
-to a unit and records its reason. No assignment means heavy, never an invisible
-downgrade. Here “heavy” means the profile's default build lane, not necessarily
-high reasoning effort: the OpenAI heavy default is GPT-5.6 Sol medium.
-Evaluation remains fixed.
+**Fast model variants and Auto are never silently selected.** Doctor fails
+closed if Standard versus Fast cannot be distinguished.
 
-## Why the proxy exists
+## Legacy Claude/Codex (`--no-cursor`)
 
-You do not need a proxy to have Claude conduct Codex agents, or Codex conduct
-Claude agents. BGSD launches each provider's CLI directly, so normal pipelines
-use the subscription you already signed into.
+```mermaid
+flowchart TD
+    F[--no-cursor] --> V2[Existing BGSD v2 behavior]
+    V2 --> CC[Claude Code lanes]
+    V2 --> CX[Codex lanes]
+    V2 --> HY[Existing hybrid profiles]
+```
 
-[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is optional. It is
-for the different case where you deliberately want the **Claude Code harness and
-tooling** to host a foreign model such as GPT through its Claude-compatible
-endpoint. BGSD enables it only with `--proxy`, a configured local endpoint, a
-model probe, and an explicit proxy token. It does not use provider API keys, and
-it is never a fallback from direct CLI execution.
+```sh
+# Default: Cursor workers (Composer routine / Grok hard)
+node bgsd/scripts/session.mjs --prompt "Build an audit log"
+
+# Exact legacy Claude/Codex behavior — zero Cursor probes or spawns
+node bgsd/scripts/session.mjs --prompt "Build an audit log" --no-cursor
+```
+
+With `--no-cursor`, BGSD restores the previous Claude/Codex profile, routing,
+proxy, authentication, build-lane, and evaluation-lane behavior. It does not
+probe `cursor-agent`, check Cursor login, install GSD for Cursor, or spawn
+Composer/Grok.
+
+## Doctor and setup
+
+BGSD Doctor checks the selected runtime before a session:
+
+- **Cursor (default):** `cursor-agent` on PATH, browser login
+  (`cursor-agent login` — API keys rejected), configured Composer Standard and
+  Grok base selectors present in `cursor-agent --list-models`, and (for
+  Feature/Project) Open GSD installed for Cursor.
+- **Legacy (`--no-cursor`):** Claude and/or Codex CLIs + subscription login +
+  GSD for those runtimes. Optional CLIProxyAPI only with `--proxy`.
+
+```sh
+# Cursor GSD (Feature/Project)
+npx -y @opengsd/gsd-core@latest --cursor --global
+
+# Legacy runtimes
+npx -y @opengsd/gsd-core@latest --claude --global
+npx -y @opengsd/gsd-core@latest --codex --global
+```
+
+Cursor authentication is subscription/browser-login only. Child processes scrub
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, and `CURSOR_API_KEY`.
 
 ## Install
 
@@ -55,67 +100,34 @@ codex plugin marketplace add filippo-fonseca/better-gsd
 codex plugin add bgsd@better-gsd
 ```
 
-BGSD Doctor checks the selected CLIs, subscription login, GSD installation, and
-optional proxy before a session. GSD is installed per runtime with:
-
-```sh
-npx -y @opengsd/gsd-core@latest --claude --global
-npx -y @opengsd/gsd-core@latest --codex --global
-```
-
 ## Start a session
 
-Use the `bgsd-sesh` skill in Claude Code or Codex. It presents native selectors
-for profile, custom models, routing mode, verification depth, and setup.
+Use the `bgsd-sesh` skill. Native selectors cover:
 
-Workflow depth is resolved in this order: an explicit `--quick`, `--feature`,
-or `--project` flag; a clear instruction in the request such as "treat this as
-a project" or "run this as a feature"; then the Conductor's scope decision.
-When the request is genuinely ambiguous, the Conductor presents the native
-Quick/Feature/Project selector rather than guessing. Phrases that merely
-describe the work, such as "this is a quick fix", do not force a mode.
-
-CLI equivalent:
+1. **Execution backend** — Cursor workers (recommended) or Legacy Claude/Codex
+2. Legacy profile (when needed) — Claude/Claude, OpenAI/OpenAI, or hybrids
+3. Routing / verification depth as warranted
 
 ```sh
+node bgsd/scripts/session.mjs \
+  --prompt "Build an audit log"
+
 node bgsd/scripts/session.mjs \
   --prompt "Build an audit log" \
+  --no-cursor \
   --profile claude-openai \
   --routing fixed
-```
-
-The same workflow choice can be made in ordinary language, without a flag:
-
-```sh
-node bgsd/scripts/session.mjs \
-  --prompt "Treat this as a project: build billing, migration, and a rollout plan."
-```
-
-For a Claude Code harness backed by a verified local CLIProxyAPI endpoint:
-
-```sh
-export BGSD_PROXY_URL=http://127.0.0.1:8317
-export BGSD_PROXY_TOKEN=<local-proxy-token>
-node bgsd/scripts/session.mjs --prompt "Review this refactor" --profile openai --proxy
 ```
 
 ## Workflow depth
 
 | Mode | Use it for | Pipeline | Verification |
 | --- | --- | --- | --- |
-| Quick | one contained correction | Conductor-planned direct workers, adaptive fan-out; no GSD | worker verify/fix plus Conductor evidence review |
+| Quick | one contained correction | Conductor-planned direct workers; no GSD | deterministic checks + Conductor evidence review |
 | Feature | a scoped product change | a few worktrees; Loop 2 when needed | per-unit plus integration when applicable |
-| Project | multi-surface work | discussion, DAG, waves, full GSD units | Loop 1, Loop 2, fresh review, human gate |
+| Project | multi-surface work | discussion, DAG, waves, full GSD units | Loop 1, Loop 2, evidence to Conductor, human gate |
 
-Quick never invokes GSD, but it is still a BGSD session: the Conductor writes a
-compact plan, decides whether one or several direct Pipeline Agents are needed,
-and can run them serially or in parallel in isolated worktrees. Those workers,
-not the expensive Conductor, edit and repair code. The Conductor remains the
-Advisor at every worker plan, commit, blocker, and verification checkpoint and
-can rewrite the durable steering directive. Every Feature/Project build unit
-runs a full GSD workflow under that same advisory contract. Complexity controls
-workflow depth, not an unannounced model downgrade. Work lands on `next`; the
-merge from `next` to `main` remains human-only.
+Work lands on `next`; the merge from `next` to `main` remains human-only.
 
 ## Follow-up roadmap
 

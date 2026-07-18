@@ -1225,10 +1225,13 @@ if (
     if (!prompt) {
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
+        '        [--no-cursor]  # disable Cursor; exact legacy Claude/Codex behavior\n' +
         '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
         '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
+        '        [--cursor-routine-model <id>] [--cursor-hard-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
+        '  Default: Cursor workers (Composer routine / Grok hard). --no-cursor: legacy Claude/Codex only.\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
       );
       process.exit(1);
@@ -1247,6 +1250,16 @@ if (
     const headlessFlag = flags["headless-ui"] === true;
     const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
     const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
+    const noCursor = flags["no-cursor"] === true;
+    // Load BGSD.md before resolving the contract so cursor.models overrides apply.
+    let bgsdConfig = null;
+    try {
+      const { resolveRepoRoot } = await import("./init-live.mjs");
+      const { parseBgsdMd } = await import("./init.mjs");
+      const { existsSync, readFileSync } = await import("node:fs");
+      const bgsdMdPath = `${resolveRepoRoot()}/BGSD.md`;
+      if (existsSync(bgsdMdPath)) bgsdConfig = parseBgsdMd(readFileSync(bgsdMdPath, "utf8"));
+    } catch (_) { bgsdConfig = null; }
     const modelContract = resolveModelContract({
       profile: typeof flags.profile === "string" ? flags.profile : "claude",
       buildModel: typeof flags["build-model"] === "string" ? flags["build-model"] : undefined,
@@ -1254,9 +1267,19 @@ if (
       evaluateModel: typeof flags["evaluate-model"] === "string" ? flags["evaluate-model"] : undefined,
       routing: typeof flags.routing === "string" ? flags.routing : "fixed",
       proxy: flags.proxy === true,
+      cursor: noCursor ? false : undefined,
+      cursorRoutineModel: typeof flags["cursor-routine-model"] === "string" ? flags["cursor-routine-model"] : undefined,
+      cursorHardModel: typeof flags["cursor-hard-model"] === "string" ? flags["cursor-hard-model"] : undefined,
+      config: bgsdConfig,
     });
     Object.assign(process.env, exportContractEnv(modelContract));
-    if (modelContract.build.transport === "proxy" && !planOnly) {
+    if (noCursor) {
+      process.env.BGSD_NO_CURSOR = "1";
+      process.env.BGSD_CURSOR = "0";
+    }
+    if (!noCursor && modelContract.cursor?.enabled) {
+      // Cursor never uses proxy transport.
+    } else if (modelContract.build.transport === "proxy" && !planOnly) {
       const { probeProxy } = await import("./doctor.mjs");
       const proxy = await probeProxy({
         models: [modelContract.build.model, modelContract.evaluate.model],
@@ -1267,14 +1290,6 @@ if (
     // Resolve the verification mode: flag overrides the BGSD.md verification knob.
     // Best-effort config load — a missing/unreadable BGSD.md falls back to defaults
     // (full usage testing). Code verification (gsd-verifier) always runs either way.
-    let bgsdConfig = null;
-    try {
-      const { resolveRepoRoot } = await import("./init-live.mjs");
-      const { parseBgsdMd } = await import("./init.mjs");
-      const { existsSync, readFileSync } = await import("node:fs");
-      const bgsdMdPath = `${resolveRepoRoot()}/BGSD.md`;
-      if (existsSync(bgsdMdPath)) bgsdConfig = parseBgsdMd(readFileSync(bgsdMdPath, "utf8"));
-    } catch (_) { bgsdConfig = null; }
     const usageTesting = resolveUsageTesting({ config: bgsdConfig, noUsageVerification });
     const headless = resolveHeadless({ config: bgsdConfig, headlessFlag });
     const pipelineMode = resolveMode({ flagMode: modeFlag, configMode: bgsdConfig?.modes?.pipeline });
@@ -1322,14 +1337,25 @@ if (
     process.stdout.write(`  verify:  ${verifyDescription}\n`);
     process.stdout.write(`  modes:   pipeline=${pipelineMode}  verifier=${verifierMode}\n`);
     process.stdout.write(`  conductor: ${modelContract.conductor.provider}/${modelContract.conductor.model}\n`);
-    process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
-    if (modelContract.routing === "adaptive") {
-      process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
-    }
-    if (classification.scale === "quick") {
-      process.stdout.write("  workers:   Conductor chooses one or more direct Pipeline Agents; no GSD\n");
+    if (modelContract.cursor?.enabled) {
+      process.stdout.write(`  cursor:    enabled  routine=${modelContract.cursor.routine.model}  hard=${modelContract.cursor.hard.model}\n`);
+      process.stdout.write(`  workers:   Cursor Agent CLI (Composer routine / Grok hard; Fast never selected)\n`);
+      process.stdout.write(`  verify:    deterministic-first; Conductor adjudicates evidence\n`);
+      process.stdout.write(`  legacy:    profile=${modelContract.legacy.profile} (explicit fallback only)\n`);
     } else {
-      process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
+      process.stdout.write(`  cursor:    disabled (--no-cursor)\n`);
+      process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
+      if (modelContract.routing === "adaptive") {
+        process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
+      }
+      if (classification.scale === "quick") {
+        process.stdout.write("  workers:   Conductor chooses one or more direct Pipeline Agents; no GSD\n");
+      } else {
+        process.stdout.write(`  evaluate:  ${modelContract.evaluate.provider}/${modelContract.evaluate.model} (${modelContract.evaluate.effort}, ${modelContract.evaluate.transport})\n`);
+      }
+    }
+    if (classification.scale === "quick" && modelContract.cursor?.enabled) {
+      process.stdout.write("  workers:   Conductor routes direct Cursor workers; no GSD\n");
     }
     process.stdout.write(`\n  depth plan (engine sequence):\n`);
     for (const s of plan.stages) {
@@ -1368,13 +1394,17 @@ if (
           const fails = [];
           for (const [rt, r] of Object.entries(doctor.cli)) if (!r.ok) fails.push(`${rt} CLI not found`);
           for (const [pv, r] of Object.entries(doctor.auth)) if (!r.ok) fails.push(`${pv} subscription login required (${r.mode ?? "missing"})`);
+          if (doctor.cursorModels?.probed && !doctor.cursorModels.ok) fails.push(`cursor models: ${doctor.cursorModels.reason}`);
           if (doctor.proxy.enabled !== false && !doctor.proxy.ok) fails.push(`proxy: ${doctor.proxy.reason}`);
           throw new Error(
             `BGSD Doctor: setup required — ${fails.join("; ")}. ` +
-            `Fix these and re-run (subscription login only; API keys are not accepted).`
+            (modelContract.cursor?.enabled
+              ? `Fix these and re-run (Cursor browser-login only; API keys are not accepted). Or restart with --no-cursor for legacy Claude/Codex.`
+              : `Fix these and re-run (subscription login only; API keys are not accepted).`)
           );
         }
-        process.stdout.write(`  doctor: subscription + CLI ready (${Object.keys(doctor.auth).join(", ")})\n`);
+        const authLabel = Object.keys(doctor.auth).join(", ");
+        process.stdout.write(`  doctor: subscription + CLI ready (${authLabel}${doctor.cursorEnabled ? "; Cursor models ok" : "; Cursor disabled"})\n`);
       } catch (err) {
         if (/BGSD Doctor: setup required/.test(err.message)) throw err;
         process.stdout.write(`  doctor: preflight check skipped (${err.message})\n`);
@@ -1389,8 +1419,8 @@ if (
           process.stdout.write("  deps: Quick needs the selected build CLI subscription; no GSD runtime install is needed.\n");
         } else {
           const { isGsdInstalled, ensureGsdRuntimesLive, GSD_NPM_PACKAGE } = await import("./gsdinstall-live.mjs");
-          const { harnessForLane } = await import("./model-contract.mjs");
-          const runtimes = [...new Set([harnessForLane(modelContract.build), harnessForLane(modelContract.evaluate)])];
+          const { contractRuntimes } = await import("./model-contract.mjs");
+          const runtimes = contractRuntimes(modelContract);
           for (const runtime of runtimes) {
             const installed = isGsdInstalled({ runtime });
             process.stdout.write(`  deps: ${runtime} gsd-core ${installed ? "installed — refreshing" : `missing — installing ${GSD_NPM_PACKAGE}`}\n`);
@@ -1404,7 +1434,7 @@ if (
       } catch (err) {
         process.stdout.write(
           `  deps: gsd-core ensure FAILED (${err.message}). ` +
-          `Install manually for each selected lane: npx -y @opengsd/gsd-core@latest --claude|--codex --global\n`
+          `Install manually for each selected lane: npx -y @opengsd/gsd-core@latest --claude|--codex|--cursor --global\n`
         );
       }
       if (usageTesting) {
