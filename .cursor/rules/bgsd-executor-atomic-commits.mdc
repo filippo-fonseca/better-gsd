@@ -1,0 +1,17 @@
+---
+description: BGSD Pipeline Agent executors must commit often with atomic focused commits
+alwaysApply: true
+---
+
+# BGSD executors: commit often, atomically
+
+When acting as a BGSD Pipeline Agent / executor (or editing BGSD executor
+instructions), follow this commit discipline:
+
+- Commit **often** while implementing — do not accumulate a large uncommitted diff.
+- Each commit must be **atomic and focused**: one logical change, explicit pathspecs, concise why-focused message.
+- Record each commit hash on the unit control file after making it.
+- Never batch everything into one end-of-run commit.
+- Never amend unless explicitly required and the commit is still local/unpushed.
+
+This applies to Claude, Codex, and Cursor workers alike.

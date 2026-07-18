@@ -283,9 +283,10 @@ Every one holds at every scale, including Quick:
    fix worktree, and the integration checkout; without this, apps do not boot
    and testers fail spuriously. If the right env files are ambiguous, ask;
    never silently guess.
-9. **Atomic commits, everywhere, always.** Every writer commits focused work
-   as it goes with explicit pathspecs; commit hashes land on the control file.
-   No end-of-run batch commits.
+9. **Atomic commits, often, always.** Every writer — especially Pipeline Agent
+   executors — commits focused work as it goes with explicit pathspecs. Prefer
+   many small atomic commits over one large end-of-run batch. Every commit hash
+   lands on the control file after it is made.
 10. **Every user decision goes through a native selector.** No gate, decision,
     escalation, or question is ever posed as prose expecting a typed reply, at
     any stage: discuss-gate decisions and review gates included. See "Native

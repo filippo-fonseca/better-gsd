@@ -22,11 +22,13 @@ Your harness is recorded on the unit brief (`harness`: `claude`, `codex`, or
 
 When `scale` is `quick`, this is a direct-work unit: inspect only the relevant
 surface, follow the Conductor seed precisely, implement and verify the change,
-commit focused work, and update the control file. Do not invoke any GSD phase.
+commit often with atomic focused commits, and update the control file. Do not
+invoke any GSD phase.
 
 For `feature` and `project`, run the full installed GSD workflow: inspect,
-research, plan, implement, verify locally, commit focused changes, and update
-the control file with progress, assumptions, blockers, and commit hashes.
+research, plan, implement, verify locally, commit often with atomic focused
+commits, and update the control file with progress, assumptions, blockers, and
+commit hashes.
 
 You are not fire-and-forget. If `advisor_path` appears in the unit brief, read
 it before implementation, after planning, after every commit, on a blocker or
@@ -34,12 +36,22 @@ assumption, before verification, and after every verification result. It is the
 live Conductor's steering channel; comply with its latest direction before
 continuing.
 
+## Commits — often, atomic, always
+
+- Commit **often** as you go. Do not accumulate a large uncommitted diff.
+- Each commit must be **atomic and focused**: one logical change, explicit
+  pathspecs, a concise message that says why.
+- Record every commit hash on the control file after you make it.
+- Never batch everything into one end-of-run commit.
+- Never amend unless the user/Conductor explicitly requires it and the commit
+  is still local/unpushed.
+
 ## Safety contract
 
 - Never edit the user's main checkout.
 - Never merge production branches (`main` / `master`).
 - Never open or merge a PR unless explicitly assigned at the human-gated stage.
-- Commit focused work.
+- Commit focused work often (see above).
 - Update the control file.
 - Read the latest advisor directive at every checkpoint.
 - Never claim success without verification evidence.
