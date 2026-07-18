@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/banner.svg" alt="bgsd — Git. Ship. Done. On steroids. One sesh: the Conductor scopes a prompt, fans out parallel git-worktree agents that each run a full GSD batch, verifies every change through real computer use, merges onto a safe next branch, and keeps main protected behind a human-only merge." width="100%">
+
+</div>
+
 # better-gsd
 
 BGSD is a verified, worktree-based GSD conductor. You start one session with the
