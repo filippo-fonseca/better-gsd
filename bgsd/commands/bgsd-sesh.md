@@ -65,18 +65,19 @@ to ask anything as plain text, stop and re-shape it as a selector first.
 First choose the **execution backend**:
 
 1. **Cursor workers — Composer routine, Grok hard (Recommended)**
-2. **Legacy Claude/Codex only** (`--no-cursor`)
+2. **Claude Code / Codex workers** (`--no-cursor`)
 
 When Cursor is selected, ordinary units execute through `cursor-agent`:
 Composer 2.5 Standard (`composer-2.5`) for routine work and Grok 4.5 base
 (`cursor-grok-4.5-high`) for hard work with a recorded reason. Fast variants
 and Auto are never silently selected. The Claude/OpenAI profile selector then
-controls only the explicit legacy/fallback contract.
+controls the optional Claude/Codex contract (for explicit `claude-codex`
+assignments), not ordinary Cursor execution.
 
-When Legacy / `--no-cursor` is selected, choose the pipeline profile, optional
-custom model ids, fixed or adaptive routing, and verification depth — the exact
-prior Claude/Codex behavior. With `--no-cursor`, BGSD performs zero Cursor
-probes, auth checks, model checks, or spawns.
+When Claude/Codex / `--no-cursor` is selected, choose the pipeline profile,
+optional custom model ids, fixed or adaptive routing, and verification depth.
+With `--no-cursor`, BGSD performs zero Cursor probes, auth checks, model checks,
+or spawns. Claude/Codex is an equal alternative backend — not a fallback.
 
 Run BGSD Doctor before any work; for Feature and Project scale, Doctor is a
 hard code gate enforced by the engine, not a courtesy check. Cursor-enabled
@@ -95,8 +96,8 @@ Verification is **deterministic-first**: tests, typecheck, lint, build, and
 Playwright before spawning another model. Fresh evaluator processes gather
 independent evidence (optional Composer semantic verifier when needed). The
 **live Conductor adjudicates** — accept, repair/retry Composer, escalate to
-Grok with a recorded reason, or block. No silent green; no silent Opus/GPT
-fallback. The human review/merge gate remains mandatory (`next → main` is
+Grok with a recorded reason, or block. No silent green; no silent cross-backend
+model switch. The human review/merge gate remains mandatory (`next → main` is
 human-only).
 
 Lane defaults under `--no-cursor`: Claude lanes run Opus 4.8 at high effort;
@@ -282,9 +283,10 @@ Every one holds at every scale, including Quick:
    fix worktree, and the integration checkout; without this, apps do not boot
    and testers fail spuriously. If the right env files are ambiguous, ask;
    never silently guess.
-9. **Atomic commits, everywhere, always.** Every writer commits focused work
-   as it goes with explicit pathspecs; commit hashes land on the control file.
-   No end-of-run batch commits.
+9. **Atomic commits, often, always.** Every writer — especially Pipeline Agent
+   executors — commits focused work as it goes with explicit pathspecs. Prefer
+   many small atomic commits over one large end-of-run batch. Every commit hash
+   lands on the control file after it is made.
 10. **Every user decision goes through a native selector.** No gate, decision,
     escalation, or question is ever posed as prose expecting a typed reply, at
     any stage: discuss-gate decisions and review gates included. See "Native

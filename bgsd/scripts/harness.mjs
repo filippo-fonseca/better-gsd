@@ -159,6 +159,7 @@ function codexPrompt({ command, context = {}, extraArgs = [], instructions }) {
   const lines = [];
   lines.push(`Run the bgsd "${command}" workflow for this worktree.`);
   lines.push("This is a Codex-native execution. Use the installed bgsd and gsd-* skills directly; Claude slash commands are labels for the workflow, not shell syntax.");
+  lines.push("Commit often with atomic focused commits (explicit pathspecs); record each hash on the control file. No end-of-run batch commits.");
   const ctxEntries = Object.entries(context).filter(([, v]) => v !== null && v !== undefined);
   if (ctxEntries.length) {
     lines.push("", "Context:");
@@ -186,7 +187,7 @@ export function cursorPrompt({ command, context = {}, extraArgs = [], instructio
   lines.push("- Never edit the user's main checkout.");
   lines.push("- Never merge production branches (main/master).");
   lines.push("- Never open or merge a PR unless explicitly assigned at the human-gated stage.");
-  lines.push("- Commit focused work.");
+  lines.push("- Commit often with atomic focused commits (explicit pathspecs); record each hash on the control file. No end-of-run batch commits.");
   lines.push("- Update the control file.");
   lines.push("- Read the latest advisor directive at every checkpoint.");
   lines.push("- Never claim success without verification evidence.");

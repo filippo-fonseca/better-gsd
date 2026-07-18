@@ -12,13 +12,15 @@ codex plugin add bgsd@better-gsd
 
 Start `bgsd-sesh` inside a git repository. By default, Pipeline Agents run
 through **Cursor Agent CLI**: Composer 2.5 Standard for routine work and Grok
-4.5 base for hard work (recorded reason required). The live session model stays
-the Conductor and Advisor. Fast variants and Auto are never silently selected.
+4.5 base for hard work (recorded reason required). Pass `--no-cursor` to use
+**Claude Code / Codex** workers instead — an equal alternative. The live session
+model stays the Conductor and Advisor. Fast variants and Auto are never silently
+selected.
 
 The setup selector chooses:
 
-1. Execution backend — Cursor workers (recommended) or Legacy Claude/Codex
-2. When legacy: one of four provider profiles, fixed/adaptive routing, optional custom models
+1. Execution backend — Cursor workers, or Claude Code / Codex workers
+2. When Claude/Codex: one of four provider profiles, fixed/adaptive routing, optional custom models
 3. Verification depth as warranted
 
 BGSD Doctor verifies the selected runtime. For Cursor: `cursor-agent`, browser
@@ -30,7 +32,7 @@ Feature/Project also install `gsd-core` for the selected runtime
 # Default: Cursor workers
 node bgsd/scripts/session.mjs --prompt "Add export filters"
 
-# Exact legacy Claude/Codex behavior
+# Claude Code / Codex workers
 node bgsd/scripts/session.mjs --prompt "Add export filters" --no-cursor --profile claude-openai
 ```
 

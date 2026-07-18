@@ -65,9 +65,9 @@ export function defaultBgsdConfig() {
       require_remote: true,
     },
     // Session model contract defaults. Cursor workers are enabled by default
-    // (Composer routine / Grok hard). Legacy Claude/Codex profile remains for
-    // --no-cursor and exceptional explicit fallback. The live session model is
-    // always the Conductor.
+    // (Composer routine / Grok hard). Claude/Codex remains an equal alternative
+    // via --no-cursor or an explicit claude-codex assignment. The live session
+    // model is always the Conductor.
     cursor: {
       enabled: true,
       models: {
@@ -103,7 +103,7 @@ export function defaultBgsdConfig() {
       },
       transport: "direct",
       auth: "subscription-only",
-      legacy: {
+      claude_codex: {
         profile: "claude",
         routing: "fixed",
         build: { provider: "claude", model: "claude-opus-4-8", effort: "high" },
@@ -265,8 +265,8 @@ Notes section and Kiwi will respect them.
 - **cursor** — Cursor Agent CLI workers (default on). \`models.routine\` is
   Composer 2.5 Standard (\`composer-2.5\`); \`models.hard\` is Grok 4.5 base
   (\`cursor-grok-4.5-high\`). Fast variants and Auto are never silently selected.
-  Pass \`--no-cursor\` to disable Cursor entirely and restore legacy Claude/Codex
-  lanes. Doctor validates selectors against \`cursor-agent --list-models\`.
+  Pass \`--no-cursor\` for Claude Code / Codex workers instead. Doctor validates
+  selectors against \`cursor-agent --list-models\`.
 - **harness** — Claude Code, Codex, and Cursor are first-class harnesses.
   \`harness.active: "auto"\` detects from the environment; pin to
   \`claude\`/\`codex\`/\`cursor\` to force one. \`harness.models\` maps semantic
@@ -274,14 +274,15 @@ Notes section and Kiwi will respect them.
 - **model_contract** — the session Conductor/worker/evaluation contract. The live
   session model is always the Conductor and Advisor. With Cursor enabled, routine
   units use Composer and hard units use Grok (recorded reasons required for hard
-  and legacy). Verification is deterministic-first; a fresh Composer verifier
-  gathers semantic evidence only when needed; the live Conductor adjudicates.
-  \`--no-cursor\` restores the legacy Claude/Codex build and evaluation lanes.
+  and claude-codex). Verification is deterministic-first; a fresh Composer
+  verifier gathers semantic evidence only when needed; the live Conductor
+  adjudicates. \`--no-cursor\` uses Claude Code / Codex build and evaluation
+  lanes — an equal alternative, not a fallback.
 - **model_contract.auth** — always \`subscription-only\`. BGSD Doctor verifies
   Cursor browser-login (\`cursor-agent login\`) when Cursor is enabled, or Claude
-  and Codex subscription login for legacy runs. Child processes scrub provider
-  API-key variables including \`CURSOR_API_KEY\`. The optional proxy changes
-  transport for legacy Claude-hosted foreign models only, never becomes a silent
+  and Codex subscription login for Claude/Codex runs. Child processes scrub
+  provider API-key variables including \`CURSOR_API_KEY\`. The optional proxy
+  changes transport for Claude-hosted foreign models only, never becomes a silent
   fallback, and is never used for Cursor.
 - **verification.usage_testing** — \`true\` runs the full Tester ladder including
   the Playwright/vision rung (driving the real app). \`false\` skips that UI

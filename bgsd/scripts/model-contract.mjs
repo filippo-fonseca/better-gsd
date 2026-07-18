@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** BGSD session model contract: Conductor, Cursor workers, legacy Claude/Codex. */
+/** BGSD session model contract: Conductor, Cursor workers, and Claude/Codex workers. */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ export const CONTRACT_VERSION = 3;
 export const PROVIDERS = Object.freeze(["claude", "openai", "cursor"]);
 export const TRANSPORTS = Object.freeze(["direct", "proxy"]);
 export const ROUTING_MODES = Object.freeze(["fixed", "adaptive", "cursor"]);
-export const ASSIGNMENT_TIERS = Object.freeze(["routine", "hard", "legacy", "heavy", "light"]);
+export const ASSIGNMENT_TIERS = Object.freeze(["routine", "hard", "claude-codex", "heavy", "light"]);
 
 /** Validated local Cursor selectors (non-Fast). Overridable via BGSD.md / env. */
 export const DEFAULT_CURSOR_MODELS = Object.freeze({
@@ -121,7 +121,7 @@ export function detectConductor(env = process.env) {
   return { provider, harness: providerHarness(provider), model, source: "live-session" };
 }
 
-function legacyLane(provider, model, transport) {
+function providerLane(provider, model, transport) {
   const base = DEFAULT_MODELS[provider];
   const selectedModel = model || base.model;
   const valid = validateModelId(provider, selectedModel);
@@ -190,7 +190,7 @@ function resolveCursorModels({ cursorRoutineModel, cursorHardModel, env = proces
   };
 }
 
-function wrapLegacyBlock({ profile, routing, build, adaptive, evaluate }) {
+function wrapClaudeCodexBlock({ profile, routing, build, adaptive, evaluate }) {
   return {
     profile,
     routing,
@@ -207,7 +207,7 @@ function wrapLegacyBlock({ profile, routing, build, adaptive, evaluate }) {
  * Resolve the session model contract.
  *
  * Default (no flag): Cursor-backed execution (v3) — Composer routine, Grok hard.
- * `--no-cursor` / cursor:false: legacy Claude/Codex lanes only (still version 3
+ * `--no-cursor` / cursor:false: Claude/Codex workers only (still version 3
  * with cursor.enabled=false so resume persists the disabled state).
  */
 export function resolveModelContract({
@@ -228,20 +228,20 @@ export function resolveModelContract({
   if (!selected) {
     throw new Error(`Unknown pipeline profile "${profile}"; expected ${Object.keys(PIPELINE_PROFILES).join(", ")}`);
   }
-  const legacyRouting = ROUTING_MODES.includes(routing) && routing !== "cursor" ? routing : "fixed";
-  if (!ROUTING_MODES.includes(legacyRouting)) {
+  const pipelineRouting = ROUTING_MODES.includes(routing) && routing !== "cursor" ? routing : "fixed";
+  if (!ROUTING_MODES.includes(pipelineRouting)) {
     throw new Error(`Unknown routing mode "${routing}"; expected ${ROUTING_MODES.join(", ")}`);
   }
 
   const transport = proxy ? "proxy" : "direct";
-  const build = legacyLane(selected.build, buildModel, transport);
-  const evaluate = legacyLane(selected.evaluate, evaluateModel, transport);
+  const build = providerLane(selected.build, buildModel, transport);
+  const evaluate = providerLane(selected.evaluate, evaluateModel, transport);
   const adaptive = adaptiveCatalog(build, lightBuildModel);
   const conductorIdentity = conductor || detectConductor(env);
   const auth = { policy: "subscription-only", verified_at: null };
-  const legacy = wrapLegacyBlock({
+  const claude_codex = wrapClaudeCodexBlock({
     profile,
-    routing: legacyRouting,
+    routing: pipelineRouting,
     build,
     adaptive,
     evaluate,
@@ -253,12 +253,12 @@ export function resolveModelContract({
       version: CONTRACT_VERSION,
       profile,
       conductor: conductorIdentity,
-      routing: legacyRouting,
+      routing: pipelineRouting,
       build,
       adaptive,
       evaluate,
       cursor: { enabled: false, routine: null, hard: null },
-      legacy,
+      claude_codex,
       verification: {
         policy: "evaluation-lane",
         deterministic_first: false,
@@ -276,20 +276,20 @@ export function resolveModelContract({
     version: CONTRACT_VERSION,
     profile,
     conductor: conductorIdentity,
-    // Cursor sessions use auditable routine/hard/legacy assignment vocabulary.
+    // Cursor sessions use auditable routine/hard/claude-codex assignment vocabulary.
     routing: "cursor",
     build: { ...routine },
     adaptive: {
       routine: { model: routine.model, effort: null },
       hard: { model: hard.model, effort: null },
-      // Preserve legacy catalog for exceptional explicit fallback.
+      // Preserve Claude/Codex catalog for optional explicit cross-backend assignment.
       heavy: { ...adaptive.heavy },
       light: { ...adaptive.light },
     },
     // Semantic verifier uses Composer Standard; Conductor adjudicates.
     evaluate: { ...routine },
     cursor: { enabled: true, routine, hard },
-    legacy,
+    claude_codex,
     verification: {
       policy: "deterministic-first",
       deterministic_first: true,
@@ -319,8 +319,8 @@ function assertProxyFailClosed(contract, env) {
   const transports = [
     contract.build?.transport,
     contract.evaluate?.transport,
-    contract.legacy?.build?.transport,
-    contract.legacy?.evaluate?.transport,
+    contract.claude_codex?.build?.transport,
+    contract.claude_codex?.evaluate?.transport,
   ];
   if (transports.some((t) => t === "proxy")) {
     resolveProxyConfig(env);
@@ -328,7 +328,7 @@ function assertProxyFailClosed(contract, env) {
 }
 
 /**
- * Rehydrate a stored v2 contract into the current shape while preserving
+ * Rehydrate a stored contract version 2 into the current shape while preserving
  * Claude/Codex-only behavior (Cursor stays disabled).
  */
 export function migrateV2Contract(stored, { env = process.env } = {}) {
@@ -346,7 +346,7 @@ export function migrateV2Contract(stored, { env = process.env } = {}) {
   if (stored.build?.effort) contract.build.effort = stored.build.effort;
   if (stored.evaluate?.effort) contract.evaluate.effort = stored.evaluate.effort;
   if (stored.auth) contract.auth = stored.auth;
-  // Keep version marker that this run originated as v2 for auditability.
+  // Keep version marker that this run originated as contract version 2.
   contract.migrated_from = 2;
   return contract;
 }
@@ -358,14 +358,14 @@ export function migrateV2Contract(stored, { env = process.env } = {}) {
 export function rehydrateV3Contract(stored, { env = process.env } = {}) {
   const cursorEnabled = stored.cursor?.enabled === true;
   const contract = resolveModelContract({
-    profile: stored.legacy?.profile || stored.profile || "claude",
-    buildModel: stored.legacy?.build?.model || stored.build?.model,
-    lightBuildModel: stored.legacy?.adaptive?.light?.model || stored.adaptive?.light?.model,
-    evaluateModel: stored.legacy?.evaluate?.model || stored.evaluate?.model,
-    routing: stored.legacy?.routing || (stored.routing === "cursor" ? "fixed" : stored.routing) || "fixed",
+    profile: (stored.claude_codex || stored.legacy)?.profile || stored.profile || "claude",
+    buildModel: (stored.claude_codex || stored.legacy)?.build?.model || stored.build?.model,
+    lightBuildModel: (stored.claude_codex || stored.legacy)?.adaptive?.light?.model || stored.adaptive?.light?.model,
+    evaluateModel: (stored.claude_codex || stored.legacy)?.evaluate?.model || stored.evaluate?.model,
+    routing: (stored.claude_codex || stored.legacy)?.routing || (stored.routing === "cursor" ? "fixed" : stored.routing) || "fixed",
     conductor: stored.conductor,
     proxy:
-      stored.legacy?.build?.transport === "proxy" ||
+      (stored.claude_codex || stored.legacy)?.build?.transport === "proxy" ||
       (!cursorEnabled && stored.build?.transport === "proxy"),
     cursor: cursorEnabled,
     cursorRoutineModel: stored.cursor?.routine?.model,
@@ -409,7 +409,7 @@ export function loadContractForRun(runDir, { env = process.env } = {}) {
   } else if (stored && stored.version >= 3) {
     contract = rehydrateV3Contract(stored, { env });
   } else if (stored && stored.profile && !stored.version) {
-    // Pre-version records treated as v2.
+    // Pre-version records treated as contract version 2.
     contract = migrateV2Contract({ ...stored, version: 2 }, { env });
   } else {
     contract = contractFromEnv(env);
@@ -421,7 +421,7 @@ export function loadContractForRun(runDir, { env = process.env } = {}) {
 
 export function exportContractEnv(contract, env = process.env) {
   const cursorEnabled = contract.cursor?.enabled === true;
-  const legacy = contract.legacy || {
+  const claudeCodex = contract.claude_codex || contract.legacy || {
     profile: contract.profile,
     routing: contract.routing,
     build: contract.build,
@@ -430,14 +430,14 @@ export function exportContractEnv(contract, env = process.env) {
   };
   return {
     ...env,
-    BGSD_PIPELINE_PROFILE: legacy.profile || contract.profile,
+    BGSD_PIPELINE_PROFILE: claudeCodex.profile || contract.profile,
     BGSD_BUILD_PROVIDER: cursorEnabled ? "cursor" : contract.build.provider,
     BGSD_BUILD_MODEL: contract.build.model,
     BGSD_BUILD_LIGHT_MODEL: contract.adaptive?.light?.model || contract.adaptive?.routine?.model || "",
     BGSD_EVALUATE_PROVIDER: cursorEnabled ? "cursor" : contract.evaluate.provider,
     BGSD_EVALUATE_MODEL: contract.evaluate.model,
     BGSD_PROXY: (!cursorEnabled && contract.build.transport === "proxy") ||
-      legacy.build?.transport === "proxy"
+      claudeCodex.build?.transport === "proxy"
       ? "1"
       : "0",
     BGSD_ROUTING: contract.routing,
@@ -542,7 +542,8 @@ function normalizeAssignmentTier(tier, { cursorEnabled }) {
   if (cursorEnabled) {
     if (t === "routine" || t === "light") return "routine";
     if (t === "hard" || t === "heavy") return "hard";
-    if (t === "legacy") return "legacy";
+    // Accept historical "legacy" alias for Claude/Codex cross-backend assignment.
+    if (t === "claude-codex" || t === "legacy") return "claude-codex";
     return null;
   }
   if (t === "light") return "light";
@@ -553,13 +554,13 @@ function normalizeAssignmentTier(tier, { cursorEnabled }) {
 /**
  * Apply a Conductor-authored per-unit assignment.
  *
- * Cursor-enabled (v3 default):
+ * Cursor-enabled:
  *   - Unassigned → routine (Composer), recorded as session default.
- *   - hard / legacy require a non-empty Conductor reason.
- *   - No worker may choose its own model; no automatic legacy fallback.
+ *   - hard / claude-codex require a non-empty Conductor reason.
+ *   - No worker may choose its own model; no automatic cross-backend switch.
  *
- * Legacy / --no-cursor:
- *   - Preserves v2 fixed/adaptive heavy/light behavior.
+ * Claude/Codex (`--no-cursor`):
+ *   - Fixed/adaptive heavy/light behavior for Claude Code and Codex lanes.
  */
 export function buildLaneForUnit(contract, assignment = null) {
   if (isCursorContract(contract)) {
@@ -606,17 +607,17 @@ export function buildLaneForUnit(contract, assignment = null) {
       };
     }
 
-    if (requested === "legacy") {
-      const legacyBuild = contract.legacy?.build;
-      if (!legacyBuild) {
-        throw new Error("Legacy assignment requested but no legacy profile is recorded");
+    if (requested === "claude-codex") {
+      const pipelineBuild = (contract.claude_codex || contract.legacy)?.build;
+      if (!pipelineBuild) {
+        throw new Error("claude-codex assignment requested but no Claude/Codex profile is recorded");
       }
       return {
-        ...legacyBuild,
+        ...pipelineBuild,
         assignment: {
-          tier: "legacy",
-          backend: legacyBuild.harness || providerHarness(legacyBuild.provider),
-          model: assignment.model || legacyBuild.model,
+          tier: "claude-codex",
+          backend: pipelineBuild.harness || providerHarness(pipelineBuild.provider),
+          model: assignment.model || pipelineBuild.model,
           reason,
           source: "conductor",
           attempt: assignment?.attempt ?? 1,
@@ -627,7 +628,7 @@ export function buildLaneForUnit(contract, assignment = null) {
     throw new Error(`Unknown Cursor assignment tier "${assignment?.tier}"`);
   }
 
-  // --- Legacy Claude/Codex path (v2 / --no-cursor) ---
+  // --- Claude/Codex workers (`--no-cursor`) ---
   const base = contract.build;
   if (contract.routing !== "adaptive") {
     return {
