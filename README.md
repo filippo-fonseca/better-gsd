@@ -51,7 +51,7 @@ flowchart TD
 | Follow-up | You | `/bgsd-feedback` or another sesh re-enters the same loop |
 
 **Workers are chosen per session, not hardcoded here.** Defaults and presets live
-in the [Models & routing](bgsd/site/src/content/docs/models.mdx) docs and the
+in the docs under **Models & routing** (`bgsd/site` → `/models/`) and the
 session selectors. Fast variants and Auto are never silently selected.
 
 Verification is **deterministic-first**. PASS/FAIL evidence informs the
