@@ -1,27 +1,23 @@
 ---
 title: bgsd
-description: Harness-agnostic verified GSD conductor — slash commands in Claude Code, Cursor, and Codex.
+description: Harness-agnostic verified GSD conductor — Claude Code, Cursor, and Codex.
 ---
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-BGSD is a **verified, worktree-based GSD conductor**. You start one session with the model you want to reason with — that live session is the **Conductor and Advisor**. Pipeline Agents execute in isolated git worktrees, gather real verification evidence, and merge onto a safe integration branch. **BGSD never writes directly to your production branch.**
+BGSD is a **verified, worktree-based GSD conductor**. You start one session with the model you want to reason with — that live session is the **Conductor and Advisor**. Every new session asks which worker path to use, Doctor validates it, Pipeline Agents build in isolated worktrees, and the Conductor adjudicates evidence before anything lands on `next`. **BGSD never writes directly to your production branch.**
 
-## Start with a slash command
-
-After install, the same `/bgsd-*` commands work in **Claude Code**, **Cursor**, and **Codex** — each harness reads the command markdown (and skills) from the plugin / repo.
+## Start a session
 
 ```
 /bgsd-sesh "Add export filters to the settings page"
 ```
 
-| Command | What it does |
+| Surface | Host |
 | --- | --- |
-| `/bgsd-sesh` | Start a verified session (the main entrypoint) |
-| `/bgsd-doctor` | Preflight CLI, auth, and model selectors |
-| `/bgsd-status` | Live worker / phase snapshot |
-| `/bgsd-queue` | Fix-stream backlog |
-| `/bgsd-pause` / `/bgsd-resume` | Park and continue a session |
+| `/bgsd-sesh` and friends | Claude Code slash commands / skills |
+| `bgsd:bgsd-sesh` skills | Codex plugin skills |
+| `node bgsd/scripts/conductor.mjs "…"` | Any harness / terminal |
 
 Full list → [Commands](/commands/).
 
@@ -29,28 +25,46 @@ Full list → [Commands](/commands/).
 
 | Principle | What it means |
 | --- | --- |
-| **Harness-agnostic** | Run from **Claude Code**, **Cursor**, or **Codex**. The Conductor is markdown + Node — slash commands and `conductor.mjs` both work. |
-| **Verified, not vibes** | Deterministic checks first. Fresh verifier agents gather semantic evidence when needed. The Conductor adjudicates — PASS/FAIL is never silent. |
-| **Main stays protected** | Work lands on `next` and ephemeral worktrees. `next` → `main` is **human-only**. |
-| **Your session model stays** | BGSD never replaces the Conductor model. Fast variants and Auto are never silently selected. |
+| **Harness-agnostic** | Conductor is markdown + Node — Claude Code, Cursor, or Codex. |
+| **Verified, not vibes** | Deterministic checks first; Conductor adjudicates evidence. |
+| **Main stays protected** | Work lands on `next`. `next` → `main` is **human-only**. |
+| **Your session model stays** | BGSD never replaces the Conductor. Workers are chosen per sesh. |
 
 ## Architecture
 
+A `/bgsd-sesh` run — steps, not model names:
+
 ```mermaid
 flowchart TD
-    U[User] --> C[Live Conductor / Advisor<br/>your current session model]
-    C --> P[Plan, decompose, seed, route]
-    P -->|Routine| CO[Cursor Agent<br/>Composer 2.5 Standard]
-    P -->|Hard, recorded reason| GR[Cursor Agent<br/>Grok 4.5 base]
-    P -->|Optional explicit assignment| CC[Claude Code / Codex workers]
-    CO --> WT[Isolated worktrees]
-    GR --> WT
-    CC --> WT
-    WT --> EV[Fresh verification agents<br/>Loop 1 and Loop 2 evidence]
-    EV --> C
-    C -->|Repair| P
-    C -->|Accept| HG[Human review and merge gate]
+    U[User] --> S["/bgsd-sesh · start session"]
+    S --> SEL[Choose worker path<br/>native selectors]
+    SEL --> DOC[Doctor validates<br/>CLI · auth · selectors]
+    DOC --> C[Live Conductor / Advisor<br/>your current session model]
+    C --> PLAN[Scope · decompose · seed · route]
+    PLAN --> PA[Pipeline Agents<br/>parallel units]
+    PA --> WT[Isolated git worktrees<br/>off next]
+    WT --> VER[Verify<br/>deterministic checks → evidence]
+    VER --> C
+    C -->|Repair / re-steer| PLAN
+    C -->|Accept| INT[Integrate onto next]
+    INT --> HG[Human review gate<br/>next → main only]
+    HG -->|Feedback / follow-up| S
 ```
+
+| Step | Who | What happens |
+| --- | --- | --- |
+| Start | You | Slash command, host skill, or `conductor.mjs` |
+| Choose path | You + Conductor | Native selectors pick this session's worker path |
+| Doctor | Engine | Fails closed if setup is incomplete |
+| Conduct | Live session | Scopes, plans, seeds — never swapped by BGSD |
+| Build | Pipeline Agents | One isolated worktree per unit, branched from `next` |
+| Verify | Fresh agents | Deterministic checks first; semantic evidence when needed |
+| Adjudicate | Conductor | Accept, repair, escalate, or block |
+| Integrate | Engine | Merge verified units onto `next` |
+| Human gate | You | Only you merge `next` → `main` |
+| Follow-up | You | Feedback or another sesh re-enters the loop |
+
+Worker/model presets are documented under [Models & routing](/models/) — not frozen into this diagram.
 
 ## Workflow depth
 
@@ -63,8 +77,8 @@ flowchart TD
 ## Next steps
 
 <CardGrid>
-  <LinkCard title="Install" href="/install/" description="Plugin + slash commands for Claude Code, Cursor, and Codex." />
-  <LinkCard title="Quickstart" href="/quickstart/" description="First /bgsd-sesh in minutes." />
-  <LinkCard title="Commands" href="/commands/" description="Every /bgsd-* surface." />
+  <LinkCard title="Install" href="/install/" description="Claude Code, Cursor, and Codex setup." />
+  <LinkCard title="Quickstart" href="/quickstart/" description="First session in minutes." />
+  <LinkCard title="Mental model" href="/mental-model/" description="Roles, worktrees, verification." />
   <LinkCard title="Models" href="/models/" description="Every-session path selectors." />
 </CardGrid>
