@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import bgsdTheme from "./src/styles/shiki-bgsd.json";
 
 export default defineConfig({
+  site: "https://better-gsd.vercel.app",
   output: "static",
   markdown: {
     shikiConfig: {

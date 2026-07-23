@@ -149,12 +149,13 @@ main {
   border-radius: 8px;
   font-weight: 700;
   font-size: 15px;
-  transition: background 0.15s, transform 0.15s;
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 
 .btn-primary:hover {
   background: #d9f99d;
   transform: translateY(-1px);
+  box-shadow: 0 0 24px #a3e63544;
 }
 
 .btn-ghost {
@@ -172,6 +173,34 @@ main {
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 24px 70px #00000040;
+  animation: rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.hero-grid > div:first-child {
+  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pillar {
+  animation: rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pillar:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.pillar:nth-child(3) {
+  animation-delay: 0.16s;
 }
 
 .banner-wrap img {
