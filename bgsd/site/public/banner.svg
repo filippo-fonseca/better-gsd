@@ -1,0 +1,258 @@
+<svg viewBox="0 0 1280 460" xmlns="http://www.w3.org/2000/svg" fill="none" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="bgsd - Git. Ship. Done. On steroids. One sesh: the Conductor scopes a project prompt, fans out parallel git-worktree agents that each run a full GSD batch, verifies every change through real computer use, merges onto a safe next branch, and keeps main protected behind a human-only merge.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A0C12"/>
+      <stop offset="0.55" stop-color="#0C0F16"/>
+      <stop offset="1" stop-color="#08090E"/>
+    </linearGradient>
+    <linearGradient id="wm" x1="0" y1="140" x2="0" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#CFC3FF"/>
+    </linearGradient>
+    <linearGradient id="accentline" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#A3E635"/>
+      <stop offset="0.5" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#8A63D2"/>
+    </linearGradient>
+    <radialGradient id="glowP" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8A63D2" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#8A63D2" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowK" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#A3E635" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#A3E635" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowG" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#34D399" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#34D399" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.1" fill="#FFFFFF" fill-opacity="0.035"/>
+    </pattern>
+    <clipPath id="card">
+      <rect x="0" y="0" width="1280" height="460" rx="18"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect x="0" y="0" width="1280" height="460" fill="url(#bg)"/>
+    <rect x="0" y="0" width="1280" height="460" fill="url(#dots)"/>
+
+    <circle cx="175" cy="250" r="250" fill="url(#glowP)"/>
+    <circle cx="556" cy="304" r="150" fill="url(#glowK)"/>
+    <circle cx="1108" cy="304" r="110" fill="url(#glowG)"/>
+
+    <rect x="0" y="0" width="1280" height="1" fill="#FFFFFF" fill-opacity="0.05"/>
+    <rect x="0" y="456" width="1280" height="4" fill="url(#accentline)" opacity="0.85"/>
+    <line x1="462" y1="80" x2="462" y2="388" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="1"/>
+
+    <rect x="494" y="56" width="742" height="42" rx="10" fill="#0E121A" stroke="#2A3446" stroke-width="1"/>
+    <text x="512" y="83" font-size="15" fill="#A3E635" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">&#8250;</text>
+    <text x="532" y="83" font-size="15" fill="#9AA6BC" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">/bgsd-sesh <tspan fill="#EAE6FF">"build new public-facing forum portion of app"</tspan></text>
+
+    <rect x="596" y="113" width="48" height="18" rx="5" fill="#12161F" stroke="#2A3446" stroke-width="1"/>
+    <text x="620" y="126" font-size="11" fill="#95A0B2" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">scope</text>
+    <text x="656" y="126" font-size="12" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"><tspan fill="#5A6474">--quick</tspan> <tspan fill="#4E5666">·</tspan> <tspan fill="#5A6474">--feature</tspan> <tspan fill="#4E5666">·</tspan> <tspan fill="#A3E635">--project</tspan></text>
+
+    <path id="pc" d="M556,98 L556,274" stroke="#37414F" stroke-width="2" fill="none"/>
+    <path d="M551,266 l5,7 l5,-7" stroke="#37414F" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="498" y="186" width="432" height="228" rx="16" fill="none" stroke="#A3E635" stroke-opacity="0.16" stroke-width="1" stroke-dasharray="6 6"/>
+    <text x="604" y="190" font-size="11" fill="#7E8AA0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">· each worktree runs a full GSD batch</text>
+
+    <path id="fo1" d="M586,304 C614,304 618,226 646,226" stroke="#37414F" stroke-width="2" fill="none"/>
+    <path id="fo2" d="M586,304 C614,304 618,278 646,278" stroke="#37414F" stroke-width="2" fill="none"/>
+    <path id="fo3" d="M586,304 C614,304 618,330 646,330" stroke="#37414F" stroke-width="2" fill="none"/>
+    <path id="fo4" d="M586,304 C614,304 618,382 646,382" stroke="#37414F" stroke-width="2" fill="none"/>
+
+    <path id="cv1" d="M919,226 C998,226 1012,304 1084,304" stroke="#2A7A5C" stroke-width="2" fill="none"/>
+    <path id="cv2" d="M919,278 C998,278 1012,304 1084,304" stroke="#2A7A5C" stroke-width="2" fill="none"/>
+    <path id="cv3" d="M919,330 C998,330 1012,304 1084,304" stroke="#2A7A5C" stroke-width="2" fill="none"/>
+    <path id="cv4" d="M919,382 C998,382 1012,304 1084,304" stroke="#2A7A5C" stroke-width="2" fill="none"/>
+    <line x1="1132" y1="304" x2="1209" y2="304" stroke="#7A5E1A" stroke-width="2" stroke-dasharray="4 4"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">
+      <rect x="646" y="210" width="236" height="32" rx="8" fill="#10141D" stroke="#232B3A" stroke-width="1"/>
+      <line x1="658" y1="220" x2="658" y2="232" stroke="#4A5568" stroke-width="1.4"/>
+      <circle cx="658" cy="220" r="2" fill="#A3E635"/>
+      <circle cx="658" cy="232" r="2" fill="#4A5568"/>
+      <path d="M658,226 q5,0 5,-6" stroke="#4A5568" stroke-width="1.4" fill="none"/>
+      <circle cx="663" cy="220" r="2" fill="#A78BFA"/>
+      <text x="674" y="230" font-size="13" fill="#C9D2E3">auth</text>
+      <text x="762" y="229.5" font-size="9" fill="#7FB03A">gsd</text>
+      <line x1="786" y1="226" x2="852" y2="226" stroke="#3E5A20" stroke-width="1.4"/>
+      <circle cx="786" cy="226" r="2.6" fill="#A3E635"/>
+      <circle cx="808" cy="226" r="2.6" fill="#A3E635"/>
+      <circle cx="830" cy="226" r="2.6" fill="#A3E635"/>
+      <circle cx="852" cy="226" r="2.6" fill="#A3E635"/>
+      <path d="M852,226 Q819,235 786,226" fill="none" stroke="#7FB03A" stroke-width="1.3"/>
+      <path d="M786,226 L791,223.8 L791,228.2 Z" fill="#7FB03A"/>
+      <path d="M817,228 l0,5 l1.45,-1.45 l1.1,2 l0.95,-0.55 l-1.1,-2 l1.85,0 z" fill="#C6F08B"/>
+
+      <rect x="646" y="262" width="236" height="32" rx="8" fill="#10141D" stroke="#232B3A" stroke-width="1"/>
+      <line x1="658" y1="272" x2="658" y2="284" stroke="#4A5568" stroke-width="1.4"/>
+      <circle cx="658" cy="272" r="2" fill="#A3E635"/>
+      <circle cx="658" cy="284" r="2" fill="#4A5568"/>
+      <path d="M658,278 q5,0 5,-6" stroke="#4A5568" stroke-width="1.4" fill="none"/>
+      <circle cx="663" cy="272" r="2" fill="#A78BFA"/>
+      <text x="674" y="282" font-size="13" fill="#C9D2E3">posts api</text>
+      <text x="762" y="281.5" font-size="9" fill="#7FB03A">gsd</text>
+      <line x1="786" y1="278" x2="852" y2="278" stroke="#3E5A20" stroke-width="1.4"/>
+      <circle cx="786" cy="278" r="2.6" fill="#A3E635"/>
+      <circle cx="808" cy="278" r="2.6" fill="#A3E635"/>
+      <circle cx="830" cy="278" r="2.6" fill="#A3E635"/>
+      <circle cx="852" cy="278" r="2.6" fill="#A3E635"/>
+      <path d="M852,278 Q819,287 786,278" fill="none" stroke="#7FB03A" stroke-width="1.3"/>
+      <path d="M786,278 L791,275.8 L791,280.2 Z" fill="#7FB03A"/>
+      <path d="M817,280 l0,5 l1.45,-1.45 l1.1,2 l0.95,-0.55 l-1.1,-2 l1.85,0 z" fill="#C6F08B"/>
+
+      <rect x="646" y="314" width="236" height="32" rx="8" fill="#10141D" stroke="#232B3A" stroke-width="1"/>
+      <line x1="658" y1="324" x2="658" y2="336" stroke="#4A5568" stroke-width="1.4"/>
+      <circle cx="658" cy="324" r="2" fill="#A3E635"/>
+      <circle cx="658" cy="336" r="2" fill="#4A5568"/>
+      <path d="M658,330 q5,0 5,-6" stroke="#4A5568" stroke-width="1.4" fill="none"/>
+      <circle cx="663" cy="324" r="2" fill="#A78BFA"/>
+      <text x="674" y="334" font-size="13" fill="#C9D2E3">feed ui</text>
+      <text x="762" y="333.5" font-size="9" fill="#7FB03A">gsd</text>
+      <line x1="786" y1="330" x2="852" y2="330" stroke="#3E5A20" stroke-width="1.4"/>
+      <circle cx="786" cy="330" r="2.6" fill="#A3E635"/>
+      <circle cx="808" cy="330" r="2.6" fill="#A3E635"/>
+      <circle cx="830" cy="330" r="2.6" fill="#A3E635"/>
+      <circle cx="852" cy="330" r="2.6" fill="#A3E635"/>
+      <path d="M852,330 Q819,339 786,330" fill="none" stroke="#7FB03A" stroke-width="1.3"/>
+      <path d="M786,330 L791,327.8 L791,332.2 Z" fill="#7FB03A"/>
+      <path d="M817,332 l0,5 l1.45,-1.45 l1.1,2 l0.95,-0.55 l-1.1,-2 l1.85,0 z" fill="#C6F08B"/>
+
+      <rect x="646" y="366" width="236" height="32" rx="8" fill="#10141D" stroke="#232B3A" stroke-width="1"/>
+      <line x1="658" y1="376" x2="658" y2="388" stroke="#4A5568" stroke-width="1.4"/>
+      <circle cx="658" cy="376" r="2" fill="#A3E635"/>
+      <circle cx="658" cy="388" r="2" fill="#4A5568"/>
+      <path d="M658,382 q5,0 5,-6" stroke="#4A5568" stroke-width="1.4" fill="none"/>
+      <circle cx="663" cy="376" r="2" fill="#A78BFA"/>
+      <text x="674" y="386" font-size="13" fill="#C9D2E3">moderation</text>
+      <text x="762" y="385.5" font-size="9" fill="#7FB03A">gsd</text>
+      <line x1="786" y1="382" x2="852" y2="382" stroke="#3E5A20" stroke-width="1.4"/>
+      <circle cx="786" cy="382" r="2.6" fill="#A3E635"/>
+      <circle cx="808" cy="382" r="2.6" fill="#A3E635"/>
+      <circle cx="830" cy="382" r="2.6" fill="#A3E635"/>
+      <circle cx="852" cy="382" r="2.6" fill="#A3E635"/>
+      <path d="M852,382 Q819,391 786,382" fill="none" stroke="#7FB03A" stroke-width="1.3"/>
+      <path d="M786,382 L791,379.8 L791,384.2 Z" fill="#7FB03A"/>
+      <path d="M817,384 l0,5 l1.45,-1.45 l1.1,2 l0.95,-0.55 l-1.1,-2 l1.85,0 z" fill="#C6F08B"/>
+    </g>
+
+    <g stroke-linecap="round" stroke-linejoin="round">
+      <line x1="882" y1="226" x2="897" y2="226" stroke="#37414F" stroke-width="2"/>
+      <circle cx="908" cy="226" r="11" fill="#0F1A12" stroke="#3FB950" stroke-width="1.5"/>
+      <path d="M903,226.5 l3,3 l6,-7" stroke="#3FB950" stroke-width="2" fill="none"/>
+      <line x1="882" y1="278" x2="897" y2="278" stroke="#37414F" stroke-width="2"/>
+      <circle cx="908" cy="278" r="11" fill="#0F1A12" stroke="#3FB950" stroke-width="1.5"/>
+      <path d="M903,278.5 l3,3 l6,-7" stroke="#3FB950" stroke-width="2" fill="none"/>
+      <line x1="882" y1="330" x2="897" y2="330" stroke="#37414F" stroke-width="2"/>
+      <circle cx="908" cy="330" r="11" fill="#0F1A12" stroke="#3FB950" stroke-width="1.5"/>
+      <path d="M903,330.5 l3,3 l6,-7" stroke="#3FB950" stroke-width="2" fill="none"/>
+      <line x1="882" y1="382" x2="897" y2="382" stroke="#37414F" stroke-width="2"/>
+      <circle cx="908" cy="382" r="11" fill="#0F1A12" stroke="#3FB950" stroke-width="1.5"/>
+      <path d="M903,382.5 l3,3 l6,-7" stroke="#3FB950" stroke-width="2" fill="none"/>
+    </g>
+
+    <text x="800" y="434" font-size="10.5" fill="#4E9E52" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">every change verified through REAL computer use</text>
+
+    <circle cx="556" cy="304" r="30" fill="#0E1119" stroke="#A3E635" stroke-opacity="0.25" stroke-width="1"/>
+    <circle cx="556" cy="304" r="30" fill="none" stroke="#A3E635" stroke-opacity="0.75" stroke-width="1.5" stroke-dasharray="4 8">
+      <animateTransform attributeName="transform" type="rotate" from="0 556 304" to="360 556 304" dur="14s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="556" cy="304" r="22" fill="#111A0C" stroke="#A3E635" stroke-width="1.5"/>
+    <circle cx="556" cy="304" r="13" fill="#16210B" stroke="#A3E635" stroke-opacity="0.9" stroke-width="1.4"/>
+    <circle cx="556" cy="304" r="3" fill="#EAF7C8"/>
+    <g fill="#EAF7C8" fill-opacity="0.85">
+      <circle cx="563.5" cy="304" r="1.1"/>
+      <circle cx="561.3" cy="309.3" r="1.1"/>
+      <circle cx="556" cy="311.5" r="1.1"/>
+      <circle cx="550.7" cy="309.3" r="1.1"/>
+      <circle cx="548.5" cy="304" r="1.1"/>
+      <circle cx="550.7" cy="298.7" r="1.1"/>
+      <circle cx="556" cy="296.5" r="1.1"/>
+      <circle cx="561.3" cy="298.7" r="1.1"/>
+    </g>
+    <text x="556" y="350" font-size="12.5" fill="#B7E86A" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">conductor</text>
+    <text x="556" y="366" font-size="10" fill="#AEB7C8" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">(asks + explores)</text>
+
+    <circle cx="1108" cy="262" r="7" fill="#0C1712" stroke="#34D399" stroke-width="1.3"/>
+    <path d="M1114.6,259.6 l1.9,-0.7 l-0.2,3 z" fill="#34D399"/>
+    <path d="M1106,258.6 l0,5.2 l1.45,-1.45 l1.15,2.05 l0.98,-0.56 l-1.15,-2.05 l1.9,0 z" fill="#7FEFC5"/>
+    <line x1="1108" y1="269" x2="1108" y2="280" stroke="#34D399" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="2 2"/>
+    <circle cx="1108" cy="304" r="24" fill="#0C1712" stroke="#34D399" stroke-width="1.6"/>
+    <path d="M1105,294 v20" stroke="#34D399" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    <path d="M1105,304 q0,-7 8,-7" stroke="#34D399" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    <circle cx="1105" cy="294" r="2.6" fill="#0C1712" stroke="#34D399" stroke-width="1.6"/>
+    <circle cx="1105" cy="314" r="2.6" fill="#34D399"/>
+    <circle cx="1113" cy="297" r="2.6" fill="#0C1712" stroke="#34D399" stroke-width="1.6"/>
+
+    <circle cx="1226" cy="304" r="17" fill="#161206" stroke="#F0B429" stroke-width="1.6"/>
+    <rect x="1220" y="304" width="12" height="9" rx="1.6" fill="#F0B429"/>
+    <path d="M1223,304 v-2.5 a3,3 0 0 1 6,0 v2.5" stroke="#F0B429" stroke-width="1.6" fill="none"/>
+    <rect x="1225.2" y="307" width="1.6" height="3" rx="0.8" fill="#161206"/>
+
+    <path d="M1165,287 v-3 a3,3 0 0 1 6,0 v3" stroke="#F0B429" stroke-opacity="0.9" stroke-width="1.4" fill="none"/>
+    <rect x="1164" y="287" width="8" height="6.5" rx="1.4" fill="#F0B429" fill-opacity="0.9"/>
+
+    <g font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">
+      <text x="1168" y="276" font-size="9.5" fill="#C79A3A" text-anchor="middle">human-only</text>
+      <text x="1108" y="344" font-size="14" font-weight="700" fill="#7FEFC5" text-anchor="middle">next</text>
+      <text x="1108" y="360" font-size="10.5" fill="#5FA98C" text-anchor="middle">integration staging</text>
+      <text x="1108" y="374" font-size="9" fill="#4E9E7A" text-anchor="middle">via computer use</text>
+      <text x="1226" y="344" font-size="14" font-weight="700" fill="#F0C86A" text-anchor="middle">main</text>
+      <text x="1226" y="360" font-size="10.5" fill="#B79040" text-anchor="middle">protected</text>
+    </g>
+
+    <rect x="56" y="78" width="110" height="26" rx="13" fill="#111A0C" stroke="#A3E635" stroke-opacity="0.3" stroke-width="1"/>
+    <circle cx="73" cy="91" r="4" fill="#A3E635"/>
+    <text x="86" y="95" font-size="12.5" fill="#C6F08B" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">conductor</text>
+
+    <text x="53" y="228" font-size="118" font-weight="800" letter-spacing="-3" fill="url(#wm)">bgsd</text>
+
+    <line x1="58" y1="266" x2="250" y2="266" stroke="url(#accentline)" stroke-width="4" stroke-linecap="round"/>
+
+    <text x="58" y="308" font-size="22" letter-spacing="2" fill="#C2CBDD" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">better-gsd</text>
+
+    <text x="57" y="352" font-size="24" font-weight="600" fill="#EAECF2">Git. Ship. Done. <tspan fill="#A3E635">On steroids.</tspan></text>
+
+    <text x="58" y="390" font-size="12" fill="#A3ADBF" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">one sesh in → a reviewed, shippable branch out</text>
+
+    <g>
+      <circle r="3" fill="#A78BFA">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0s"><mpath href="#pc"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#A3E635">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath href="#fo1"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#A3E635">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath href="#fo2"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#A3E635">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath href="#fo3"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#A3E635">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.6s"><mpath href="#fo4"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#34D399">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.6s"><mpath href="#cv1"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#34D399">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.6s"><mpath href="#cv2"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#34D399">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.6s"><mpath href="#cv3"/></animateMotion>
+      </circle>
+      <circle r="3" fill="#34D399">
+        <animateMotion dur="2.4s" repeatCount="indefinite" begin="1.6s"><mpath href="#cv4"/></animateMotion>
+      </circle>
+    </g>
+
+    <rect x="510" y="175" width="82" height="22" rx="11" fill="#0E121A" stroke="#A3E635" stroke-opacity="0.35" stroke-width="1"/>
+    <text x="551" y="190" font-size="11" fill="#B7E86A" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace">one sesh</text>
+  </g>
+
+  <rect x="0.5" y="0.5" width="1279" height="459" rx="18" fill="none" stroke="#FFFFFF" stroke-opacity="0.07" stroke-width="1"/>
+</svg>

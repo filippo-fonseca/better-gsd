@@ -1,14 +1,15 @@
 ---
-import "../styles/global.css";
+import "@fontsource/syne/400.css";
+import "@fontsource/syne/600.css";
+import "@fontsource/syne/700.css";
+import "@fontsource/syne/800.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
+import "../styles/landing.css";
 
-const profiles = [
-  ["Claude", "Claude", "Claude"],
-  ["OpenAI", "OpenAI", "OpenAI"],
-  ["Claude/OpenAI", "Claude", "OpenAI"],
-  ["OpenAI/Claude", "OpenAI", "Claude"],
-];
 const modes = [
-  ["Quick", "One contained correction", "Adaptive direct workers, no GSD", "Worker verify/fix + Conductor review"],
+  ["Quick", "One contained correction", "Direct workers, no GSD", "Deterministic + Conductor review"],
   ["Feature", "Scoped product change", "A few worktrees", "Loop 1 + integration when needed"],
   ["Project", "Multi-surface work", "Discuss, DAG, waves", "Loop 1, Loop 2, fresh review"],
 ];
@@ -18,71 +19,119 @@ const modes = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="BGSD v2: model-agnostic GSD conductor for Claude Code and Codex." />
-    <title>BGSD v2 | Build and verify with the harness you choose</title>
+    <meta
+      name="description"
+      content="BGSD — harness-agnostic verified GSD conductor. Parallel worktrees, real verification, main stays protected."
+    />
+    <title>BGSD | Git. Ship. Done. On steroids.</title>
   </head>
   <body>
     <header class="nav">
-      <a class="brand" href="#top">BGSD <span>v2</span></a>
+      <a class="brand" href="/">BGSD</a>
       <nav aria-label="Primary">
-        <a href="#contract">Contract</a>
+        <a href="#pillars">Why BGSD</a>
         <a href="#workflow">Workflow</a>
-        <a href="#proxy">Proxy</a>
         <a href="https://github.com/filippo-fonseca/better-gsd">GitHub</a>
+        <a class="docs-link" href="/overview/">Docs</a>
       </nav>
     </header>
 
-    <main id="top">
-      <section class="intro" aria-labelledby="headline">
-        <div class="intro-copy">
-          <p class="eyebrow">MODEL-AGNOSTIC GSD ORCHESTRATION</p>
-          <h1 id="headline">One Conductor.<br />Two independent lanes.</h1>
-          <p class="lede">Start in Claude Code or Codex. Every BGSD session delegates code changes. Quick uses adaptive direct workers; Feature and Project use full GSD workflows under continuous Conductor steering and fresh evaluation.</p>
-          <div class="links">
-            <a class="command" href="https://github.com/filippo-fonseca/better-gsd">Read the README <span aria-hidden="true">↗</span></a>
-            <a class="quiet-link" href="#proxy">When a proxy helps</a>
+    <main>
+      <section class="hero" aria-labelledby="headline">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Harness-agnostic · verified · main-protected</p>
+            <h1 id="headline">Git. Ship. Done.<br />On steroids.</h1>
+            <p class="lede">
+              One session: the Conductor scopes a prompt, fans out parallel git-worktree
+              agents that each run a full GSD batch, verifies every change through real
+              computer use, merges onto a safe <code>next</code> branch, and keeps
+              <code>main</code> protected behind a human-only merge.
+            </p>
+            <div class="cta-row">
+              <a class="btn-primary" href="/overview/">Read the docs</a>
+              <a class="btn-ghost" href="/quickstart/">Quickstart →</a>
+            </div>
           </div>
-        </div>
-        <div class="signal" aria-label="BGSD v2 model contract diagram">
-          <div class="signal-banner" aria-label="BGSD pipeline overview"><span>CONDUCT</span><b>PLAN</b><i>BUILD</i><em>VERIFY</em><strong>INTEGRATE</strong></div>
-          <div class="signal-grid">
-            <article><span>01</span><strong>Conductor</strong><small>Your current Claude Code or Codex session</small></article>
-            <article><span>02</span><strong>Build lane</strong><small>Full GSD units, worktrees, repairs</small></article>
-            <article><span>03</span><strong>Evaluate lane</strong><small>Loop 1, Loop 2, fresh review</small></article>
+          <div class="banner-wrap">
+            <img src="/banner.svg" alt="BGSD pipeline: scope, parallel GSD worktrees, verification, merge to next" width="640" height="230" />
           </div>
         </div>
       </section>
 
-      <section id="contract" class="band">
-        <div class="section-heading"><p class="eyebrow">THE CONTRACT</p><h2>Conductor reasons. Lanes execute and verify.</h2></div>
+      <section id="pillars" class="pillars">
+        <div class="section-heading">
+          <p class="eyebrow">Why BGSD</p>
+          <h2>Verified orchestration,<br />not vibes.</h2>
+        </div>
+        <div class="pillar-grid">
+          <article class="pillar">
+            <span class="num">01</span>
+            <h3>Harness-agnostic</h3>
+            <p>Launch from Claude Code, Cursor, or Codex. The conductor reads MD files and runs plain Node — wherever you start.</p>
+          </article>
+          <article class="pillar">
+            <span class="num">02</span>
+            <h3>Real verification</h3>
+            <p>Tests, typecheck, lint, build first. Fresh verifier agents gather semantic evidence when needed. The Conductor adjudicates.</p>
+          </article>
+          <article class="pillar">
+            <span class="num">03</span>
+            <h3>Main protected</h3>
+            <p>All work lands on <code>next</code> and ephemeral worktree branches. Only you merge <code>next → main</code>.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="contract" class="terminal-band">
+        <div class="section-heading">
+          <p class="eyebrow">The contract</p>
+          <h2>Conductor reasons.<br />Workers build & verify.</h2>
+        </div>
         <div class="split">
-          <div class="terminal"><div class="dots"><i></i><i></i><i></i></div><code><span class="muted">$</span> bgsd-sesh<br /><br /><span class="accent">conductor</span>  live session model<br /><span class="green">build</span>      selected subscription lane<br /><span class="orange">evaluate</span>   independent selected lane<br /><br /><span class="muted">routing:</span> fixed | adaptive</code></div>
-          <div class="body-copy"><p>The Conductor authors plans, makes routing decisions, and remains the only human-facing agent. It keeps the model and effort of the Claude Code or Codex session you started. Quick workers apply every code change without GSD; the Conductor can choose one or several and run them serially or in parallel. Feature and Project workers receive seeds and a steering directive the Conductor revisits at every phase, commit, blocker, and verification result.</p><p>Pipeline defaults are Claude Opus high for Claude lanes and GPT-5.6 Sol medium for OpenAI lanes. Adaptive routing never guesses: a unit requires an explicit heavy/light assignment and reason. Without one, it runs the profile default. “Heavy” is a routing label, not necessarily high reasoning effort: OpenAI heavy is Sol medium. Model ids are provider-validated, API-key environment variables are scrubbed from child processes, and the direct CLI path uses your existing Claude or ChatGPT subscription.</p></div>
-        </div>
-        <div class="profile-table" role="table" aria-label="Pipeline profiles">
-          <div class="table-head" role="row"><span>Profile</span><span>Build</span><span>Evaluate</span></div>
-          {profiles.map(([profile, build, evaluate]) => <div role="row"><strong>{profile}</strong><span>{build}</span><span>{evaluate}</span></div>)}
+          <div class="terminal" aria-label="Example session command">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <code><span class="muted">$</span> node bgsd/scripts/conductor.mjs \
+  <span class="purple">"build audit log"</span> <span class="green">--feature</span>
+
+<span class="accent">conductor</span>  your live session model
+<span class="green">routine</span>   Composer 2.5 Standard
+<span class="green">hard</span>      Grok 4.5 base (reason required)
+<span class="purple">verify</span>    deterministic → fresh evidence
+<span class="muted">merge</span>     next only · main is human-only</code>
+          </div>
+          <div class="body-copy">
+            <p>Your session model stays the Conductor and Advisor — BGSD never replaces it. Default workers route through Cursor Agent CLI; pass <code>--no-cursor</code> for Claude Code / Codex workers as an equal alternative.</p>
+            <p>Fast variants and Auto are never silently selected. Doctor fails closed when setup is incomplete.</p>
+          </div>
         </div>
       </section>
 
-      <section id="workflow" class="band dark-band">
-        <div class="section-heading"><p class="eyebrow">WORKFLOW DEPTH</p><h2>The same safety rules at every scale.</h2></div>
+      <section id="workflow" class="modes">
+        <div class="section-heading">
+          <p class="eyebrow">Workflow depth</p>
+          <h2>Same safety rules<br />at every scale.</h2>
+        </div>
         <div class="mode-table" role="table" aria-label="Quick feature project comparison">
-          <div class="mode-head" role="row"><span>Mode</span><span>Use it for</span><span>Build</span><span>Evidence</span></div>
-          {modes.map(([mode, use, build, evidence]) => <div role="row"><strong>{mode}</strong><span>{use}</span><span>{build}</span><span>{evidence}</span></div>)}
+          <div class="mode-head" role="row">
+            <span>Mode</span><span>Use it for</span><span>Build</span><span>Evidence</span>
+          </div>
+          {modes.map(([mode, use, build, evidence]) => (
+            <div role="row">
+              <strong>{mode}</strong>
+              <span>{use}</span>
+              <span>{build}</span>
+              <span>{evidence}</span>
+            </div>
+          ))}
         </div>
-        <p class="note">Unit complexity changes GSD phase depth. It does not secretly swap the selected model.</p>
-      </section>
-
-      <section id="proxy" class="band proxy-band">
-        <div class="section-heading"><p class="eyebrow">OPTIONAL TRANSPORT</p><h2>The proxy is for a different thing.</h2></div>
-        <div class="proxy-grid">
-          <div><h3>No proxy</h3><p>Claude conducts Codex agents, or Codex conducts Claude agents. BGSD launches the matching CLI directly. This is the normal path.</p></div>
-          <div><h3>With CLIProxyAPI</h3><p>You intentionally run the Claude Code harness and tooling while it talks to a GPT model through a local Claude-compatible endpoint.</p></div>
-        </div>
-        <div class="guardrail"><span>Guardrail</span><p>Proxy mode is explicit. It requires a local endpoint, token, health probe, and advertised selected model. It does not silently replace direct execution or introduce provider API pricing.</p></div>
       </section>
     </main>
-    <footer><span>BGSD v2</span><span>Direct CLIs by default. Proxy only by choice.</span></footer>
+
+    <footer>
+      <span>BGSD</span>
+      <span class="lock">🔒 main-protected</span>
+      <span>Harness-agnostic GSD conductor</span>
+    </footer>
   </body>
 </html>

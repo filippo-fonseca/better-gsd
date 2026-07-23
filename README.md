@@ -144,5 +144,14 @@ Work lands on `next`; the merge from `next` to `main` remains human-only.
 - [#9](https://github.com/filippo-fonseca/better-gsd/issues/9): remote pipeline inspection and control surface.
 - [#10](https://github.com/filippo-fonseca/better-gsd/issues/10): desktop/text-editor experience inspired by T3 Code.
 
-The detailed docs live in [bgsd/docs](./bgsd/docs), and the explainer site lives
-in [bgsd/site](./bgsd/site).
+## Docs site
+
+Browse the full documentation locally:
+
+```sh
+cd bgsd/site && npm i && npm run dev
+```
+
+Then open [http://localhost:4321](http://localhost:4321) for the landing page and [http://localhost:4321/overview/](http://localhost:4321/overview/) for docs.
+
+The detailed source docs also live in [bgsd/docs](./bgsd/docs), and the built site deploys from [bgsd/site](./bgsd/site).
