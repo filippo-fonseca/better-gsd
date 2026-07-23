@@ -1,8 +1,101 @@
 ---
 title: Conductor session
-description: How a BGSD session runs end to end.
+description: How a BGSD session runs — from scope to human gate.
 ---
 
-# Conductor session
+The live session is the **Conductor and Advisor**. This page covers what happens inside a session and how you steer it.
 
-Coming soon.
+## Session lifecycle
+
+1. **Preflight** — Doctor verifies CLI, subscription, selectors, GSD (if needed)
+2. **Setup selectors** — backend, profile, routing, verification depth
+3. **Scope** — Conductor decomposes the prompt into units (mode-dependent)
+4. **Build** — Pipeline Agents execute in worktrees with Conductor seeds
+5. **Verify** — deterministic checks, then optional semantic evidence
+6. **Adjudicate** — Conductor reviews evidence, steers repairs or accepts
+7. **Integrate** — verified units merge to `next`
+8. **Human gate** — you review and merge `next` → `main` when ready
+
+## Conductor cadence
+
+### Quick mode
+
+Quick has an adaptive set of direct Pipeline Agents:
+
+- Conductor writes a compact plan
+- Decides one or several units, serial or parallel
+- Workers edit, verify, and repair in worktrees **without GSD**
+- Conductor reviews evidence and steers — never edits code
+
+### Feature / Project mode
+
+The Conductor remains the Advisor throughout:
+
+1. Write a **seed** before worker execution
+2. Inspect worker control file and code evidence at every phase change, commit, blocker, and verification result
+3. Rewrite the durable **steering directive** when the next action changes
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/advisor.mjs" steer \
+  --run-id <run-id> --unit-id <unit-id> --message "<next direction>"
+```
+
+Pipeline Agents reread that directive at required checkpoints. The worker does not own product-level reasoning, routing, or integration decisions.
+
+## Adaptive routing cadence
+
+In `adaptive` routing, the Conductor must write a unit assignment with a reason:
+
+| Work type | Typical tier |
+| --- | --- |
+| Mechanical (rename, copy, templated edit) | Light — with recorded reason |
+| Ordinary scoped work | Default build model |
+| Judgment-heavy, cross-cutting, security | Hard — with recorded reason |
+
+Evaluation-lane routing stays fixed regardless.
+
+## Human gates
+
+The Conductor pauses at gates that need you:
+
+- Escalated questions (ambiguous requirements)
+- Integration approval before merge to `next`
+- Final review before suggesting `next` → `main`
+
+Selectors always use the **host's native question UI** — never free-text replacements.
+
+## Steering commands
+
+| Command / skill | Purpose |
+| --- | --- |
+| `/bgsd-sesh` | Start a new session |
+| `/bgsd-status` | Live worker table and blockers |
+| `/bgsd-pause` | Hold a session with resume notes |
+| `/bgsd-resume` | Continue a paused session |
+| `/bgsd-abort` | Stop cleanly; branches preserved |
+| `/bgsd-feedback` | Post-integration corrections |
+
+## Workflow depth resolution
+
+Precedence order:
+
+1. Explicit CLI flag (`--quick`, `--feature`, `--project`)
+2. Clear natural-language instruction (`Treat this as a project`)
+3. Conductor sizes from scope
+4. Host-native selector when scope is unclear
+
+Descriptive text like "this is a quick fix" is **not** treated as a mode override.
+
+## Proxy sessions
+
+With `--proxy`, Claude Code's harness talks to a foreign model through CLIProxyAPI. This changes **transport only**:
+
+- Requires `BGSD_PROXY_URL`, `BGSD_PROXY_TOKEN`, health probe, advertised models
+- Never used for Cursor workers
+- Never a silent fallback for direct CLI execution
+
+## Related
+
+- [Models & routing](/models/) — per-unit assignments
+- [Doctor](/doctor/) — preflight requirements
+- [Commands](/commands/) — full reference

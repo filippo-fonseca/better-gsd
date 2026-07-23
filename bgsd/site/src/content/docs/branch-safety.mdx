@@ -1,8 +1,84 @@
 ---
 title: Branch & safety
-description: Worktrees, next branch, and main protection.
+description: Worktrees, next branch, and why main is human-only.
 ---
 
-# Branch & safety
+BGSD's branch model is designed so agents can move fast without touching production. **Main stays protected.**
 
-Coming soon.
+## The invariant
+
+```
+🔒 main-protected
+```
+
+- BGSD **never** writes to `main` or any production branch
+- All implementation work happens on ephemeral worktree branches
+- Verified work merges to the standing **integration branch** (`next` by default)
+- Only a human merges `next` → `main`
+
+This appears in status output, the web dashboard, and session reminders.
+
+## Branch layout
+
+```
+main                 ← production; human-only writes
+  └── next           ← integration mirror; BGSD merges here
+        ├── bgsd-0042/unit-auth-c3d4
+        ├── bgsd-0042/unit-export-a1b2
+        └── …
+```
+
+### `next` sync
+
+At session start, BGSD fast-forwards `next` from `base_branch` (usually `main`) when `git.sync_integration_from_base` is `true`. Integration never falls behind production.
+
+### Worktree branches
+
+Each unit gets an isolated git worktree:
+
+- Branch name: `bgsd-<run-id>/unit-<slug>-<hash>`
+- Commits stay on the unit branch until verification passes
+- Failed units are held back — not merged to `next`
+
+## What BGSD writes
+
+| Path | Written by BGSD? |
+| --- | --- |
+| `.bgsd/` | Yes — ledger, sessions, queue |
+| `.bgsd-tmp/` | Yes — ephemeral session files |
+| `next` | Yes — integration merges |
+| Worktree branches | Yes — unit implementation |
+| `main` | **Never** |
+| `.planning/config.json` | Model posture only (via config seam) |
+| Vendored GSD | **Never** |
+
+## Human merge gate
+
+After integration, BGSD may open a landing PR from `next` → `main`. **You** merge it. The Conductor suggests the command; it does not execute the merge.
+
+```sh
+git checkout main && git merge next
+```
+
+## Cleanup
+
+| Command | Purpose |
+| --- | --- |
+| `/bgsd-clean-branches` | Prune merged worktree branches already integrated into `next` |
+| `/bgsd-abort` | Stop in-flight run; preserve all branches and control files |
+
+Cleanup never deletes the standing `next` branch or any unmerged branch.
+
+## Conflict handling
+
+Before merging units into `next`, BGSD runs a conflict pre-check and merges in dependency order. The Conductor adjudicates conflicts that need human input.
+
+## Feedback rounds
+
+Post-integration corrections (`/bgsd-feedback`) apply fixes to `next` and worktree branches only — never `main`. Each round is recorded in the run ledger.
+
+## Related
+
+- [Mental model](/mental-model/) — worktree architecture
+- [Conductor session](/conductor-session/) — integration gates
+- [Configuration](/configuration/) — `integration_branch` and `base_branch`

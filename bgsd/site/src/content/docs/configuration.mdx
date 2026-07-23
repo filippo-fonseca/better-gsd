@@ -1,8 +1,136 @@
 ---
 title: Configuration
-description: BGSD.md settings reference.
+description: BGSD.md — per-repo settings the Conductor reads every session.
 ---
 
-# Configuration
+Every knob lives in **`BGSD.md`** at the repo root. The Conductor reads it at session start. Edit the `bgsd-settings` JSON block to override defaults; add prose preferences in the Notes section and Kiwi respects them.
 
-Coming soon.
+## Core settings
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `integration_branch` | `"next"` | Standing integration branch; all worktree merges land here |
+| `base_branch` | `null` (auto-detect) | Production branch (`main` / `master` from `origin/HEAD`) |
+| `git.sync_integration_from_base` | `true` | Fast-forward `next` from base at session start |
+| `git.integration_to_main` | `"manual"` | Agents never commit to `main` |
+
+## Harness & models
+
+```json
+"harness": {
+  "active": "auto",
+  "models": { }
+},
+"cursor": {
+  "models": {
+    "routine": "composer-2.5",
+    "hard": "cursor-grok-4.5-high"
+  }
+},
+"model_contract": {
+  "auth": "subscription-only"
+}
+```
+
+| Key | Purpose |
+| --- | --- |
+| `harness.active` | `"auto"`, `"claude"`, `"codex"`, or `"cursor"` |
+| `harness.models` | Semantic tier → concrete model id per harness |
+| `cursor.models` | Routine and hard Cursor Agent selectors |
+| `model_contract` | Session Conductor/worker/evaluation contract |
+
+Pass `--no-cursor` at session start to use Claude/Codex workers regardless of `cursor` settings.
+
+## Verification
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `verification.usage_testing` | `true` | Playwright/vision rung for UI changes |
+| `verification.headless` | `true` | Headless browser during verification |
+
+Toggle per-session: `--no-usage-verification`, `--headless-ui`.
+
+Deterministic checks (tests, typecheck, lint, build) always run — disabling usage testing does not disable code verification.
+
+## Pipeline modes
+
+| Key | Default | Options |
+| --- | --- | --- |
+| `modes.pipeline` | `"adaptive"` | `fast`, `thorough`, `adaptive` |
+| `modes.verifier` | `"adaptive"` | `fast`, `thorough`, `adaptive` |
+
+Override per-session with `--mode` / `--verify-mode`. CLI flags always win over `BGSD.md`.
+
+## Conductor identity
+
+```json
+"conductor": {
+  "name": "Kiwi",
+  "emoji": "🥝",
+  "narrate": true,
+  "suggest_gate_commands": true,
+  "self_compact_at": 0.85
+}
+```
+
+Change via `BGSD.md`, `/bgsd-modify-memory`, or by asking the Conductor directly.
+
+## Environment propagation
+
+```json
+"env": {
+  "propagate": true,
+  "files": [".env", ".env.local", ".env.*.local"]
+}
+```
+
+Git worktrees don't carry gitignored files — Kiwi copies configured env files into every worktree so apps actually run.
+
+## GitHub integration
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `github.issues` | `true` | One atomic issue per work unit + epic per session |
+| `github.require_remote` | `true` | Skip issue/PR machinery when no remote |
+
+## GUI & notifications
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `gui.auto` | `true` | Auto-open web dashboard for Feature/Project |
+| `notifications.os` | `true` | macOS notification when input is needed |
+
+## Remote bridge
+
+```json
+"remote": {
+  "enabled": false,
+  "host": "loopback",
+  "port": 0
+}
+```
+
+Exposes `/bgsd-remote` for watching and steering a live session from another device. Token required for non-loopback binds.
+
+## Example minimal override
+
+```json bgsd-settings
+{
+  "version": 2,
+  "integration_branch": "next",
+  "harness": { "active": "cursor" },
+  "cursor": {
+    "models": {
+      "routine": "composer-2.5",
+      "hard": "cursor-grok-4.5-high"
+    }
+  }
+}
+```
+
+See the full defaults in the repo's [`BGSD.md`](https://github.com/filippo-fonseca/better-gsd/blob/main/BGSD.md).
+
+## Related
+
+- [Models & routing](/models/) — how settings affect worker selection
+- [Branch & safety](/branch-safety/) — `integration_branch` behavior

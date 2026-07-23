@@ -1,8 +1,118 @@
 ---
 title: Commands
-description: BGSD command reference.
+description: BGSD command and flag reference.
 ---
 
-# Commands
+## Session commands
 
-Coming soon.
+| Surface | Purpose |
+| --- | --- |
+| `/bgsd-sesh` | Start a selector-driven BGSD session |
+| `node bgsd/scripts/conductor.mjs "<prompt>"` | Harness-neutral session launcher |
+| `node bgsd/scripts/session.mjs --prompt "..."` | Direct session script |
+| `/bgsd-doctor` | Verify CLI, subscription, GSD, and optional proxy |
+| `node bgsd/scripts/doctor.mjs` | Doctor script directly |
+
+## Workflow depth
+
+| Flag | Mode |
+| --- | --- |
+| `--quick` | One contained correction; no GSD |
+| `--feature` | Scoped product change; a few worktrees |
+| `--project` | Multi-surface work; full GSD |
+| `--plan-only` | Show the route without spawning work |
+
+Depth resolution precedence:
+
+1. Explicit CLI flag
+2. Clear natural-language instruction
+3. Conductor sizing from scope
+4. Host-native selector when unclear
+
+## Model & routing flags
+
+| Flag | Values |
+| --- | --- |
+| `--no-cursor` | Use Claude Code / Codex workers |
+| `--profile` | `claude`, `openai`, `claude-openai`, `openai-claude` |
+| `--build-model` / `--evaluate-model` | Provider-valid model ids |
+| `--routing` | `fixed` (default) or `adaptive` |
+| `--light-build-model` | Validated light catalog entry for adaptive routing |
+| `--proxy` | CLIProxyAPI transport through Claude Code harness |
+
+## Verification flags
+
+| Flag | Purpose |
+| --- | --- |
+| `--no-usage-verification` | Skip Playwright/vision rung |
+| `--headless-ui` | Force headless browser |
+| `--no-gui` | Skip auto-opening web dashboard |
+
+## Runtime control
+
+| Command | Purpose |
+| --- | --- |
+| `/bgsd-status` | Live worker table, phases, blockers |
+| `/bgsd-pause` | Hold session with resume notes |
+| `/bgsd-resume` | Continue paused session |
+| `/bgsd-abort` | Stop cleanly; preserve branches |
+| `/bgsd-feedback` | Post-integration corrections |
+| `/bgsd-user-eval` | Boot integrated servers for manual eval |
+| `/bgsd-gui` | Open web dashboard |
+| `/bgsd-clean-branches` | Prune merged worktree branches |
+
+## Queue & knowledge
+
+| Command | Purpose |
+| --- | --- |
+| `node bgsd/scripts/queue.mjs add --title "..." --body "..."` | Enqueue backlog item |
+| `node bgsd/scripts/kb.mjs --query "<terms>"` | Search session history |
+
+Queue lives at `.bgsd/queue/queue.json` — not a markdown backlog file.
+
+## Advisor steering
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/advisor.mjs" steer \
+  --run-id <run-id> \
+  --unit-id <unit-id> \
+  --message "<next direction>"
+```
+
+## Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `BGSD_PROXY_URL` | CLIProxyAPI endpoint (with `--proxy`) |
+| `BGSD_PROXY_TOKEN` | Proxy auth token |
+| `CLAUDE_PLUGIN_ROOT` | Set automatically by conductor launcher |
+
+API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CURSOR_API_KEY`) are scrubbed from child processes.
+
+## Example invocations
+
+```sh
+# Default Cursor workers, Feature mode
+node bgsd/scripts/session.mjs \
+  --prompt "Add export filters" \
+  --feature
+
+# Claude/Codex workers, adaptive routing
+node bgsd/scripts/session.mjs \
+  --prompt "Refactor auth middleware" \
+  --no-cursor \
+  --profile claude-openai \
+  --routing adaptive
+
+# Plan without executing
+node bgsd/scripts/session.mjs \
+  --prompt "Migrate to Postgres" \
+  --project \
+  --plan-only
+```
+
+## Related
+
+- [Quickstart](/quickstart/) — first session walkthrough
+- [Configuration](/configuration/) — `BGSD.md` settings
+- [Troubleshooting](/troubleshooting/) — when commands fail
