@@ -105,7 +105,7 @@ node bgsd/scripts/status.mjs --watch 5
 
 | Flag | Purpose |
 | --- | --- |
-| `--run-id <id>` | Specific run |
+| `--run-id ⟨id⟩` | Specific run |
 | `--watch [n]` | Refresh every *n* seconds (default 3) |
 
 **Script:** `status.mjs`
@@ -158,7 +158,7 @@ After a `request_changes` review verdict (or free-text findings), re-runs the fi
 | --- | --- |
 | `--fast` | Skip verify loops; spawn fix agents directly (`UNVERIFIED`) |
 | `--live` | Execute (default on script is dry-run plan) |
-| `--run-id <id>` | Target run |
+| `--run-id ⟨id⟩` | Target run |
 
 **Script:** `feedback.mjs`
 
@@ -184,8 +184,8 @@ Boots or attaches to an app and verifies acceptance criteria (console → networ
 
 | Flag | Purpose |
 | --- | --- |
-| `<url>` or `--boot <dir>` | Target (one required) |
-| `--criteria <file>` or `--inline "…"` | Criteria (one required) |
+| `⟨url⟩` or `--boot ⟨dir⟩` | Target (one required) |
+| `--criteria ⟨file⟩` or `--inline "…"` | Criteria (one required) |
 | `--no-usage-verification` | Code-only (skip Playwright ladder) |
 | `--headless-ui` | Headless browser |
 
@@ -204,15 +204,15 @@ Per-repo fix-stream backlog at `.bgsd/queue/` — **not** a markdown backlog fil
 /bgsd-queue list
 /bgsd-queue peek
 /bgsd-queue start
-/bgsd-queue done <id>
+/bgsd-queue done ⟨id⟩
 ```
 
 | Subcommand | Purpose |
 | --- | --- |
 | `add --title "…" [--body "…"] [--source …] [--no-issue]` | Enqueue |
 | `status` / `list` / `peek` | Inspect |
-| `closes <id…>` | Link closing ids |
-| `done <id> [--failed|--blocked] [--close-issue]` | Complete |
+| `closes ⟨id…⟩` | Link closing ids |
+| `done ⟨id⟩ [--failed|--blocked] [--close-issue]` | Complete |
 | `start [--dry-run]` | Drain through classify → execute → verify |
 
 **Script:** `queue.mjs`
@@ -259,8 +259,8 @@ node bgsd/scripts/brief.mjs --last
 
 | Flag | Purpose |
 | --- | --- |
-| `--run-id <id>` | Specific run (default: latest) |
-| `--out <path>` | Custom output path |
+| `--run-id ⟨id⟩` | Specific run (default: latest) |
+| `--out ⟨path⟩` | Custom output path |
 | `--stdout` | Print brief instead of writing a file |
 
 **Script:** `brief.mjs`
@@ -315,7 +315,7 @@ Safely removes stale bgsd worktrees and merged `bgsd-*` branches. Never touches 
 | `--force` | Include unmerged bgsd branches |
 | `--yes` | Skip confirmation |
 | `--json` | Machine-readable plan |
-| `--integration-branch <name>` | Override default `next` |
+| `--integration-branch ⟨name⟩` | Override default `next` |
 
 **Script:** `clean.mjs`
 
@@ -336,7 +336,7 @@ Local HTTP bridge to observe and steer a live Conductor session from off-box (ph
 | `start [--run-id] [--port] [--lan\|--host] [--token]` | Start bridge |
 | `stop` / `status` | Control |
 | `emit "…"` / `mirror` | Push / sync output |
-| `tail [--since <seq>]` | Stream events |
+| `tail [--since ⟨seq⟩]` | Stream events |
 
 **Script:** `remote.mjs`
 
@@ -353,7 +353,7 @@ Project-mode orchestrator: large prompt → dependency DAG → parallel GSD unit
 ```sh
 node bgsd/scripts/run.mjs --prompt "Add user auth and rate limiting"
 node bgsd/scripts/run-live.mjs --live --prompt "…"
-node bgsd/scripts/run.mjs --abort <run-id>
+node bgsd/scripts/run.mjs --abort ⟨run-id⟩
 ```
 
 ### `/bgsd-run-agent`
