@@ -7,14 +7,16 @@ The live session is the **Conductor and Advisor**. This page covers what happens
 
 ## Session lifecycle
 
-1. **Preflight** — Doctor verifies CLI, subscription, selectors, GSD (if needed)
-2. **Setup selectors** — backend, profile, routing, verification depth
+1. **Setup selectors** — every **new** session asks for a path preset (Cursor default, Claude Code only, Claudex, …) and optional executor multi-select via native UI — see [Models & routing](/models/)
+2. **Preflight** — Doctor validates the **chosen** CLI, subscription, selectors, and GSD (if needed)
 3. **Scope** — Conductor decomposes the prompt into units (mode-dependent)
 4. **Build** — Pipeline Agents execute in worktrees with Conductor seeds
 5. **Verify** — deterministic checks, then optional semantic evidence
 6. **Adjudicate** — Conductor reviews evidence, steers repairs or accepts
 7. **Integrate** — verified units merge to `next`
 8. **Human gate** — you review and merge `next` → `main` when ready
+
+Resume skips setup selectors and rehydrates the model contract from `run.json`.
 
 ## Conductor cadence
 
