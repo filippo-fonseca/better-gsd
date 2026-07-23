@@ -1,8 +1,112 @@
 ---
 title: Models & routing
-description: Model selection and routing every session.
+description: Model selection every session — Conductor stays, workers route.
 ---
 
-# Models & routing
+BGSD separates **who reasons** (the Conductor) from **who executes** (Pipeline Agents and verifiers). Model selection happens every session through selectors and `BGSD.md` — nothing is silently upgraded to Fast or Auto.
 
-Coming soon.
+## The contract
+
+| Role | Model | Chosen at |
+| --- | --- | --- |
+| **Conductor** | Your live session model | Session start — BGSD never replaces it |
+| **Routine workers** | Composer 2.5 Standard (`composer-2.5`) | Default when Cursor is enabled |
+| **Hard workers** | Grok 4.5 base (`cursor-grok-4.5-high`) | Conductor assignment with recorded reason |
+| **Claude/Codex workers** | Profile defaults (Opus, GPT-5.x Sol, …) | `--no-cursor` or explicit `claude-codex` assignment |
+| **Verifiers** | Deterministic first; fresh Composer when semantic evidence needed | Session policy |
+
+:::caution[No silent Fast or Auto]
+Doctor fails closed if Standard versus Fast cannot be distinguished. Fast variants and Auto are never silently selected.
+:::
+
+## Cursor default routing
+
+When Cursor workers are enabled (`cursor` in `BGSD.md`, no `--no-cursor`):
+
+```json
+"cursor": {
+  "models": {
+    "routine": "composer-2.5",
+    "hard": "cursor-grok-4.5-high"
+  }
+}
+```
+
+Doctor validates both selectors against `cursor-agent --list-models`.
+
+**Hard assignments require a reason.** The Conductor must record why a unit needs the hard tier — ambiguous scope, cross-cutting changes, security-sensitive work, etc.
+
+## Claude/Codex routing (`--no-cursor`)
+
+Four provider profiles:
+
+| Profile | Build lane | Evaluate lane |
+| --- | --- | --- |
+| `claude` | Claude | Claude |
+| `openai` | OpenAI | OpenAI |
+| `claude-openai` | Claude | OpenAI |
+| `openai-claude` | OpenAI | Claude |
+
+Defaults: Claude lanes use Opus at high effort; OpenAI lanes use GPT-5.6 Sol at medium effort.
+
+### Fixed vs adaptive
+
+| Mode | Behavior |
+| --- | --- |
+| `fixed` (default) | All build units use the selected build model |
+| `adaptive` | Conductor writes per-unit assignment + reason; missing assignment → heavy model |
+
+Adaptive routing is how the expensive-Conductor / cheaper-workers economy works. Mechanical work (renames, copy changes) can take the light tier with a recorded reason. Judgment-heavy work stays heavy.
+
+Evaluation-lane routing stays **fixed** — verification quality is never traded for tokens.
+
+## CLI overrides
+
+```sh
+node bgsd/scripts/session.mjs \
+  --prompt "..." \
+  --profile claude-openai \
+  --build-model claude-opus-4-20250514 \
+  --evaluate-model gpt-5.6-sol-medium \
+  --routing adaptive \
+  --light-build-model gpt-5.6-sol-fast
+```
+
+All model ids are provider-validated. API-key environment variables are scrubbed from child processes.
+
+## Recommended paths
+
+:::note[Model selector docs in progress]
+Per-session model selector UI and persisted preferences are actively being expanded. The paths below reflect current defaults and safe starting points.
+:::
+
+### Cursor-first (default)
+
+1. Start session from Cursor with Composer as your Conductor model
+2. Let routine units route to Composer 2.5 Standard
+3. Reserve Grok 4.5 for units the Conductor marks hard with a reason
+4. Run Doctor to confirm both selectors resolve in `cursor-agent --list-models`
+
+### Claude Code conductor, Cursor workers
+
+1. `/bgsd-sesh` from Claude Code (Opus or Sonnet — your choice)
+2. Default Cursor workers handle implementation
+3. Use `--routing adaptive` when you want light-tier mechanical units
+
+### Full Claude/Codex pipeline
+
+1. Pass `--no-cursor` and pick a profile matching your subscriptions
+2. Use `fixed` routing until you trust adaptive assignments
+3. Install GSD for both runtimes if running Feature/Project
+
+### Verification posture
+
+- Keep deterministic checks enabled (tests, typecheck, lint, build)
+- Allow fresh Composer semantic verification only when code inspection is necessary
+- Let the Conductor adjudicate — never treat verifier PASS as automatic ship
+
+## Related
+
+- [Conductor session](/conductor-session/) — steering and adaptive cadence
+- [Configuration](/configuration/) — `model_contract` and `cursor` blocks in `BGSD.md`
+- [Doctor](/doctor/) — selector validation at preflight

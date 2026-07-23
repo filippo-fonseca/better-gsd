@@ -1,8 +1,80 @@
 ---
 title: Install
-description: Install BGSD for your harness.
+description: Install BGSD for Claude Code, Cursor, or Codex.
 ---
 
-# Install
+BGSD ships as a plugin for Claude Code and Codex, and runs from any harness via the harness-neutral conductor launcher. Pick the path that matches where you work.
 
-Coming soon.
+## Claude Code
+
+```sh
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
+
+After install, use the `/bgsd-sesh` skill or run the conductor directly:
+
+```sh
+node bgsd/scripts/conductor.mjs "Build an audit log"
+```
+
+## Codex
+
+```sh
+codex plugin marketplace add filippo-fonseca/better-gsd
+codex plugin add bgsd@better-gsd
+```
+
+Same conductor entry point — Codex reads `bgsd/commands/bgsd-sesh.md` and the node scripts work identically.
+
+## Cursor
+
+Cursor does not use a plugin marketplace. Clone or add this repo, then launch a session from the integrated terminal or a Cursor Agent run:
+
+```sh
+node bgsd/scripts/conductor.mjs "Build an audit log"
+```
+
+BGSD detects the Cursor environment and routes routine work through **Cursor Agent CLI** (Composer 2.5 Standard) and hard work through **Grok 4.5 base** — unless you pass `--no-cursor` for Claude/Codex workers instead.
+
+## Install Open GSD (Feature / Project)
+
+Feature and Project modes run full GSD batches inside worktrees. Install GSD for the runtime you selected:
+
+```sh
+# Cursor GSD (Feature/Project with Cursor workers)
+npx -y @opengsd/gsd-core@latest --cursor --global
+
+# Claude Code runtime
+npx -y @opengsd/gsd-core@latest --claude --global
+
+# Codex runtime
+npx -y @opengsd/gsd-core@latest --codex --global
+```
+
+Quick mode skips GSD installation — the Conductor delegates to direct workers without GSD phases.
+
+## Verify before your first session
+
+Run Doctor after install to confirm CLI, subscription login, model selectors, and (when applicable) GSD are ready:
+
+```sh
+node bgsd/scripts/doctor.mjs
+```
+
+Or use the `/bgsd-doctor` skill in Claude Code / Codex.
+
+:::tip[Harness-agnostic core]
+The conductor, doctor, session, and queue scripts are plain Node. They work the same whether you launched from Claude Code, Cursor, or Codex — only the host-native selector UI and default worker routing differ.
+:::
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `bgsd/commands/` | Conductor instructions (`bgsd-sesh.md`, `bgsd-doctor.md`, …) |
+| `bgsd/scripts/` | Harness-neutral Node entry points (`session.mjs`, `doctor.mjs`, …) |
+| `BGSD.md` | Per-repo settings the Conductor reads every session |
+| `.bgsd/` | Session ledger, queue, and run artifacts |
+
+Continue to [Quickstart](/quickstart/) to start your first session.

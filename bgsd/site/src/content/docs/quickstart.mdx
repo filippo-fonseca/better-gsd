@@ -1,8 +1,102 @@
 ---
 title: Quickstart
-description: Start your first BGSD session.
+description: Start your first BGSD session in minutes.
 ---
 
-# Quickstart
+This walkthrough gets you from install to a running session. BGSD is **harness-agnostic** — the steps below work from Claude Code, Cursor, or Codex.
 
-Coming soon.
+## 1. Start a session
+
+Use the host skill or the conductor launcher from a git repository:
+
+```sh
+# Harness-neutral launcher (works from any terminal)
+node bgsd/scripts/conductor.mjs "Add export filters to the settings page"
+
+# Or the session script directly
+node bgsd/scripts/session.mjs --prompt "Add export filters to the settings page"
+```
+
+In Claude Code or Codex, `/bgsd-sesh "Add export filters"` does the same thing.
+
+## 2. Choose your setup
+
+The session selector covers:
+
+1. **Execution backend** — Cursor workers (default), or Claude Code / Codex workers (`--no-cursor`)
+2. **Profile & routing** — when using Claude/Codex: provider profile, fixed/adaptive routing, optional custom models
+3. **Verification depth** — as warranted by mode and scope
+
+BGSD Doctor runs before agents spawn. It verifies subscription login, CLI availability, configured model selectors, and GSD when Feature/Project needs it.
+
+## 3. Default: Cursor workers
+
+By default, Pipeline Agents run through **Cursor Agent CLI**:
+
+- **Routine** → Composer 2.5 Standard (`composer-2.5`)
+- **Hard** → Grok 4.5 base (`cursor-grok-4.5-high`) — requires a recorded reason
+
+```sh
+node bgsd/scripts/session.mjs --prompt "Add export filters"
+```
+
+Doctor checks `cursor-agent` on PATH, browser login (`cursor-agent login` — API keys rejected), and both model selectors in `cursor-agent --list-models`.
+
+## 4. Alternative: Claude Code / Codex workers
+
+Pass `--no-cursor` for an **equal alternative**, not a fallback:
+
+```sh
+node bgsd/scripts/session.mjs \
+  --prompt "Add export filters" \
+  --no-cursor \
+  --profile claude-openai \
+  --routing fixed
+```
+
+With `--no-cursor`, BGSD uses Claude/Codex profile, routing, authentication, build-lane, and evaluation-lane behavior. It does not probe `cursor-agent` or spawn Composer/Grok.
+
+## 5. Workflow depth
+
+The live Conductor owns workflow depth unless you override it:
+
+| Override | Example |
+| --- | --- |
+| CLI flag | `--quick`, `--feature`, `--project` |
+| Natural language | `Treat this as a project`, `Run it as a feature` |
+| Selector | Host-native Quick/Feature/Project picker when scope is unclear |
+
+A flag wins over natural language; clear natural language wins over automatic sizing.
+
+| Mode | What happens |
+| --- | --- |
+| **Quick** | Conductor writes a compact plan; direct workers edit in worktrees; no GSD phases |
+| **Feature** | A few GSD units in worktrees; Loop 2 when integration is needed |
+| **Project** | Full discuss → DAG → waves; Loop 1, Loop 2, fresh review, human gate |
+
+## 6. What to expect
+
+1. Conductor scopes the prompt and decomposes into units (if needed)
+2. Pipeline Agents build in isolated worktrees off `next`
+3. Verifiers run deterministic checks, then optional semantic evidence
+4. Conductor adjudicates and steers repairs
+5. Integrated work merges to `next` — **never to `main`**
+
+## Optional: proxy mode
+
+Use `--proxy` only when you want Claude Code's harness to call a foreign model through a local CLIProxyAPI endpoint:
+
+```sh
+export BGSD_PROXY_URL=http://127.0.0.1:8317
+export BGSD_PROXY_TOKEN=your-token
+
+node bgsd/scripts/session.mjs --prompt "..." --no-cursor --proxy
+```
+
+Proxy is explicit, never silent, and never used for Cursor workers.
+
+## Next steps
+
+- [Conductor session](/conductor-session/) — cadence, steering, and human gates
+- [Doctor](/doctor/) — what preflight checks cover
+- [Branch & safety](/branch-safety/) — how `next` and worktrees protect `main`
