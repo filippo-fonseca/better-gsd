@@ -1,8 +1,17 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import bgsdTheme from "./src/styles/shiki-bgsd.json";
 
 export default defineConfig({
   output: "static",
+  markdown: {
+    shikiConfig: {
+      themes: {
+        dark: bgsdTheme,
+      },
+      defaultColor: "dark",
+    },
+  },
   integrations: [
     starlight({
       title: "BGSD",
@@ -16,6 +25,12 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/starlight.css"],
+      expressiveCode: {
+        themes: [bgsdTheme],
+        defaultProps: {
+          wrap: true,
+        },
+      },
       sidebar: [
         {
           label: "Start here",

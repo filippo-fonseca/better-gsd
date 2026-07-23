@@ -1,1 +1,248 @@
-/* BGSD Starlight theme — populated in theme commit */
+@import "@fontsource/syne/400.css";
+@import "@fontsource/syne/600.css";
+@import "@fontsource/syne/700.css";
+@import "@fontsource/syne/800.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
+/* ── Banner palette ─────────────────────────────────────────────── */
+:root,
+::backdrop {
+  --bgsd-bg-top: #0a0c12;
+  --bgsd-bg-bottom: #08090e;
+  --bgsd-lime: #a3e635;
+  --bgsd-teal: #34d399;
+  --bgsd-purple: #8a63d2;
+  --bgsd-purple-light: #a78bfa;
+  --bgsd-gold: #f0b429;
+  --bgsd-muted: #9aa6bc;
+  --bgsd-wordmark: #cfc3ff;
+  --bgsd-panel: #090d11;
+  --bgsd-line: #2a3446;
+
+  /* Starlight tokens */
+  --sl-font: "Syne", ui-sans-serif, sans-serif;
+  --sl-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --sl-color-white: #eae6ff;
+  --sl-color-gray-1: #cfc3ff;
+  --sl-color-gray-2: #9aa6bc;
+  --sl-color-gray-3: #7e8aa0;
+  --sl-color-gray-4: #5a6474;
+  --sl-color-gray-5: #232b3a;
+  --sl-color-gray-6: #0e121a;
+  --sl-color-black: #08090e;
+
+  --sl-color-accent-low: #1a2410;
+  --sl-color-accent: #a3e635;
+  --sl-color-accent-high: #d9f99d;
+
+  --sl-color-text: var(--sl-color-gray-1);
+  --sl-color-text-accent: var(--bgsd-teal);
+
+  --sl-color-bg: var(--bgsd-bg-top);
+  --sl-color-bg-nav: #0c0f16;
+  --sl-color-bg-sidebar: #0a0c12;
+  --sl-color-bg-inline-code: var(--bgsd-panel);
+  --sl-color-bg-accent: var(--sl-color-accent-low);
+  --sl-color-hairline: var(--bgsd-line);
+  --sl-color-hairline-shade: #1a2030;
+
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.35rem;
+  --sl-line-height: 1.65;
+  --sl-content-width: 46rem;
+}
+
+/* Subtle dot-grid + gradient backdrop */
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 40%, #8a63d218 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 85% 70%, #34d39912 0%, transparent 50%),
+    radial-gradient(ellipse 40% 35% at 55% 90%, #a3e63510 0%, transparent 45%),
+    linear-gradient(165deg, var(--bgsd-bg-top) 0%, #0c0f16 55%, var(--bgsd-bg-bottom) 100%);
+}
+
+/* Header / site title */
+.site-title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #ffffff 0%, var(--bgsd-wordmark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+header.header {
+  border-bottom: 1px solid var(--bgsd-line);
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--bgsd-bg-top) 85%, transparent);
+}
+
+/* Sidebar */
+.sidebar {
+  border-inline-end: 1px solid var(--bgsd-line);
+}
+
+.sidebar-content a[aria-current="page"] {
+  color: var(--bgsd-lime);
+  background: #a3e63514;
+  border-inline-start: 2px solid var(--bgsd-lime);
+}
+
+.sidebar-content a:hover {
+  color: var(--bgsd-teal);
+}
+
+/* Headings */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content h1 {
+  background: linear-gradient(135deg, #ffffff 0%, var(--bgsd-wordmark) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sl-markdown-content h2 {
+  border-bottom: 1px solid var(--bgsd-line);
+  padding-bottom: 0.35em;
+}
+
+/* Links */
+.sl-markdown-content a:not(:where(.sl-heading-link)) {
+  color: var(--bgsd-teal);
+  text-decoration-color: #34d39955;
+}
+
+.sl-markdown-content a:not(:where(.sl-heading-link)):hover {
+  color: var(--bgsd-lime);
+  text-decoration-color: var(--bgsd-lime);
+}
+
+/* Inline code */
+:not(pre) > code {
+  border: 1px solid var(--bgsd-line);
+  background: var(--bgsd-panel) !important;
+  color: var(--bgsd-gold);
+  font-family: var(--sl-font-mono);
+  font-size: 0.88em;
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+}
+
+/* Code blocks — expressive-code panels */
+.expressive-code {
+  --ec-brdRad: 10px;
+  --ec-brdWd: 1px;
+  --ec-brdCol: var(--bgsd-line);
+  --ec-codeFg: #eae6ff;
+  --ec-codeBg: var(--bgsd-panel);
+  --ec-codeFontFamily: var(--sl-font-mono);
+  --ec-codeFontSize: 0.85rem;
+  --ec-codeLineHt: 1.7;
+  --ec-gtrFg: #5a6474;
+  --ec-gtrBg: #0e121a;
+  --ec-gtrBrdCol: var(--bgsd-line);
+  --ec-gtrTab1Col: var(--bgsd-lime);
+  --ec-gtrTab2Col: var(--bgsd-purple-light);
+  --ec-gtrTab3Col: var(--bgsd-teal);
+  --ec-gtrTab4Col: var(--bgsd-gold);
+  --ec-gtrTab5Col: #fb7185;
+  --ec-gtrTab6Col: var(--bgsd-muted);
+  --ec-gtrTab7Col: var(--bgsd-purple);
+  --ec-gtrTab8Col: #e879f9;
+  --ec-gtrTab9Col: #38bdf8;
+  --ec-gtrTab10Col: #f472b6;
+  --ec-gtrTab11Col: #a3e635;
+  --ec-gtrTab12Col: #34d399;
+  --ec-gtrTab13Col: #f0b429;
+  --ec-gtrTab14Col: #a78bfa;
+  --ec-gtrTab15Col: #9aa6bc;
+  --ec-gtrTab16Col: #cfc3ff;
+  --ec-gtrTab17Col: #7dd3fc;
+  --ec-gtrTab18Col: #86efac;
+  --ec-gtrTab19Col: #fcd34d;
+  --ec-gtrTab20Col: #c4b5fd;
+}
+
+.expressive-code .frame {
+  box-shadow: 0 24px 70px #0000003d;
+}
+
+/* Tables */
+.sl-markdown-content table {
+  border: 1px solid var(--bgsd-line);
+}
+
+.sl-markdown-content th {
+  background: #0e121a;
+  color: var(--bgsd-lime);
+  font-family: var(--sl-font-mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sl-markdown-content tr:nth-child(even) {
+  background: #0e121a66;
+}
+
+/* Blockquotes */
+.sl-markdown-content blockquote {
+  border-inline-start: 3px solid var(--bgsd-purple);
+  background: #8a63d210;
+  color: var(--bgsd-muted);
+}
+
+/* Accent bottom line on content (banner motif) */
+main.main-frame {
+  position: relative;
+}
+
+/* Search */
+site-search button {
+  border-color: var(--bgsd-line);
+  background: var(--bgsd-panel);
+}
+
+site-search button:hover {
+  border-color: var(--bgsd-teal);
+}
+
+/* Social / GitHub icon hover */
+.social-icons a:hover {
+  color: var(--bgsd-lime);
+}
+
+/* Starlight card/aside accents */
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--bgsd-teal);
+  border-color: #34d39944;
+  background: #34d3990d;
+}
+
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--bgsd-lime);
+  border-color: #a3e63544;
+  background: #a3e6350d;
+}
+
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--bgsd-gold);
+  border-color: #f0b42944;
+  background: #f0b4290d;
+}
+
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: #fb7185;
+  border-color: #fb718544;
+  background: #fb71850d;
+}
