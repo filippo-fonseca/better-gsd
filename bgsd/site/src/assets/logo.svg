@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="bgsd">
+  <!-- Four parallel worktree rails converging to a conductor node -->
+  <rect x="3" y="6" width="12" height="2.5" rx="1.25" fill="#A3E635"/>
+  <rect x="3" y="12.5" width="16" height="2.5" rx="1.25" fill="#34D399"/>
+  <rect x="3" y="19" width="12" height="2.5" rx="1.25" fill="#A78BFA"/>
+  <rect x="3" y="25.5" width="8" height="2.5" rx="1.25" fill="#9AA6BC"/>
+  <circle cx="24.5" cy="16" r="5" fill="#0A0C12" stroke="#A3E635" stroke-width="2"/>
+  <circle cx="24.5" cy="16" r="2" fill="#A3E635"/>
+</svg>

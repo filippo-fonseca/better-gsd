@@ -1,102 +1,99 @@
 ---
 title: Harnesses
-description: Claude Code, Cursor, and Codex — first-class hosts for the same conductor.
+description: Claude Code, Cursor, and Codex — same /bgsd-* commands, same conductor.
 ---
 
-BGSD is **harness-agnostic**. The Conductor runs by reading markdown command files and invoking plain Node scripts — it does not depend on a specific IDE or CLI vendor. Three harnesses are first-class today.
+BGSD is **harness-agnostic**. The Conductor is markdown under `bgsd/commands/` plus plain Node scripts. Slash commands (`/bgsd-sesh`, `/bgsd-doctor`, …) are the preferred front door in every host that surfaces them.
 
-## How harness detection works
+## Slash commands everywhere
 
-`BGSD.md` includes a `harness` block. The default is `auto`, which detects from the environment:
-
-| Harness | Detection signal |
+| Host | How `/bgsd-*` shows up |
 | --- | --- |
-| **Claude Code** | `CLAUDE_PLUGIN_ROOT` or Claude CLI context |
-| **Codex** | Codex plugin / CLI context |
-| **Cursor** | Cursor Agent environment or `cursor-agent` availability |
+| **Claude Code** | Plugin marketplace → skills + slash commands |
+| **Cursor** | Repo / plugin skills and command markdown — type `/bgsd-` in chat |
+| **Codex** | Codex plugin → skills from `bgsd/skills/` |
 
-Pin explicitly when you want to force one:
+If a host doesn't list a command yet, run the same flow via:
 
-```json
-"harness": {
-  "active": "cursor"
-}
+```sh
+node bgsd/scripts/conductor.mjs "<what to build>"
 ```
 
-Valid values: `"auto"`, `"claude"`, `"codex"`, `"cursor"`.
+That loads `bgsd/commands/bgsd-sesh.md` and exports `CLAUDE_PLUGIN_ROOT` so every script path works.
 
 ## Claude Code
 
-The native path for Anthropic subscribers. Install the plugin, then:
+```sh
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
 
 ```
 /bgsd-sesh "Build an audit log"
 ```
 
-- Conductor = your live Claude session (never swapped)
-- Default workers = Cursor Agent CLI unless `--no-cursor`
-- Selectors use Claude's native question UI
-- Skills map to `bgsd/commands/*.md`
-
-Launch without the plugin:
-
-```sh
-node bgsd/scripts/conductor.mjs "Build an audit log"
-```
+- Conductor = your live Claude session
+- Default workers = Cursor Agent CLI (unless you pick Claude/Codex-only paths)
+- Native `AskUserQuestion` selectors
 
 ## Cursor
 
-No plugin marketplace — run from the repo directly:
+Open this repo (or install the plugin where Cursor discovers skills). Prefer slash commands:
+
+```
+/bgsd-sesh "Build an audit log"
+/bgsd-doctor
+/bgsd-status
+```
+
+Fallback:
 
 ```sh
 node bgsd/scripts/conductor.mjs "Build an audit log"
 ```
 
-- Conductor = your live Cursor session (Composer, Grok, or whatever you started with)
-- Default workers = `cursor-agent` with Composer routine / Grok hard routing
-- Doctor validates browser login and model selectors
-- Feature/Project installs Open GSD for Cursor (`--cursor`)
-
-Cursor authentication is subscription/browser-login only. Child processes scrub `CURSOR_API_KEY`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
+- Conductor = your live Cursor session model
+- Default workers = `cursor-agent` (Composer routine / Grok hard)
+- Doctor checks browser login + Standard selectors (never Fast/Auto)
 
 ## Codex
 
-OpenAI's Codex harness with the same plugin install as documented in [Install](/install/):
+```sh
+codex plugin marketplace add filippo-fonseca/better-gsd
+codex plugin add bgsd@better-gsd
+```
 
 ```
 /bgsd-sesh "Build an audit log"
 ```
 
 - Conductor = your live Codex session
-- Workers default to Cursor unless `--no-cursor`
-- Claude/Codex workers use GPT-5.x Sol lanes per profile
+- Same command set and Node engine as Claude Code
 
-## Cross-harness conductor
+## Harness detection
 
-The conductor launcher is intentionally harness-neutral:
+`BGSD.md` → `harness.active` defaults to `"auto"`:
 
-```sh
-node bgsd/scripts/conductor.mjs "<what to build>" [--project|--feature|--quick]
-```
-
-It loads `bgsd/commands/bgsd-sesh.md`, exports `CLAUDE_PLUGIN_ROOT` so every `node "${CLAUDE_PLUGIN_ROOT}/scripts/…"` path works, and hands control to whichever harness launched it.
-
-This means you can drive the **entire** BGSD pipeline from Codex, Cursor, or a plain terminal — the MD files are the contract.
-
-## Choosing a harness
-
-| If you… | Start with… |
+| Value | Meaning |
 | --- | --- |
-| Live in Claude Code daily | Plugin + `/bgsd-sesh` |
-| Prefer Cursor Agent for workers | Repo + `conductor.mjs` (default routing) |
-| Want Claude/Codex-only workers | Any harness + `--no-cursor` |
-| Need scripted/CI invocation | `node bgsd/scripts/session.mjs` directly |
+| `auto` | Detect from env (`CLAUDE_PLUGIN_ROOT`, Codex, Cursor, …) |
+| `claude` / `codex` / `cursor` | Pin explicitly |
 
-:::note[Equal alternatives]
-`--no-cursor` is not a degraded mode. Claude Code / Codex workers are a full pipeline with their own build and evaluation lanes — Doctor, routing, and verification contracts are identical.
+## Choosing a host
+
+| If you… | Do this |
+| --- | --- |
+| Live in Claude Code | Plugin + `/bgsd-sesh` |
+| Live in Cursor | Repo open + `/bgsd-sesh` (or `conductor.mjs`) |
+| Live in Codex | Plugin + `/bgsd-sesh` |
+| Need CI / scripts | `node bgsd/scripts/session.mjs` |
+
+:::note[Equal backends]
+`--no-cursor` / Claude-only and Codex-only presets are full pipelines — not fallbacks. Doctor, routing, and verification contracts match the Cursor path.
 :::
 
 ## Related
 
-- [Models & routing](/models/) — how worker models are chosen each session
-- [Configuration](/configuration/) — `harness` and `model_contract` in `BGSD.md`
+- [Install](/install/) — marketplace + Cursor setup
+- [Commands](/commands/) — every `/bgsd-*`
+- [Models & routing](/models/) — session path selectors

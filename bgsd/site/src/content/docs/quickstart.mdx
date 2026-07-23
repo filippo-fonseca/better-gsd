@@ -1,102 +1,84 @@
 ---
 title: Quickstart
-description: Start your first BGSD session in minutes.
+description: First /bgsd-sesh in minutes — Claude Code, Cursor, or Codex.
 ---
-
-This walkthrough gets you from install to a running session. BGSD is **harness-agnostic** — the steps below work from Claude Code, Cursor, or Codex.
 
 ## 1. Start a session
 
-Use the host skill or the conductor launcher from a git repository:
+In **Claude Code**, **Cursor**, or **Codex** (after [Install](/install/)):
+
+```
+/bgsd-sesh "Add export filters to the settings page"
+```
+
+Equivalents if you prefer the terminal:
 
 ```sh
-# Harness-neutral launcher (works from any terminal)
 node bgsd/scripts/conductor.mjs "Add export filters to the settings page"
-
-# Or the session script directly
 node bgsd/scripts/session.mjs --prompt "Add export filters to the settings page"
 ```
 
-In Claude Code or Codex, `/bgsd-sesh "Add export filters"` does the same thing.
+## 2. Choose your path
 
-## 2. Choose your setup
+Every **new** session asks via native selectors (not prose):
 
-The session selector covers:
+1. **Recommended path preset** — Cursor default, Claude Code only, Claude + Cursor, Claudex, Codex only, or Custom mix
+2. **Optional multi-select** — Claude Opus, Composer 2.5 Standard, Grok 4.5 Standard, GPT 5.6 Sol high, Custom…
 
-1. **Execution backend** — Cursor workers (default), or Claude Code / Codex workers (`--no-cursor`)
-2. **Profile & routing** — when using Claude/Codex: provider profile, fixed/adaptive routing, optional custom models
-3. **Verification depth** — as warranted by mode and scope
+Then **Doctor** validates what you picked. Details → [Models & routing](/models/).
 
-BGSD Doctor runs before agents spawn. It verifies subscription login, CLI availability, configured model selectors, and GSD when Feature/Project needs it.
-
-## 3. Default: Cursor workers
-
-By default, Pipeline Agents run through **Cursor Agent CLI**:
+## 3. Default workers (Cursor path)
 
 - **Routine** → Composer 2.5 Standard (`composer-2.5`)
-- **Hard** → Grok 4.5 base (`cursor-grok-4.5-high`) — requires a recorded reason
+- **Hard** → Grok 4.5 Standard (`cursor-grok-4.5-high`) — recorded reason required
 
-```sh
-node bgsd/scripts/session.mjs --prompt "Add export filters"
+```
+/bgsd-sesh "Add export filters"
 ```
 
-Doctor checks `cursor-agent` on PATH, browser login (`cursor-agent login` — API keys rejected), and both model selectors in `cursor-agent --list-models`.
+## 4. Claude / Codex workers instead
 
-## 4. Alternative: Claude Code / Codex workers
-
-Pass `--no-cursor` for an **equal alternative**, not a fallback:
+Pick **Claude Code only**, **Claudex**, or **Codex only** in the selector — or pass flags:
 
 ```sh
 node bgsd/scripts/session.mjs \
   --prompt "Add export filters" \
   --no-cursor \
-  --profile claude-openai \
-  --routing fixed
+  --profile claude-openai
 ```
 
-With `--no-cursor`, BGSD uses Claude/Codex profile, routing, authentication, build-lane, and evaluation-lane behavior. It does not probe `cursor-agent` or spawn Composer/Grok.
-
-## 5. Workflow depth
-
-The live Conductor owns workflow depth unless you override it:
+## 5. Depth
 
 | Override | Example |
 | --- | --- |
-| CLI flag | `--quick`, `--feature`, `--project` |
-| Natural language | `Treat this as a project`, `Run it as a feature` |
-| Selector | Host-native Quick/Feature/Project picker when scope is unclear |
-
-A flag wins over natural language; clear natural language wins over automatic sizing.
+| Slash / CLI | `/bgsd-sesh --feature "…"`, `--quick`, `--project` |
+| Natural language | `Treat this as a project` |
+| Selector | Quick / Feature / Project when scope is unclear |
 
 | Mode | What happens |
 | --- | --- |
-| **Quick** | Conductor writes a compact plan; direct workers edit in worktrees; no GSD phases |
-| **Feature** | A few GSD units in worktrees; Loop 2 when integration is needed |
-| **Project** | Full discuss → DAG → waves; Loop 1, Loop 2, fresh review, human gate |
+| **Quick** | Direct workers in worktrees; no GSD |
+| **Feature** | A few GSD units; Loop 2 when needed |
+| **Project** | Full discuss → DAG → waves; human gate |
 
 ## 6. What to expect
 
-1. Conductor scopes the prompt and decomposes into units (if needed)
-2. Pipeline Agents build in isolated worktrees off `next`
-3. Verifiers run deterministic checks, then optional semantic evidence
-4. Conductor adjudicates and steers repairs
-5. Integrated work merges to `next` — **never to `main`**
+1. Conductor scopes and decomposes
+2. Workers build in isolated worktrees off `next`
+3. Deterministic checks, then optional semantic evidence
+4. Conductor adjudicates / steers repairs
+5. Work merges to `next` — **never `main`**
 
-## Optional: proxy mode
+Useful while it runs:
 
-Use `--proxy` only when you want Claude Code's harness to call a foreign model through a local CLIProxyAPI endpoint:
-
-```sh
-export BGSD_PROXY_URL=http://127.0.0.1:8317
-export BGSD_PROXY_TOKEN=your-token
-
-node bgsd/scripts/session.mjs --prompt "..." --no-cursor --proxy
+```
+/bgsd-status
+/bgsd-pause
+/bgsd-gui
 ```
 
-Proxy is explicit, never silent, and never used for Cursor workers.
+## Next
 
-## Next steps
-
-- [Conductor session](/conductor-session/) — cadence, steering, and human gates
-- [Doctor](/doctor/) — what preflight checks cover
-- [Branch & safety](/branch-safety/) — how `next` and worktrees protect `main`
+- [Commands](/commands/) — full `/bgsd-*` list
+- [Conductor session](/conductor-session/) — steering and gates
+- [Branch & safety](/branch-safety/) — why `main` stays protected

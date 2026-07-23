@@ -15,7 +15,6 @@ export default defineConfig({
     },
   },
   integrations: [
-    // Mermaid must register before Starlight so fenced ```mermaid blocks render.
     mermaid({
       theme: "dark",
       autoTheme: true,
@@ -39,9 +38,13 @@ export default defineConfig({
       },
     }),
     starlight({
-      title: "BGSD",
+      title: "bgsd",
       description:
         "Harness-agnostic verified GSD conductor — parallel worktrees, real verification, main stays protected.",
+      logo: {
+        src: "./src/assets/logo.svg",
+        alt: "bgsd",
+      },
       social: [
         {
           icon: "github",
@@ -60,7 +63,7 @@ export default defineConfig({
         {
           label: "Start here",
           items: [
-            { label: "Overview", slug: "overview" },
+            { label: "Overview", slug: "" },
             { label: "Install", slug: "install" },
             { label: "Quickstart", slug: "quickstart" },
           ],

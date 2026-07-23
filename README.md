@@ -152,6 +152,6 @@ Browse the full documentation locally:
 cd bgsd/site && npm i && npm run dev
 ```
 
-Then open [http://localhost:4321](http://localhost:4321) for the landing page and [http://localhost:4321/overview/](http://localhost:4321/overview/) for docs.
+Then open [http://localhost:4321](http://localhost:4321) for the docs (Overview is the home page).
 
-The detailed source docs also live in [bgsd/docs](./bgsd/docs), and the built site deploys from [bgsd/site](./bgsd/site).
+Source MDX also lives in [bgsd/docs](./bgsd/docs); the Starlight site builds from [bgsd/site](./bgsd/site).

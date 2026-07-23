@@ -138,7 +138,7 @@ better-gsd/
     docs/                         *.mdx doc pages
     fixtures/                     canary Next.js fixture (PASS on /, FAIL on /buggy)
     schemas/                      verification-report JSON Schema
-    site/                         landing page
+    site/                         Starlight docs site
     PERSONALITY.md                Kiwi voice contract
     README.md                     plugin-level readme
 ```
