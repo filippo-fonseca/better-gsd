@@ -1,27 +1,69 @@
 ---
 title: Models & routing
-description: Model selection every session — Conductor stays, workers route.
+description: Every session asks which executor paths to use — presets, multi-select, and custom.
 ---
 
-BGSD separates **who reasons** (the Conductor) from **who executes** (Pipeline Agents and verifiers). Model selection happens every session through selectors and `BGSD.md` — nothing is silently upgraded to Fast or Auto.
+BGSD separates **who reasons** (the Conductor) from **who executes** (Pipeline Agents and verifiers). **Every new session** asks which worker/executor model paths to use through a Claude Code–style native selector. Doctor validates afterward — it never chooses for you.
 
-## The contract
+Resume rehydrates the contract from `run.json` and skips setup selectors.
+
+## Every-session selectors
+
+Native UI only (`AskUserQuestion` / `request_user_input`). Never prose like “which model?”.
+
+### Step 1 — recommended path preset (single-select)
+
+Recommended option is listed first.
+
+| Option | Meaning | Default flags |
+| --- | --- | --- |
+| **Cursor default (Recommended)** | Composer routine + Grok hard via `cursor-agent` | *(none — Cursor on by default)* |
+| **Claude Code only** | Opus for build and evaluation | `--no-cursor --profile claude` |
+| **Claude + Cursor** | Conductor on Claude; Cursor workers for units | `--profile claude` |
+| **Claudex** | Claude + Codex hybrid (`claude-openai` or `openai-claude`) | `--no-cursor --profile <choice>` |
+| **Codex only** | GPT 5.6 Sol at **high** effort | `--no-cursor --profile openai --build-effort high --evaluate-effort high` |
+| **Custom mix…** | Continue to Step 2 multi-select | assembled from selections |
+
+### Step 2 — executor model paths (multi-select)
+
+Shown for **Custom mix…**, or when confirming overrides. Built-in free-form **Other** accepts custom ids (Doctor must validate).
+
+| Option | Model id | Notes |
+| --- | --- | --- |
+| **Claude Opus** | `claude-opus-4-8` | Claude Code workers; high effort |
+| **Cursor CLI · Composer 2.5 Standard (Default)** | `composer-2.5` | Routine Cursor lane — never Fast |
+| **Cursor CLI · Grok 4.5 Standard** | `cursor-grok-4.5-high` | Hard Cursor lane — never Fast |
+| **GPT 5.6 Sol · high** | `gpt-5.6-sol` | Codex workers at **high** effort (not medium) |
+| **Custom…** | free-form | `--build-model` / `--evaluate-model` / cursor model flags |
+
+:::caution[No silent Fast or Auto]
+Fast variants and Auto are never selector options and never silently selected. Doctor fails closed if Standard versus Fast cannot be distinguished.
+:::
+
+## Recommended paths (what to pick)
+
+| Path | When to use | Conductor | Workers |
+| --- | --- | --- | --- |
+| **Cursor default** | Everyday BGSD — best cost/quality default | Any harness session | Composer 2.5 + Grok 4.5 (hard + reason) |
+| **Claude Code only** | Anthropic-only subscriptions; no Cursor CLI | Claude Code | Opus build + eval |
+| **Claude + Cursor** | Claude as Advisor; Cursor Agent for grunt work | Claude Code | Composer / Grok |
+| **Claudex** | Want Claude build + OpenAI eval (or reverse) | Claude or Codex | Hybrid lanes under `--no-cursor` |
+| **Codex only** | OpenAI-only; Sol at high reasoning | Codex | `gpt-5.6-sol` @ high |
+| **Custom mix** | You know exact model ids / unusual combos | Any | Your multi-select |
+
+## Role contract
 
 | Role | Model | Chosen at |
 | --- | --- | --- |
 | **Conductor** | Your live session model | Session start — BGSD never replaces it |
-| **Routine workers** | Composer 2.5 Standard (`composer-2.5`) | Default when Cursor is enabled |
-| **Hard workers** | Grok 4.5 base (`cursor-grok-4.5-high`) | Conductor assignment with recorded reason |
-| **Claude/Codex workers** | Profile defaults (Opus, GPT-5.x Sol, …) | `--no-cursor` or explicit `claude-codex` assignment |
-| **Verifiers** | Deterministic first; fresh Composer when semantic evidence needed | Session policy |
-
-:::caution[No silent Fast or Auto]
-Doctor fails closed if Standard versus Fast cannot be distinguished. Fast variants and Auto are never silently selected.
-:::
+| **Routine workers** | Composer 2.5 Standard (`composer-2.5`) | Cursor default / multi-select |
+| **Hard workers** | Grok 4.5 Standard (`cursor-grok-4.5-high`) | Conductor assignment with recorded reason |
+| **Claude/Codex workers** | Opus / Sol (effort from preset) | Claude-only, Claudex, Codex-only, or custom |
+| **Verifiers** | Deterministic first; fresh Composer when needed | Session policy |
 
 ## Cursor default routing
 
-When Cursor workers are enabled (`cursor` in `BGSD.md`, no `--no-cursor`):
+When Cursor workers are enabled:
 
 ```json
 "cursor": {
@@ -34,11 +76,9 @@ When Cursor workers are enabled (`cursor` in `BGSD.md`, no `--no-cursor`):
 
 Doctor validates both selectors against `cursor-agent --list-models`.
 
-**Hard assignments require a reason.** The Conductor must record why a unit needs the hard tier — ambiguous scope, cross-cutting changes, security-sensitive work, etc.
+**Hard assignments require a reason.** Ambiguous scope, cross-cutting changes, security-sensitive work, etc.
 
 ## Claude/Codex routing (`--no-cursor`)
-
-Four provider profiles:
 
 | Profile | Build lane | Evaluate lane |
 | --- | --- | --- |
@@ -47,7 +87,7 @@ Four provider profiles:
 | `claude-openai` | Claude | OpenAI |
 | `openai-claude` | OpenAI | Claude |
 
-Defaults: Claude lanes use Opus at high effort; OpenAI lanes use GPT-5.6 Sol at medium effort.
+Pipeline defaults when not overridden by selectors: Claude lanes use Opus at **high** effort; OpenAI lanes use GPT-5.6 Sol at **medium** effort. The **Codex only** preset and the **GPT 5.6 Sol · high** multi-select option force Sol to **high** via `--build-effort high --evaluate-effort high`.
 
 ### Fixed vs adaptive
 
@@ -56,57 +96,35 @@ Defaults: Claude lanes use Opus at high effort; OpenAI lanes use GPT-5.6 Sol at 
 | `fixed` (default) | All build units use the selected build model |
 | `adaptive` | Conductor writes per-unit assignment + reason; missing assignment → heavy model |
 
-Adaptive routing is how the expensive-Conductor / cheaper-workers economy works. Mechanical work (renames, copy changes) can take the light tier with a recorded reason. Judgment-heavy work stays heavy.
-
 Evaluation-lane routing stays **fixed** — verification quality is never traded for tokens.
 
 ## CLI overrides
 
 ```sh
-node bgsd/scripts/session.mjs \
-  --prompt "..." \
-  --profile claude-openai \
-  --build-model claude-opus-4-20250514 \
-  --evaluate-model gpt-5.6-sol-medium \
-  --routing adaptive \
-  --light-build-model gpt-5.6-sol-fast
+# Cursor default (recommended)
+node bgsd/scripts/session.mjs --prompt "Build an audit log"
+
+# Claude Code only
+node bgsd/scripts/session.mjs --prompt "..." --no-cursor --profile claude
+
+# Codex only — Sol high
+node bgsd/scripts/session.mjs --prompt "..." \
+  --no-cursor --profile openai \
+  --build-effort high --evaluate-effort high
+
+# Custom ids
+node bgsd/scripts/session.mjs --prompt "..." \
+  --no-cursor --profile claude-openai \
+  --build-model claude-opus-4-8 \
+  --evaluate-model gpt-5.6-sol \
+  --build-effort high --evaluate-effort high
 ```
 
 All model ids are provider-validated. API-key environment variables are scrubbed from child processes.
 
-## Recommended paths
-
-:::note[Model selector docs in progress]
-Per-session model selector UI and persisted preferences are actively being expanded. The paths below reflect current defaults and safe starting points.
-:::
-
-### Cursor-first (default)
-
-1. Start session from Cursor with Composer as your Conductor model
-2. Let routine units route to Composer 2.5 Standard
-3. Reserve Grok 4.5 for units the Conductor marks hard with a reason
-4. Run Doctor to confirm both selectors resolve in `cursor-agent --list-models`
-
-### Claude Code conductor, Cursor workers
-
-1. `/bgsd-sesh` from Claude Code (Opus or Sonnet — your choice)
-2. Default Cursor workers handle implementation
-3. Use `--routing adaptive` when you want light-tier mechanical units
-
-### Full Claude/Codex pipeline
-
-1. Pass `--no-cursor` and pick a profile matching your subscriptions
-2. Use `fixed` routing until you trust adaptive assignments
-3. Install GSD for both runtimes if running Feature/Project
-
-### Verification posture
-
-- Keep deterministic checks enabled (tests, typecheck, lint, build)
-- Allow fresh Composer semantic verification only when code inspection is necessary
-- Let the Conductor adjudicate — never treat verifier PASS as automatic ship
-
 ## Related
 
-- [Conductor session](/conductor-session/) — steering and adaptive cadence
+- [Conductor session](/conductor-session/) — when selectors fire and how steering works
+- [Doctor](/doctor/) — validates chosen models; does not pick them
 - [Configuration](/configuration/) — `model_contract` and `cursor` blocks in `BGSD.md`
-- [Doctor](/doctor/) — selector validation at preflight
+- [Harnesses](/harnesses/) — Claude Code, Cursor, Codex hosts
