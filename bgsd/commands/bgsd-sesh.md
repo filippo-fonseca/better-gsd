@@ -60,35 +60,87 @@ selector. An answer inferred from a typed reply you solicited, from silence,
 or from "no objections" is not a sealed decision; if you catch yourself about
 to ask anything as plain text, stop and re-shape it as a selector first.
 
-## Setup
+## Setup — mandatory model path (every new session)
 
-First choose the **execution backend**:
+**Every new session** MUST present native selectors for worker/executor model
+paths before any planning or execution. Use AskUserQuestion (Claude Code) or
+`request_user_input` (elsewhere) — never prose such as "which model?". Resume
+rehydrates the stored contract from `run.json` and **skips** setup selectors;
+only brand-new sessions ask.
 
-1. **Cursor workers — Composer routine, Grok hard (Recommended)**
-2. **Claude Code / Codex workers** (`--no-cursor`)
+**Doctor runs AFTER selection.** BGSD Doctor validates the chosen models and
+auth — it does not choose them. For Feature and Project scale, Doctor is a hard
+code gate enforced by the engine. If setup is missing after validation, offer
+the native Install and Continue selector action.
 
-When Cursor is selected, ordinary units execute through `cursor-agent`:
-Composer 2.5 Standard (`composer-2.5`) for routine work and Grok 4.5 base
-(`cursor-grok-4.5-high`) for hard work with a recorded reason. Fast variants
-and Auto are never silently selected. The Claude/OpenAI profile selector then
-controls the optional Claude/Codex contract (for explicit `claude-codex`
-assignments), not ordinary Cursor execution.
+Fast variants and Auto are **never** allowed in any selector option or custom
+entry.
 
-When Claude/Codex / `--no-cursor` is selected, choose the pipeline profile,
-optional custom model ids, fixed or adaptive routing, and verification depth.
-With `--no-cursor`, BGSD performs zero Cursor probes, auth checks, model checks,
-or spawns. Claude/Codex is an equal alternative backend — not a fallback.
+### Step 1 — recommended path preset (native single-select)
 
-Run BGSD Doctor before any work; for Feature and Project scale, Doctor is a
-hard code gate enforced by the engine, not a courtesy check. Cursor-enabled
-Doctor requires `cursor-agent`, browser login (`cursor-agent login` — API keys
-rejected), and both configured model selectors. If setup is missing, offer the
-native Install and Continue selector action.
+Present this selector first. Put the recommended option at the top of the list.
+
+| Option label | Meaning |
+|---|---|
+| **Cursor default (Recommended)** | Composer routine + Grok hard via `cursor-agent` |
+| **Claude Code only** | Opus for build and evaluation (`--no-cursor`) |
+| **Claude + Cursor** | Conductor stays on Claude; Cursor workers for units |
+| **Claudex** | Claude + Codex hybrid profiles (`claude-openai` or `openai-claude`) |
+| **Codex only** | GPT 5.6 Sol at **high** effort (`--no-cursor`) |
+| **Custom mix…** | Continue to Step 2 multi-select |
+
+### Step 2 — executor model paths (when preset is Custom mix, or to confirm overrides)
+
+Present a native **multi-select** (or a clear single→multi flow) with these
+fixed options plus built-in free-form **Other** for custom ids:
+
+| Option label | Model id | Notes |
+|---|---|---|
+| **Claude Opus** | `claude-opus-4-8` | Claude Code workers; high effort (default) |
+| **Cursor CLI · Composer 2.5 Standard** | `composer-2.5` | Routine Cursor lane; never Fast |
+| **Cursor CLI · Grok 4.5 Standard** | `cursor-grok-4.5-high` | Hard Cursor lane; never Fast |
+| **GPT 5.6 Sol · high** | `gpt-5.6-sol` | Codex workers at **high** effort (not medium) |
+| **Custom…** | (Other) | Free-form id(s); Doctor must validate |
+
+Mark defaults in labels: **(Recommended)** on Cursor default preset;
+**(Default)** on Claude Opus effort and Composer/Grok Standard selectors.
+
+### Mapping presets → `session.mjs` flags
+
+| Preset | Flags |
+|---|---|
+| **Cursor default** | (none — Cursor enabled by default) |
+| **Claude Code only** | `--no-cursor --profile claude` |
+| **Claude + Cursor** | default Cursor + `--profile claude` (Claude/Codex contract for `claude-codex` units) |
+| **Claudex** | native sub-selector: `claude-openai` (Claude build / OpenAI eval) or `openai-claude` (OpenAI build / Claude eval); then `--no-cursor --profile <choice>` |
+| **Codex only** | `--no-cursor --profile openai --build-effort high --evaluate-effort high` |
+| **Custom mix** | Combine flags from Step 2 selections (see below) |
+
+**Custom mix flag assembly** (from Step 2 multi-select):
+
+- Any Cursor model selected → Cursor enabled; set `--cursor-routine-model` /
+  `--cursor-hard-model` when non-default ids chosen.
+- Only Claude Opus (no Cursor, no Codex) → `--no-cursor --profile claude`.
+- Only GPT 5.6 Sol → `--no-cursor --profile openai --build-effort high --evaluate-effort high`.
+- Both Claude and Codex lanes → `--no-cursor --profile claude-openai` or
+  `openai-claude` per sub-selector; custom ids via `--build-model` /
+  `--evaluate-model`.
+- Mixed Cursor + Claude/Codex → Cursor default on + `--profile` for the
+  `claude_codex` block; optional `--routing fixed|adaptive`.
+
+Invoke Doctor **after** assembling flags:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs" --profile <profile> [--no-cursor] \
+  [--build-model <id>] [--evaluate-model <id>] [--build-effort high] [--evaluate-effort high] \
+  [--cursor-routine-model <id>] [--cursor-hard-model <id>] --json
+```
+
+Then start the session with the same flags on `session.mjs`.
 
 The live session model remains the Conductor — never switched by BGSD. The
 resolved model contract is persisted on `run.json` and rehydrated from it on
-resume, so a paused session comes back with the same Cursor enabled/disabled
-state and lane assignments.
+resume.
 
 ## Verification and adjudication
 
