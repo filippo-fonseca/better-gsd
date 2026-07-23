@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mermaid from "astro-mermaid";
 import bgsdTheme from "./src/styles/shiki-bgsd.json";
 
 export default defineConfig({
@@ -14,6 +15,29 @@ export default defineConfig({
     },
   },
   integrations: [
+    // Mermaid must register before Starlight so fenced ```mermaid blocks render.
+    mermaid({
+      theme: "dark",
+      autoTheme: true,
+      mermaidConfig: {
+        themeVariables: {
+          darkMode: true,
+          background: "#090d11",
+          primaryColor: "#1a2330",
+          primaryTextColor: "#eae6ff",
+          primaryBorderColor: "#2a3446",
+          secondaryColor: "#141a22",
+          tertiaryColor: "#0f141b",
+          lineColor: "#9aa6bc",
+          textColor: "#eae6ff",
+          mainBkg: "#1a2330",
+          nodeBorder: "#a3e635",
+          clusterBkg: "#0f141b",
+          titleColor: "#a3e635",
+          edgeLabelBackground: "#090d11",
+        },
+      },
+    }),
     starlight({
       title: "BGSD",
       description:
