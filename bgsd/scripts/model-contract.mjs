@@ -17,6 +17,90 @@ export const DEFAULT_CURSOR_MODELS = Object.freeze({
   hard: "cursor-grok-4.5-high",
 });
 
+/** Effort levels accepted on Claude/Codex lanes (Cursor lanes use null). */
+export const EFFORT_LEVELS = Object.freeze(["low", "medium", "high", "xhigh"]);
+
+/**
+ * Fixed executor model options for every-session native multi-select.
+ * Fast variants and Auto are never listed.
+ */
+export const EXECUTOR_MODEL_OPTIONS = Object.freeze([
+  { id: "claude-opus", label: "Claude Opus", model: "claude-opus-4-8", provider: "claude", effort: "high" },
+  { id: "cursor-composer", label: "Cursor CLI · Composer 2.5 Standard", model: "composer-2.5", provider: "cursor", role: "routine" },
+  { id: "cursor-grok", label: "Cursor CLI · Grok 4.5 Standard", model: "cursor-grok-4.5-high", provider: "cursor", role: "hard" },
+  { id: "codex-sol-high", label: "GPT 5.6 Sol · high", model: "gpt-5.6-sol", provider: "openai", effort: "high" },
+]);
+
+/**
+ * Recommended path presets — Step 1 single-select before custom mix.
+ * `sessionFlags` are the argv tokens for session.mjs / doctor.mjs.
+ */
+export const SESSION_PATH_PRESETS = Object.freeze({
+  "cursor-default": {
+    label: "Cursor default (Recommended)",
+    sessionFlags: [],
+    resolveOpts: {},
+  },
+  "claude-only": {
+    label: "Claude Code only",
+    sessionFlags: ["--no-cursor", "--profile", "claude"],
+    resolveOpts: { cursor: false, profile: "claude" },
+  },
+  "claude-cursor": {
+    label: "Claude + Cursor",
+    sessionFlags: ["--profile", "claude"],
+    resolveOpts: { profile: "claude" },
+  },
+  claudex: {
+    label: "Claudex",
+    sessionFlags: ["--no-cursor", "--profile", "claude-openai"],
+    resolveOpts: { cursor: false, profile: "claude-openai" },
+    profileChoices: ["claude-openai", "openai-claude"],
+  },
+  "codex-only": {
+    label: "Codex only",
+    sessionFlags: ["--no-cursor", "--profile", "openai", "--build-effort", "high", "--evaluate-effort", "high"],
+    resolveOpts: { cursor: false, profile: "openai", buildEffort: "high", evaluateEffort: "high" },
+  },
+  "custom-mix": {
+    label: "Custom mix…",
+    sessionFlags: null,
+    resolveOpts: null,
+  },
+});
+
+export function normalizeEffort(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  return EFFORT_LEVELS.includes(v) ? v : null;
+}
+
+/** Map a Step 1 preset id (+ optional Claudex profile) to resolveModelContract opts. */
+export function resolveOptsFromPreset(presetId, { claudexProfile } = {}) {
+  const preset = SESSION_PATH_PRESETS[presetId];
+  if (!preset) throw new Error(`Unknown session path preset "${presetId}"`);
+  if (presetId === "custom-mix") throw new Error("custom-mix requires Step 2 multi-select assembly");
+  if (presetId === "claudex") {
+    const profile = claudexProfile || "claude-openai";
+    if (!PIPELINE_PROFILES[profile]) {
+      throw new Error(`Unknown Claudex profile "${profile}"; expected claude-openai or openai-claude`);
+    }
+    return { cursor: false, profile };
+  }
+  return { ...preset.resolveOpts };
+}
+
+/** argv flags for session.mjs from a preset id (+ optional Claudex profile). */
+export function sessionFlagsFromPreset(presetId, { claudexProfile } = {}) {
+  const preset = SESSION_PATH_PRESETS[presetId];
+  if (!preset) throw new Error(`Unknown session path preset "${presetId}"`);
+  if (presetId === "custom-mix") return [];
+  if (presetId === "claudex") {
+    const profile = claudexProfile || "claude-openai";
+    return ["--no-cursor", "--profile", profile];
+  }
+  return [...preset.sessionFlags];
+}
+
 export const DEFAULT_MODELS = Object.freeze({
   claude: { model: "claude-opus-4-8", lightModel: "sonnet", effort: "high", harness: "claude" },
   openai: { model: "gpt-5.6-sol", lightModel: "gpt-5.5", effort: "medium", harness: "codex" },
@@ -121,12 +205,13 @@ export function detectConductor(env = process.env) {
   return { provider, harness: providerHarness(provider), model, source: "live-session" };
 }
 
-function providerLane(provider, model, transport) {
+function providerLane(provider, model, transport, effortOverride) {
   const base = DEFAULT_MODELS[provider];
   const selectedModel = model || base.model;
   const valid = validateModelId(provider, selectedModel);
   if (!valid.ok) throw new Error(`Invalid ${provider} model "${selectedModel}" (${valid.reason})`);
-  return { provider, harness: base.harness, model: selectedModel, effort: base.effort, transport };
+  const effort = normalizeEffort(effortOverride) ?? base.effort;
+  return { provider, harness: base.harness, model: selectedModel, effort, transport };
 }
 
 function adaptiveCatalog(buildLane, lightModel) {
@@ -215,6 +300,8 @@ export function resolveModelContract({
   buildModel,
   lightBuildModel,
   evaluateModel,
+  buildEffort,
+  evaluateEffort,
   routing = "fixed",
   conductor,
   proxy = false,
@@ -234,8 +321,18 @@ export function resolveModelContract({
   }
 
   const transport = proxy ? "proxy" : "direct";
-  const build = providerLane(selected.build, buildModel, transport);
-  const evaluate = providerLane(selected.evaluate, evaluateModel, transport);
+  const build = providerLane(
+    selected.build,
+    buildModel,
+    transport,
+    buildEffort || env.BGSD_BUILD_EFFORT
+  );
+  const evaluate = providerLane(
+    selected.evaluate,
+    evaluateModel,
+    transport,
+    evaluateEffort || env.BGSD_EVALUATE_EFFORT
+  );
   const adaptive = adaptiveCatalog(build, lightBuildModel);
   const conductorIdentity = conductor || detectConductor(env);
   const auth = { policy: "subscription-only", verified_at: null };
@@ -306,6 +403,8 @@ export function contractFromEnv(env = process.env) {
     buildModel: env.BGSD_BUILD_MODEL,
     lightBuildModel: env.BGSD_BUILD_LIGHT_MODEL,
     evaluateModel: env.BGSD_EVALUATE_MODEL,
+    buildEffort: env.BGSD_BUILD_EFFORT,
+    evaluateEffort: env.BGSD_EVALUATE_EFFORT,
     routing: env.BGSD_ROUTING || "fixed",
     proxy: env.BGSD_PROXY === "1",
     cursor: resolveCursorEnabled({ env }),
@@ -362,6 +461,8 @@ export function rehydrateV3Contract(stored, { env = process.env } = {}) {
     buildModel: (stored.claude_codex || stored.legacy)?.build?.model || stored.build?.model,
     lightBuildModel: (stored.claude_codex || stored.legacy)?.adaptive?.light?.model || stored.adaptive?.light?.model,
     evaluateModel: (stored.claude_codex || stored.legacy)?.evaluate?.model || stored.evaluate?.model,
+    buildEffort: (stored.claude_codex || stored.legacy)?.build?.effort || stored.build?.effort,
+    evaluateEffort: (stored.claude_codex || stored.legacy)?.evaluate?.effort || stored.evaluate?.effort,
     routing: (stored.claude_codex || stored.legacy)?.routing || (stored.routing === "cursor" ? "fixed" : stored.routing) || "fixed",
     conductor: stored.conductor,
     proxy:
@@ -436,6 +537,8 @@ export function exportContractEnv(contract, env = process.env) {
     BGSD_BUILD_LIGHT_MODEL: contract.adaptive?.light?.model || contract.adaptive?.routine?.model || "",
     BGSD_EVALUATE_PROVIDER: cursorEnabled ? "cursor" : contract.evaluate.provider,
     BGSD_EVALUATE_MODEL: contract.evaluate.model,
+    ...(contract.build.effort ? { BGSD_BUILD_EFFORT: contract.build.effort } : {}),
+    ...(contract.evaluate.effort ? { BGSD_EVALUATE_EFFORT: contract.evaluate.effort } : {}),
     BGSD_PROXY: (!cursorEnabled && contract.build.transport === "proxy") ||
       claudeCodex.build?.transport === "proxy"
       ? "1"

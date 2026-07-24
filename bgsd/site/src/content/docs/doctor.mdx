@@ -1,0 +1,97 @@
+---
+title: Doctor
+description: Preflight checks — BGSD fails closed when setup is incomplete.
+---
+
+BGSD Doctor runs **after** you pick a session path in the native model selectors. It verifies the **chosen** runtime and **fails closed** — no silent degradation to missing CLIs, wrong auth, or unconfigured model selectors.
+
+:::tip[Doctor does not choose models]
+Every new `/bgsd-sesh` asks for a recommended path preset (Cursor default, Claude Code only, Claudex, …) and optional multi-select executor models. Doctor only **validates** those answers. See [Models & routing](/models/).
+:::
+
+## Run Doctor
+
+```sh
+node bgsd/scripts/doctor.mjs
+```
+
+Or use `/bgsd-doctor` in Claude Code / Codex.
+
+## What Doctor checks
+
+### Always
+
+| Check | Pass criteria |
+| --- | --- |
+| Git repository | Running inside a git repo with worktree support |
+| Node scripts | `bgsd/scripts/` entry points executable |
+| Subscription auth | Provider login verified — API keys rejected |
+
+### Cursor workers (default)
+
+| Check | Pass criteria |
+| --- | --- |
+| `cursor-agent` CLI | On PATH and executable |
+| Browser login | `cursor-agent login` completed — not API key auth |
+| Routine selector | `composer-2.5` (or configured id) in `cursor-agent --list-models` |
+| Hard selector | `cursor-grok-4.5-high` (or configured id) in model list |
+| Standard vs Fast | Doctor fails if Standard/Fast cannot be distinguished |
+
+### Claude/Codex workers (`--no-cursor`)
+
+| Check | Pass criteria |
+| --- | --- |
+| Claude CLI | Available when profile includes Claude |
+| Codex CLI | Available when profile includes OpenAI |
+| Subscription login | Per-provider auth probe |
+| Model ids | `--build-model` / `--evaluate-model` validated against provider |
+
+### Feature / Project
+
+| Check | Pass criteria |
+| --- | --- |
+| Open GSD | Installed for selected runtime (`--cursor`, `--claude`, or `--codex`) |
+
+### Proxy (`--proxy`)
+
+| Check | Pass criteria |
+| --- | --- |
+| Endpoint | `BGSD_PROXY_URL` reachable |
+| Token | `BGSD_PROXY_TOKEN` set |
+| Models | `/v1/models` advertises requested models |
+
+## Auth policy
+
+`model_contract.auth` is always **subscription-only**:
+
+- Cursor: browser login via `cursor-agent login`
+- Claude: Claude Code subscription
+- Codex: ChatGPT/Codex subscription
+
+Child processes scrub `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, and `CURSOR_API_KEY`.
+
+## Reading Doctor output
+
+```
+BGSD doctor — READY
+```
+
+or
+
+```
+BGSD doctor — SETUP REQUIRED
+  ✗ cursor-agent CLI not found
+  ✗ cursor models: hard selector missing from list
+```
+
+Fix each failure before starting a session. Doctor does not warn-and-continue for auth or selector mismatches.
+
+## When Doctor is skipped
+
+`session.mjs` can skip preflight in edge cases (logged, not silent). Normal interactive sessions always run Doctor.
+
+## Related
+
+- [Install](/install/) — GSD and plugin setup
+- [Harnesses](/harnesses/) — which checks apply per harness
+- [Troubleshooting](/troubleshooting/) — common Doctor failures

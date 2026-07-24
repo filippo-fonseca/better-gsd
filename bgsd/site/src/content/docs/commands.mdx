@@ -1,0 +1,405 @@
+---
+title: Commands
+description: Complete /bgsd-* reference — every slash command, skill, and script fallback.
+---
+
+Every surface below ships in `bgsd/commands/` (and skills in `bgsd/skills/`). In **Claude Code** type `/bgsd-…`. In **Codex**, installed plugin skills appear as `bgsd:bgsd-sesh` (and friends) — not every command file is a Codex skill yet. From any terminal, use the Node script listed under each entry.
+
+## Complete index
+
+| Command | Purpose |
+| --- | --- |
+| [`/bgsd-sesh`](#bgsd-sesh) | Start a Quick / Feature / Project session |
+| [`/bgsd-doctor`](#bgsd-doctor) | Preflight CLI, auth, selectors, GSD *(skill)* |
+| [`/bgsd-init`](#bgsd-init) | First-time repo setup |
+| [`/bgsd-status`](#bgsd-status) | Live workers, phases, blockers |
+| [`/bgsd-gui`](#bgsd-gui) | Open / close the live dashboard |
+| [`/bgsd-pause`](#bgsd-pause) | Park a running session |
+| [`/bgsd-resume`](#bgsd-resume) | Continue a paused / interrupted session |
+| [`/bgsd-feedback`](#bgsd-feedback) | Re-run fixes from review findings |
+| [`/bgsd-user-eval`](#bgsd-user-eval) | Human review gate after integration |
+| [`/bgsd-verify`](#bgsd-verify) | Verify an app against acceptance criteria |
+| [`/bgsd-queue`](#bgsd-queue) | Manage the fix-stream backlog |
+| [`/bgsd-capture`](#bgsd-capture) | Hyperpolymath capture → queue |
+| [`/bgsd-recall`](#bgsd-recall) | Search past session history |
+| [`/bgsd-generate-brief`](#bgsd-generate-brief) | Hand-off brief for the next session |
+| [`/bgsd-modify-memory`](#bgsd-modify-memory) | Persist preferences into `BGSD.md` |
+| [`/bgsd-token-usage`](#bgsd-token-usage) | Token burn by lane / model / unit |
+| [`/bgsd-clean`](#bgsd-clean) | Prune stale worktrees / merged branches |
+| [`/bgsd-remote`](#bgsd-remote) | HTTP bridge to observe / drive a session |
+| [`/bgsd-run`](#bgsd-run) | Project orchestrator (large prompt → DAG) |
+| [`/bgsd-run-agent`](#bgsd-run-agent) | One isolated build-lane unit *(worker)* |
+| [`/bgsd-integrate`](#bgsd-integrate) | Loop 2 integration pass *(Conductor)* |
+| [`/bgsd-changelog`](#bgsd-changelog) | Aggregate changelog into the PR *(Conductor)* |
+| [`/bgsd-escalate`](#bgsd-escalate) | Confidence-gated human escalation *(Conductor)* |
+
+---
+
+## Session lifecycle
+
+### `/bgsd-sesh`
+
+**Primary entrypoint.** Starts a model-agnostic Quick, Feature, or Project session. Every **new** session asks for a worker-path preset via native selectors, then Doctor validates. Bare invoke offers the queued backlog.
+
+```
+/bgsd-sesh
+/bgsd-sesh "Add export filters"
+/bgsd-sesh --feature "Ship billing portal"
+/bgsd-sesh --project "Migrate auth" --gui
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--quick` / `--feature` / `--project` | Workflow depth |
+| `--plan-only` | Route without spawning |
+| `--no-cursor` | Claude / Codex workers |
+| `--profile` | `claude`, `openai`, `claude-openai`, `openai-claude` |
+| `--build-model` / `--evaluate-model` | Custom model ids |
+| `--build-effort` / `--evaluate-effort` | e.g. Sol **high** |
+| `--routing` | `fixed` (default) or `adaptive` |
+| `--cursor-routine-model` / `--cursor-hard-model` | Cursor selector overrides |
+| `--gui` / `--remote` / `--remote-lan` | Dashboard / remote bridge |
+| `--headless-ui` / `--no-usage-verification` | Verification posture |
+| `--proxy` | CLIProxyAPI via Claude harness |
+
+**Script:** `node bgsd/scripts/conductor.mjs "…"` or `session.mjs`  
+**Skill:** `bgsd/skills/bgsd-sesh` · Codex: `bgsd:bgsd-sesh`
+
+### `/bgsd-doctor`
+
+Preflight: CLI presence, subscription auth, configured model selectors, and (for Feature/Project) Open GSD. **Validates after you choose a path — does not pick models.**
+
+```
+/bgsd-doctor
+node bgsd/scripts/doctor.mjs
+node bgsd/scripts/doctor.mjs --no-cursor --profile claude --json
+```
+
+**Skill only** (`bgsd/skills/bgsd-doctor`) — no `commands/bgsd-doctor.md`. Codex: `bgsd:bgsd-doctor`.
+
+### `/bgsd-init`
+
+First-time repo setup: standing `next` branch, `.bgsd/`, `BGSD.md`, GSD config. Idempotent; also runs as sesh preflight.
+
+```
+/bgsd-init
+/bgsd-init --plan-only
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--plan-only` / `--dry-run` | Preview only |
+| `--conductor-name` / `--conductor-emoji` | Set Conductor identity |
+
+**Script:** `init-live.mjs`
+
+### `/bgsd-status`
+
+Read-only live snapshot of active runs, workers, phases, blockers, merge history, and budget.
+
+```
+/bgsd-status
+node bgsd/scripts/status.mjs --run-id bgsd-0001-auth
+node bgsd/scripts/status.mjs --watch 5
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--run-id ⟨id⟩` | Specific run |
+| `--watch [n]` | Refresh every *n* seconds (default 3) |
+
+**Script:** `status.mjs`
+
+### `/bgsd-gui`
+
+Opens a local read-only dashboard for the pipeline. Also available as `/bgsd-sesh … --gui`.
+
+```
+/bgsd-gui
+/bgsd-gui close
+/bgsd-gui status
+```
+
+**Script:** `gui-live.mjs`
+
+### `/bgsd-pause`
+
+Parks a running session with a resumable snapshot.
+
+```
+/bgsd-pause
+/bgsd-pause --note "handing off — search bar mid-execute"
+```
+
+**Script:** `pause.mjs`
+
+### `/bgsd-resume`
+
+Continues a paused or interrupted session from each unit’s last recorded phase.
+
+```
+/bgsd-resume
+/bgsd-resume bgsd-0012-auth
+/bgsd-resume --plan-only
+```
+
+**Script:** `resume-live.mjs`
+
+### `/bgsd-feedback`
+
+After a `request_changes` review verdict (or free-text findings), re-runs the fix pipeline.
+
+```
+/bgsd-feedback "Login button crashes on mobile"
+/bgsd-feedback --fast "Typo in settings empty state"
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--fast` | Skip verify loops; spawn fix agents directly (`UNVERIFIED`) |
+| `--live` | Execute (default on script is dry-run plan) |
+| `--run-id ⟨id⟩` | Target run |
+
+**Script:** `feedback.mjs`
+
+### `/bgsd-user-eval`
+
+Mandatory human review gate after Loop 2 PASS: boots the integrated app, shows checklist, captures verdict via selector.
+
+```
+/bgsd-user-eval
+node bgsd/scripts/review.mjs --live --run-id bgsd-0001-auth
+```
+
+**Script:** `review.mjs`
+
+### `/bgsd-verify`
+
+Boots or attaches to an app and verifies acceptance criteria (console → network → DOM → vision).
+
+```
+/bgsd-verify http://localhost:3000 --criteria ./acceptance.md
+/bgsd-verify --boot ./apps/web --inline "User can log in; Dashboard loads"
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `⟨url⟩` or `--boot ⟨dir⟩` | Target (one required) |
+| `--criteria ⟨file⟩` or `--inline "…"` | Criteria (one required) |
+| `--no-usage-verification` | Code-only (skip Playwright ladder) |
+| `--headless-ui` | Headless browser |
+
+**Skill:** `bgsd/skills/bgsd-verify` · Codex: `bgsd:bgsd-verify`
+
+---
+
+## Queue, memory & history
+
+### `/bgsd-queue`
+
+Per-repo fix-stream backlog at `.bgsd/queue/` — **not** a markdown backlog file.
+
+```
+/bgsd-queue add --title "Fix empty state" --body "Settings blank on mobile"
+/bgsd-queue list
+/bgsd-queue peek
+/bgsd-queue start
+/bgsd-queue done ⟨id⟩
+```
+
+| Subcommand | Purpose |
+| --- | --- |
+| `add --title "…" [--body "…"] [--source …] [--no-issue]` | Enqueue |
+| `status` / `list` / `peek` | Inspect |
+| `closes ⟨id…⟩` | Link closing ids |
+| `done ⟨id⟩ [--failed|--blocked] [--close-issue]` | Complete |
+| `start [--dry-run]` | Drain through classify → execute → verify |
+
+**Script:** `queue.mjs`
+
+### `/bgsd-capture`
+
+Pulls Hyperpolymath (or mock) items into `/bgsd-queue`. Defaults to dry-run preview.
+
+```
+/bgsd-capture
+node bgsd/scripts/capture-cron.mjs --no-dry-run
+node bgsd/scripts/capture-cron.mjs --live --no-dry-run
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--dry-run` | Preview (default) |
+| `--no-dry-run` | Enqueue for real |
+| `--live` | Live Hyperpolymath source (human-gated) |
+
+**Scripts:** `capture.mjs`, `capture-cron.mjs`, `capture-live.mjs`
+
+### `/bgsd-recall`
+
+Read-only search over archived sessions under `.bgsd/seshs/`.
+
+```
+/bgsd-recall "auth middleware"
+/bgsd-recall "what shipped last month"
+node bgsd/scripts/kb.mjs --query "auth middleware"
+```
+
+**Script:** `kb.mjs`
+
+### `/bgsd-generate-brief`
+
+Writes a hand-off markdown brief of a past session for the next Conductor.
+
+```
+/bgsd-generate-brief
+/bgsd-generate-brief bgsd-0012-auth
+node bgsd/scripts/brief.mjs --last
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--run-id ⟨id⟩` | Specific run (default: latest) |
+| `--out ⟨path⟩` | Custom output path |
+| `--stdout` | Print brief instead of writing a file |
+
+**Script:** `brief.mjs`
+
+### `/bgsd-modify-memory`
+
+Persists a preference or structured setting into this repo’s `BGSD.md` so it sticks across sessions.
+
+```
+/bgsd-modify-memory "always verify headless"
+/bgsd-modify-memory "default the pipeline mode to thorough"
+/bgsd-modify-memory
+```
+
+Bare invoke shows what is currently remembered. Structured knobs also go through `bgsdmd.mjs`:
+
+```sh
+node bgsd/scripts/bgsdmd.mjs remember "prefer parallel Quick units"
+node bgsd/scripts/bgsdmd.mjs set conductor.name Kiwi
+```
+
+**Script:** `bgsdmd.mjs`
+
+### `/bgsd-token-usage`
+
+Reports token spend for a session, broken down by lane, model, role, and unit.
+
+```
+/bgsd-token-usage
+node bgsd/scripts/tokens.mjs report --run-id bgsd-0001-auth --json
+```
+
+**Script:** `tokens.mjs`
+
+---
+
+## Housekeeping & remote
+
+### `/bgsd-clean`
+
+Safely removes stale bgsd worktrees and merged `bgsd-*` branches. Never touches protected / current branches unless forced.
+
+```
+/bgsd-clean
+/bgsd-clean --dry-run
+/bgsd-clean --force --yes
+```
+
+| Flag | Purpose |
+| --- | --- |
+| `--dry-run` | Print plan only |
+| `--force` | Include unmerged bgsd branches |
+| `--yes` | Skip confirmation |
+| `--json` | Machine-readable plan |
+| `--integration-branch ⟨name⟩` | Override default `next` |
+
+**Script:** `clean.mjs`
+
+### `/bgsd-remote`
+
+Local HTTP bridge to observe and steer a live Conductor session from off-box (phone app, script, etc.).
+
+```
+/bgsd-remote start
+/bgsd-remote start --lan --port 8787
+/bgsd-remote emit "Loop 1: 3/4 agents finished"
+/bgsd-remote mirror
+/bgsd-remote stop
+```
+
+| Subcommand | Purpose |
+| --- | --- |
+| `start [--run-id] [--port] [--lan\|--host] [--token]` | Start bridge |
+| `stop` / `status` | Control |
+| `emit "…"` / `mirror` | Push / sync output |
+| `tail [--since ⟨seq⟩]` | Stream events |
+
+**Script:** `remote.mjs`
+
+---
+
+## Conductor / pipeline internals
+
+These ship as command markdown the Conductor (or workers) follow. You rarely type them by hand — `/bgsd-sesh` drives them.
+
+### `/bgsd-run`
+
+Project-mode orchestrator: large prompt → dependency DAG → parallel GSD units. Prefer `/bgsd-sesh --project` for the full verified loop.
+
+```sh
+node bgsd/scripts/run.mjs --prompt "Add user auth and rate limiting"
+node bgsd/scripts/run-live.mjs --live --prompt "…"
+node bgsd/scripts/run.mjs --abort ⟨run-id⟩
+```
+
+### `/bgsd-run-agent`
+
+Worker runbook for one isolated build-lane unit. Spawned by the Conductor — not a day-to-day user slash.
+
+**Skill:** `bgsd/skills/bgsd-run-agent` · Codex: `bgsd:bgsd-run-agent`
+
+### `/bgsd-integrate`
+
+Loop 2 live integration on `next`: boot app, Integration Tester, fix → re-merge until clean or stop.
+
+```sh
+node bgsd/scripts/loop2-live.mjs --live --run-id bgsd-0001-auth --max-iterations 5
+```
+
+### `/bgsd-changelog`
+
+Aggregates per-agent changelogs into a PR body. Real `gh pr create` only with explicit `--live` (base must be `next`, never `main`).
+
+```sh
+node bgsd/scripts/changelog-pr.mjs
+node bgsd/scripts/changelog-pr.mjs --live
+```
+
+### `/bgsd-escalate`
+
+Batches below-threshold Conductor questions into native selectors, writes answers to `decisions.json`, and surfaces escalation telemetry in status. Library module — not a casual slash.
+
+**Script:** `escalate.mjs`
+
+---
+
+## Host differences
+
+| Host | How commands show up |
+| --- | --- |
+| **Claude Code** | Plugin → `/bgsd-*` slash commands + skills |
+| **Cursor** | Repo / plugin skills and command markdown — type `/bgsd-` when the host surfaces them; else `conductor.mjs` |
+| **Codex** | Plugin skills today: `bgsd:bgsd-sesh`, `bgsd:bgsd-doctor`, `bgsd:bgsd-run-agent`, `bgsd:bgsd-verify`. Other commands via scripts / Conductor reading `bgsd/commands/*.md` |
+
+---
+
+## Related
+
+- [Install](/install/) — unlock commands per harness
+- [Quickstart](/quickstart/) — first session
+- [Models & routing](/models/) — every-session path selectors
+- [Conductor session](/conductor-session/) — steering and gates

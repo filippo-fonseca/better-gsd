@@ -11,7 +11,8 @@ import {
   parseClaudeAuth, parseCodexAuth, parseCursorAuth, detectConductor, buildLaneForUnit,
   harnessForLane, loadContractForRun, isForbiddenCursorSelector, isCursorContract,
   DEFAULT_CURSOR_MODELS, recordEscalation, contractRuntimes, exportContractEnv,
-  SCRUBBED_API_KEYS,
+  SCRUBBED_API_KEYS, SESSION_PATH_PRESETS, EXECUTOR_MODEL_OPTIONS,
+  sessionFlagsFromPreset, resolveOptsFromPreset, normalizeEffort,
 } from "./model-contract.mjs";
 
 let passed = 0;
@@ -119,6 +120,46 @@ test("legacy hybrid profile resolves with --no-cursor", () => {
 test("OpenAI lanes default to GPT-5.6 Sol at medium effort when --no-cursor", () => {
   const c = resolveModelContract({ profile: "openai", cursor: false });
   assert.deepEqual(c.build, { provider: "openai", harness: "codex", model: "gpt-5.6-sol", effort: "medium", transport: "direct" });
+});
+
+test("Codex-only preset maps to high effort on build and evaluate", () => {
+  const flags = sessionFlagsFromPreset("codex-only");
+  assert.ok(flags.includes("--build-effort"));
+  assert.ok(flags.includes("high"));
+  const c = resolveModelContract({ ...resolveOptsFromPreset("codex-only"), cursor: false });
+  assert.equal(c.build.effort, "high");
+  assert.equal(c.evaluate.effort, "high");
+});
+
+test("build-effort flag overrides OpenAI default medium", () => {
+  const c = resolveModelContract({ profile: "openai", cursor: false, buildEffort: "high", evaluateEffort: "high" });
+  assert.equal(c.build.effort, "high");
+  assert.equal(c.evaluate.effort, "high");
+});
+
+test("session path presets expose all six Step 1 options", () => {
+  assert.equal(Object.keys(SESSION_PATH_PRESETS).length, 6);
+  assert.equal(SESSION_PATH_PRESETS["cursor-default"].label, "Cursor default (Recommended)");
+});
+
+test("executor model options exclude Fast variants", () => {
+  for (const opt of EXECUTOR_MODEL_OPTIONS) {
+    if (opt.provider === "cursor") {
+      assert.equal(isForbiddenCursorSelector(opt.model).forbidden, false, opt.model);
+    }
+  }
+  assert.equal(EXECUTOR_MODEL_OPTIONS.find((o) => o.id === "codex-sol-high").effort, "high");
+});
+
+test("Claudex preset honors profile sub-choice", () => {
+  assert.deepEqual(sessionFlagsFromPreset("claudex", { claudexProfile: "openai-claude" }), [
+    "--no-cursor", "--profile", "openai-claude",
+  ]);
+});
+
+test("normalizeEffort rejects unknown values", () => {
+  assert.equal(normalizeEffort("high"), "high");
+  assert.equal(normalizeEffort("FAST"), null);
 });
 
 test("Fast and Auto Cursor selectors are rejected", () => {

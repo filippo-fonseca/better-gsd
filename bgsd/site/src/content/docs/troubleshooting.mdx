@@ -1,0 +1,137 @@
+---
+title: Troubleshooting
+description: Common BGSD issues and how to fix them.
+---
+
+## Doctor fails: cursor-agent not found
+
+**Symptom:** `cursor-agent CLI not found`
+
+**Fix:**
+1. Install Cursor Agent CLI and ensure it's on PATH
+2. Run `cursor-agent login` for browser subscription auth
+3. Re-run `node bgsd/scripts/doctor.mjs`
+
+Or pass `--no-cursor` to use Claude/Codex workers instead.
+
+## Doctor fails: model selector missing
+
+**Symptom:** `cursor models: routine selector missing from list`
+
+**Fix:**
+1. Run `cursor-agent --list-models` and confirm `composer-2.5` and `cursor-grok-4.5-high` appear
+2. Update `BGSD.md` → `cursor.models` to match available ids
+3. Doctor fails closed if Standard vs Fast cannot be distinguished — configure explicit Standard selectors
+
+## Doctor fails: subscription login
+
+**Symptom:** `subscription login required`
+
+**Fix:**
+
+| Harness | Action |
+| --- | --- |
+| Cursor | `cursor-agent login` (browser — not API key) |
+| Claude | Log in via Claude Code CLI |
+| Codex | Log in via Codex / ChatGPT subscription |
+
+BGSD rejects API-key auth. Remove `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENAI_API_KEY` from the environment when running sessions.
+
+## Doctor fails: GSD not installed
+
+**Symptom:** GSD probe fails for Feature/Project
+
+**Fix:**
+
+```sh
+npx -y @opengsd/gsd-core@latest --cursor --global   # Cursor
+npx -y @opengsd/gsd-core@latest --claude --global   # Claude
+npx -y @opengsd/gsd-core@latest --codex --global    # Codex
+```
+
+Quick mode does not require GSD.
+
+## Session won't start: not a git repo
+
+**Symptom:** Session exits immediately — no git repository
+
+**Fix:** Run from inside a git repository with worktree support (`git worktree` available).
+
+## Workers stuck: NEEDS INPUT
+
+**Symptom:** `/bgsd-status` shows `NEEDS INPUT` badge
+
+**Fix:** Answer the Conductor's escalated question via the host selector UI. Check `.bgsd/seshs/<run-id>/` for blocker details.
+
+## Merge conflicts on integration
+
+**Symptom:** Integration to `next` reports conflicts
+
+**Fix:**
+1. Review conflict pre-check output
+2. Let the Conductor adjudicate or resolve manually in the worktree
+3. Re-run integration after resolution
+
+## Proxy health check fails
+
+**Symptom:** `proxy: endpoint unreachable` or `models not advertised`
+
+**Fix:**
+1. Confirm `BGSD_PROXY_URL` and `BGSD_PROXY_TOKEN` are set
+2. Verify the CLIProxyAPI server is running
+3. Check `/v1/models` returns your requested models
+4. Remember: proxy is only for `--no-cursor` + `--proxy`, never Cursor workers
+
+## Fast or Auto silently selected
+
+**Symptom:** Unexpected model behavior
+
+**Fix:** This should not happen — file a bug. Doctor is designed to fail closed when Standard/Fast cannot be distinguished. Check `cursor-agent --list-models` output and `BGSD.md` selectors.
+
+## Work landed on wrong branch
+
+**Symptom:** Changes on a worktree branch but not `next`
+
+**Fix:**
+1. Check `/bgsd-status` — unit may have failed verification
+2. Review verifier evidence in `.bgsd/seshs/<run-id>/`
+3. Conductor may be steering repairs — wait for adjudication
+
+BGSD never writes to `main`. If you see changes on `main`, they did not come from BGSD.
+
+## Plugin commands not found
+
+**Symptom:** `/bgsd-sesh` unrecognized in Claude Code / Codex
+
+**Fix:**
+
+```sh
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
+
+Or use the harness-neutral launcher:
+
+```sh
+node bgsd/scripts/conductor.mjs "your prompt"
+```
+
+## Site / docs build issues
+
+```sh
+cd bgsd/site && npm install && npm run build
+```
+
+Requires Node 18+. If Starlight peer dependency errors appear, ensure `astro@^5.5.0` and `@astrojs/starlight@^0.34`.
+
+## Getting more help
+
+- Search session history: `node bgsd/scripts/kb.mjs --query "<terms>"`
+- Read `.bgsd/ledger.md` for past sessions
+- [GitHub Issues](https://github.com/filippo-fonseca/better-gsd/issues)
+
+## Related
+
+- [Doctor](/doctor/) — preflight check details
+- [Install](/install/) — setup paths per harness
+- [Branch & safety](/branch-safety/) — expected branch behavior

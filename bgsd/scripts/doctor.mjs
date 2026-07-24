@@ -206,6 +206,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     buildModel: flags["build-model"],
     lightBuildModel: flags["light-build-model"],
     evaluateModel: flags["evaluate-model"],
+    buildEffort: flags["build-effort"],
+    evaluateEffort: flags["evaluate-effort"],
     routing: flags.routing || "fixed",
     proxy: flags.proxy === true,
     cursor: noCursor ? false : undefined,

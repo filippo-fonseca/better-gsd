@@ -1228,6 +1228,7 @@ if (
         '        [--no-cursor]  # Claude Code / Codex workers instead of Cursor\n' +
         '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
         '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
+        '        [--build-effort low|medium|high|xhigh] [--evaluate-effort low|medium|high|xhigh]\n' +
         '        [--cursor-routine-model <id>] [--cursor-hard-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
@@ -1265,6 +1266,8 @@ if (
       buildModel: typeof flags["build-model"] === "string" ? flags["build-model"] : undefined,
       lightBuildModel: typeof flags["light-build-model"] === "string" ? flags["light-build-model"] : undefined,
       evaluateModel: typeof flags["evaluate-model"] === "string" ? flags["evaluate-model"] : undefined,
+      buildEffort: typeof flags["build-effort"] === "string" ? flags["build-effort"] : undefined,
+      evaluateEffort: typeof flags["evaluate-effort"] === "string" ? flags["evaluate-effort"] : undefined,
       routing: typeof flags.routing === "string" ? flags.routing : "fixed",
       proxy: flags.proxy === true,
       cursor: noCursor ? false : undefined,

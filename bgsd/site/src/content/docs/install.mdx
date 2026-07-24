@@ -1,0 +1,103 @@
+---
+title: Install
+description: Install BGSD and unlock /bgsd-* commands in Claude Code, Cursor, and Codex.
+---
+
+BGSD is a plugin (Claude Code / Codex) and a repo you can open in Cursor. Once installed, type `/bgsd-` in the chat to see the command palette — same command names across harnesses.
+
+## Claude Code
+
+```sh
+claude plugin marketplace add filippo-fonseca/better-gsd
+claude plugin install bgsd@better-gsd
+```
+
+Then in Claude Code:
+
+```
+/bgsd-sesh "Build an audit log"
+/bgsd-doctor
+/bgsd-status
+```
+
+Skills and slash commands come from `bgsd/skills/` and `bgsd/commands/`.
+
+## Cursor
+
+Cursor reads agent skills and slash-style commands from the repo (and installed plugins). Clone or open this repository in Cursor, then use the same surfaces:
+
+```
+/bgsd-sesh "Build an audit log"
+/bgsd-doctor
+```
+
+If your Cursor build doesn't surface `/` commands yet, run the harness-neutral launcher — it loads the same `bgsd-sesh` markdown the slash command would:
+
+```sh
+node bgsd/scripts/conductor.mjs "Build an audit log"
+```
+
+Default workers still route through **Cursor Agent CLI** (Composer routine / Grok hard) unless you choose another path in the session selectors.
+
+## Codex
+
+```sh
+codex plugin marketplace add filippo-fonseca/better-gsd
+codex plugin add bgsd@better-gsd
+```
+
+Then:
+
+```
+/bgsd-sesh "Build an audit log"
+/bgsd-doctor
+```
+
+Codex picks up skills from `bgsd/.codex-plugin` / `bgsd/skills/`. Same command contract as Claude Code.
+
+## Same commands, every harness
+
+| You type… | Claude Code | Cursor | Codex |
+| --- | --- | --- | --- |
+| `/bgsd-sesh` | ✅ skill / command | ✅ (repo skills / commands) | ✅ plugin skill |
+| `/bgsd-doctor` | ✅ | ✅ | ✅ |
+| `/bgsd-status` | ✅ | ✅ | ✅ |
+| `/bgsd-queue` | ✅ | ✅ | ✅ |
+| `node bgsd/scripts/conductor.mjs "…"` | ✅ always | ✅ always | ✅ always |
+
+The markdown under `bgsd/commands/` is the source of truth. Slash commands and `conductor.mjs` both read it — pick whichever your host surfaces cleanly.
+
+## Install Open GSD (Feature / Project)
+
+Feature and Project modes run full GSD batches inside worktrees:
+
+```sh
+# Cursor workers (default path)
+npx -y @opengsd/gsd-core@latest --cursor --global
+
+# Claude Code runtime
+npx -y @opengsd/gsd-core@latest --claude --global
+
+# Codex runtime
+npx -y @opengsd/gsd-core@latest --codex --global
+```
+
+Quick mode skips GSD.
+
+## Verify
+
+```
+/bgsd-doctor
+```
+
+or:
+
+```sh
+node bgsd/scripts/doctor.mjs
+```
+
+:::tip[Harness-agnostic core]
+Doctor, session, queue, and conductor scripts are plain Node. Slash commands are the friendly front door — the engine is the same wherever you launch from.
+:::
+
+Continue to [Quickstart](/quickstart/).
