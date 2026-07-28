@@ -1,6 +1,6 @@
 {
   "name": "better-gsd",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "One-line BGSD v2 launcher for subscription-backed Claude Code and Codex GSD pipelines.",
   "bin": {
     "better-gsd": "./install.mjs"

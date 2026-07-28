@@ -8,6 +8,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-28
+
+### Changed
+- **Default workers are Claude/Codex, not Cursor.** Session path default is
+  Claude Code only; Cursor Agent workers are opt-in via `--cursor`.
+- **Executor default is Claude Opus 5** (`claude-opus-5` at high effort). The
+  Conductor remains the live session model — start on Opus 5 to orchestrate.
+- **Removed Claude Opus 4.8** from pricing, defaults, and fixtures (same price
+  as Opus 5, worse model).
+
 ## [0.11.0] - 2026-07-10
 
 ### Added

@@ -124,7 +124,7 @@ The version lives in **three manifests** and a release bumps all three together:
 2. `.claude-plugin/marketplace.json` (the `bgsd` plugin entry's `version`)
 3. `bgsd/.claude-plugin/marketplace.json` (the `bgsd` plugin entry's `version`)
 
-Keep them identical. The current version is `0.2.0`.
+Keep them identical. The current version is `2.0.1`.
 
 ---
 

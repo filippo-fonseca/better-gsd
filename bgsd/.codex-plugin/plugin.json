@@ -1,6 +1,6 @@
 {
   "name": "bgsd",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Model-agnostic conductor for subscription-backed Claude and Codex GSD pipelines.",
   "author": {
     "name": "Filippo Fonseca",
