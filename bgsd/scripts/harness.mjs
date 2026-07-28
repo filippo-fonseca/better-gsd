@@ -80,7 +80,7 @@ export function resolveHarnessConfig(repoRoot, readFileFn, existsFn) {
   const bgsdMdPath = join(repoRoot, "BGSD.md");
   let h = defaults;
   let cursorCfg = defaultBgsdConfig().cursor ?? {
-    enabled: true,
+    enabled: false,
     models: { ...DEFAULT_CURSOR_MODELS },
   };
   if (_exists(bgsdMdPath)) {
@@ -100,7 +100,7 @@ export function resolveHarnessConfig(repoRoot, readFileFn, existsFn) {
       cursor: { ...DEFAULT_HARNESS_MODELS.cursor, ...(h.models?.cursor ?? {}) },
     },
     cursor: {
-      enabled: cursorCfg.enabled !== false,
+      enabled: cursorCfg.enabled === true,
       models: {
         routine: cursorCfg.models?.routine || DEFAULT_CURSOR_MODELS.routine,
         hard: cursorCfg.models?.hard || DEFAULT_CURSOR_MODELS.hard,

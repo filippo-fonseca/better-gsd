@@ -53,8 +53,8 @@ node bgsd/scripts/conductor.mjs "Build an audit log"
 ```
 
 - Conductor = your live Cursor session model
-- Default workers = `cursor-agent` (Composer routine / Grok hard)
-- Doctor checks browser login + Standard selectors (never Fast/Auto)
+- Default workers = Claude Opus 5 (`--no-cursor`); opt in to `cursor-agent` with `--cursor`
+- Doctor checks the selected backend (Claude/Codex login, or Cursor browser login + Standard selectors)
 
 ## Codex
 
@@ -89,7 +89,7 @@ codex plugin add bgsd@better-gsd
 | Need CI / scripts | `node bgsd/scripts/session.mjs` |
 
 :::note[Equal backends]
-`--no-cursor` / Claude-only and Codex-only presets are full pipelines — not fallbacks. Doctor, routing, and verification contracts match the Cursor path.
+`--no-cursor` / Claude-only and Codex-only presets are the **default** full pipelines. Cursor workers (`--cursor`) are an equal opt-in. Doctor, routing, and verification contracts match either path.
 :::
 
 ## Related

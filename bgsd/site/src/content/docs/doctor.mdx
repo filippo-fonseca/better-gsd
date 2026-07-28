@@ -6,7 +6,7 @@ description: Preflight checks — BGSD fails closed when setup is incomplete.
 BGSD Doctor runs **after** you pick a session path in the native model selectors. It verifies the **chosen** runtime and **fails closed** — no silent degradation to missing CLIs, wrong auth, or unconfigured model selectors.
 
 :::tip[Doctor does not choose models]
-Every new `/bgsd-sesh` asks for a recommended path preset (Cursor default, Claude Code only, Claudex, …) and optional multi-select executor models. Doctor only **validates** those answers. See [Models & routing](/models/).
+Every new `/bgsd-sesh` asks for a recommended path preset (Claude Code only recommended, Cursor workers, Claudex, …) and optional multi-select executor models. Doctor only **validates** those answers. See [Models & routing](/models/).
 :::
 
 ## Run Doctor

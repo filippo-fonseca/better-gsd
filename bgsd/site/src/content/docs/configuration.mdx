@@ -39,7 +39,7 @@ Every knob lives in **`BGSD.md`** at the repo root. The Conductor reads it at se
 | `cursor.models` | Routine and hard Cursor Agent selectors |
 | `model_contract` | Session Conductor/worker/evaluation contract |
 
-Pass `--no-cursor` at session start to use Claude/Codex workers regardless of `cursor` settings.
+Pass `--cursor` (or `cursor.enabled: true` in `BGSD.md`) to use Cursor workers. `--no-cursor` is the implicit default.
 
 ## Verification
 

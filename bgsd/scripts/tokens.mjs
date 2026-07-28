@@ -55,6 +55,7 @@ import { spawnSync } from "node:child_process";
 export const PRICING = Object.freeze({
   // Claude (Anthropic)
   "claude-fable-5":   { input: 10,   output: 50,   cacheRead: 1.0 },
+  "claude-opus-5":    { input: 5,    output: 25,   cacheRead: 0.5 },
   "claude-opus-4-8":  { input: 5,    output: 25,   cacheRead: 0.5 },
   "claude-opus-4-7":  { input: 5,    output: 25,   cacheRead: 0.5 },
   "claude-sonnet-5":  { input: 3,    output: 15,   cacheRead: 0.3 },
@@ -78,12 +79,11 @@ export const PRICING = Object.freeze({
  * to the concrete id so pricing always resolves.
  */
 const TIER_ALIASES = Object.freeze({
-  opus:   "claude-opus-4-8",
+  opus:   "claude-opus-5",
   sonnet: "claude-sonnet-5",
   haiku:  "claude-haiku-4-5",
   fable:  "claude-fable-5",
 });
-
 /**
  * Resolve any model string (concrete id or semantic tier) to a pricing key.
  * Returns null when we have no pricing for it (cost then reported as null).

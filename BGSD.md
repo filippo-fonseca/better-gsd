@@ -25,22 +25,23 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **cursor** — Cursor Agent CLI workers (default on). `models.routine` is
+- **cursor** — Cursor Agent CLI workers (default **off**). Opt in with
+  `--cursor` or `cursor.enabled: true`. `models.routine` is
   Composer 2.5 Standard (`composer-2.5`); `models.hard` is Grok 4.5 base
   (`cursor-grok-4.5-high`). Fast variants and Auto are never silently selected.
-  Pass `--no-cursor` for Claude Code / Codex workers instead. Doctor validates
-  selectors against `cursor-agent --list-models`.
+  Default workers are Claude Code / Codex (`--no-cursor` is the implicit default).
+  Doctor validates selectors against `cursor-agent --list-models` when enabled.
 - **harness** — Claude Code, Codex, and Cursor are first-class harnesses.
   `harness.active: "auto"` detects from the environment; pin to
   `claude`/`codex`/`cursor` to force one. `harness.models` maps semantic
   tiers to concrete ids per harness.
 - **model_contract** — the session Conductor/worker/evaluation contract. The live
-  session model is always the Conductor and Advisor. With Cursor enabled, routine
-  units use Composer and hard units use Grok (recorded reasons required for hard
-  and claude-codex). Verification is deterministic-first; a fresh Composer
-  verifier gathers semantic evidence only when needed; the live Conductor
-  adjudicates. `--no-cursor` uses Claude Code / Codex build and evaluation
-  lanes — an equal alternative, not a fallback.
+  session model is always the Conductor and Advisor (you choose it — Opus 5 may
+  orchestrate when you start the session on it). Default workers are Claude Opus 5
+  for build and evaluation. With `--cursor`, routine units use Composer and hard
+  units use Grok (recorded reasons required for hard and claude-codex). Cursor
+  verification is deterministic-first; a fresh Composer verifier gathers semantic
+  evidence only when needed; the live Conductor adjudicates.
 - **model_contract.auth** — always `subscription-only`. BGSD Doctor verifies
   Cursor browser-login (`cursor-agent login`) when Cursor is enabled, or Claude
   and Codex subscription login for Claude/Codex runs. Child processes scrub
@@ -119,7 +120,7 @@ Notes section and Kiwi will respect them.
     "require_remote": true
   },
   "cursor": {
-    "enabled": true,
+    "enabled": false,
     "models": {
       "routine": "composer-2.5",
       "hard": "cursor-grok-4.5-high"
@@ -129,7 +130,7 @@ Notes section and Kiwi will respect them.
     "active": "auto",
     "models": {
       "claude": {
-        "opus": "claude-opus-4-8",
+        "opus": "claude-opus-5",
         "sonnet": "sonnet",
         "haiku": "haiku",
         "fable": "claude-fable-5"
@@ -152,28 +153,20 @@ Notes section and Kiwi will respect them.
   },
   "model_contract": {
     "profile": "claude",
-    "routing": "cursor",
+    "routing": "fixed",
     "build": {
-      "provider": "cursor",
-      "model": "composer-2.5",
-      "effort": null
+      "provider": "claude",
+      "model": "claude-opus-5",
+      "effort": "high"
     },
     "evaluate": {
-      "provider": "cursor",
-      "model": "composer-2.5",
-      "effort": null
+      "provider": "claude",
+      "model": "claude-opus-5",
+      "effort": "high"
     },
     "adaptive": {
-      "routine": {
-        "model": "composer-2.5",
-        "effort": null
-      },
-      "hard": {
-        "model": "cursor-grok-4.5-high",
-        "effort": null
-      },
       "heavy": {
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5",
         "effort": "high"
       },
       "light": {
@@ -188,17 +181,16 @@ Notes section and Kiwi will respect them.
       "routing": "fixed",
       "build": {
         "provider": "claude",
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5",
         "effort": "high"
       },
       "evaluate": {
         "provider": "claude",
-        "model": "claude-opus-4-8",
+        "model": "claude-opus-5",
         "effort": "high"
       }
     }
-  },
-  "verification": {
+  },  "verification": {
     "usage_testing": true,
     "headless": false
   },

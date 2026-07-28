@@ -201,6 +201,7 @@ function parseFlags(args) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const flags = parseFlags(process.argv.slice(2));
   const noCursor = flags["no-cursor"] === true;
+  const wantCursor = flags.cursor === true;
   const contract = resolveModelContract({
     profile: flags.profile || "claude",
     buildModel: flags["build-model"],
@@ -210,7 +211,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     evaluateEffort: flags["evaluate-effort"],
     routing: flags.routing || "fixed",
     proxy: flags.proxy === true,
-    cursor: noCursor ? false : undefined,
+    cursor: noCursor ? false : wantCursor ? true : undefined,
     cursorRoutineModel: flags["cursor-routine-model"],
     cursorHardModel: flags["cursor-hard-model"],
   });
@@ -225,7 +226,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       process.stdout.write(`  claude/codex: profile=${(contract.claude_codex || contract.legacy).profile} (equal alternative backend)\n`);
       process.stdout.write(`  workers:   Cursor Agent CLI (Composer routine / Grok hard)\n`);
     } else {
-      process.stdout.write(`  cursor:    disabled (--no-cursor → Claude/Codex workers)\n`);
+      process.stdout.write(`  cursor:    disabled (default Claude/Codex workers; pass --cursor to opt in)\n`);
       process.stdout.write(`  build:     ${contract.build.provider}/${contract.build.model} (${contract.build.transport})\n`);
       process.stdout.write(`  evaluate:  ${contract.evaluate.provider}/${contract.evaluate.model} (${contract.evaluate.transport})\n`);
     }

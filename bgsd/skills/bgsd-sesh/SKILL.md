@@ -19,9 +19,9 @@ Fast variants and Auto are never allowed.
 
 | Option | Meaning |
 |---|---|
-| **Cursor default (Recommended)** | Composer routine + Grok hard |
-| **Claude Code only** | Opus build/eval (`--no-cursor`) |
-| **Claude + Cursor** | Conductor on Claude; Cursor workers |
+| **Claude Code only (Recommended)** | Opus 5 build/eval (`--no-cursor`, the default) |
+| **Cursor workers** | Composer routine + Grok hard (`--cursor`) |
+| **Claude + Cursor** | Conductor on Claude; Cursor workers (`--cursor`) |
 | **Claudex** | Hybrid `claude-openai` or `openai-claude` |
 | **Codex only** | GPT 5.6 Sol at high effort |
 | **Custom mix…** | Step 2 multi-select |
@@ -30,20 +30,22 @@ Fast variants and Auto are never allowed.
 
 | Option | Model id |
 |---|---|
-| **Claude Opus** | `claude-opus-4-8` (high effort, Default) |
+| **Claude Opus 5 (Recommended)** | `claude-opus-5` (high effort, default executor) |
 | **Cursor CLI · Composer 2.5 Standard** | `composer-2.5` |
 | **Cursor CLI · Grok 4.5 Standard** | `cursor-grok-4.5-high` |
 | **GPT 5.6 Sol · high** | `gpt-5.6-sol` at **high** effort |
 | **Custom…** | Other — Doctor validates |
 
+The Conductor is the live session model. Start on Opus 5 when you want it to orchestrate — that is the user's choice, independent of the executor preset.
+
 ### Flag mapping
 
 ```bash
-# Cursor default (Recommended) — no extra flags
-node "<plugin-root>/scripts/session.mjs" --prompt "<request>" [scale flags]
-
-# Claude Code only
+# Claude Code only (Recommended) — also the no-flag default
 node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --no-cursor --profile claude [scale flags]
+
+# Cursor workers (opt-in)
+node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --cursor [scale flags]
 
 # Codex only (high effort — not medium default)
 node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --no-cursor --profile openai \
@@ -55,7 +57,7 @@ node "<plugin-root>/scripts/session.mjs" --prompt "<request>" --no-cursor \
 
 # Custom mix — combine as needed
 node "<plugin-root>/scripts/session.mjs" --prompt "<request>" \
-  [--no-cursor] [--profile <profile>] [--build-model <id>] [--evaluate-model <id>] \
+  [--no-cursor|--cursor] [--profile <profile>] [--build-model <id>] [--evaluate-model <id>] \
   [--build-effort high] [--evaluate-effort high] \
   [--cursor-routine-model <id>] [--cursor-hard-model <id>] \
   [--routing fixed|adaptive] [--light-build-model <id>] [--proxy] [scale flags]
@@ -64,7 +66,7 @@ node "<plugin-root>/scripts/session.mjs" --prompt "<request>" \
 Run Doctor **after** assembling flags:
 
 ```bash
-node "<plugin-root>/scripts/doctor.mjs" --profile <profile> [--no-cursor] \
+node "<plugin-root>/scripts/doctor.mjs" --profile <profile> [--no-cursor|--cursor] \
   [--build-model <id>] [--evaluate-model <id>] [--build-effort high] [--evaluate-effort high] \
   [--cursor-routine-model <id>] [--cursor-hard-model <id>] --json
 ```
@@ -73,8 +75,8 @@ Offer native Install & Continue if Doctor reports missing setup. Then export bot
 
 The live session model is the Conductor and authors all unit seeds. Do not launch a separate pre-planner. Do not switch the Conductor model.
 
-**Default routing (Cursor):** unassigned units use Composer 2.5 Standard (`composer-2.5`). Hard units use Grok 4.5 Standard (`cursor-grok-4.5-high`) only with a recorded Conductor reason. Workers never choose their own model.
+**Default routing (Claude/Codex):** unassigned units use Claude Opus 5 at high effort. With `--cursor`, unassigned units use Composer 2.5 Standard (`composer-2.5`). Hard Cursor units use Grok 4.5 Standard (`cursor-grok-4.5-high`) only with a recorded Conductor reason. Workers never choose their own model.
 
-**Verification:** deterministic-first (tests, lint, typecheck, build, Playwright). Optional fresh Composer verifier for semantic inspection. You (the Conductor) adjudicate evidence — accept, repair, escalate to Grok, or block. No silent green; no silent model switch across backends.
+**Verification:** deterministic-first (tests, lint, typecheck, build, Playwright). With Cursor workers, optional fresh Composer verifier for semantic inspection. You (the Conductor) adjudicate evidence — accept, repair, escalate, or block. No silent green; no silent model switch across backends.
 
-**Quick** sessions still delegate: direct Cursor workers in isolated worktrees; no GSD. Feature/Project use full Open GSD for Cursor. With `--no-cursor`, use Claude/Codex lanes instead — an equal alternative.
+**Quick** sessions still delegate: Pipeline Agents in isolated worktrees; no GSD. Feature/Project use full Open GSD. Default workers are Claude/Codex; pass `--cursor` for Cursor Agent workers.

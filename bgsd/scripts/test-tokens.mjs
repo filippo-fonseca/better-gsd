@@ -51,12 +51,13 @@ function test(name, fn) {
 // --- PRICING ---------------------------------------------------------------
 
 test("P01 — pricingKey resolves concrete ids", () => {
+  assert.equal(pricingKey("claude-opus-5"), "claude-opus-5");
   assert.equal(pricingKey("claude-opus-4-8"), "claude-opus-4-8");
   assert.equal(pricingKey("gpt-5.4-mini"), "gpt-5.4-mini");
 });
 
 test("P02 — pricingKey resolves semantic tier aliases", () => {
-  assert.equal(pricingKey("opus"), "claude-opus-4-8");
+  assert.equal(pricingKey("opus"), "claude-opus-5");
   assert.equal(pricingKey("sonnet"), "claude-sonnet-5");
   assert.equal(pricingKey("haiku"), "claude-haiku-4-5");
   assert.equal(pricingKey("fable"), "claude-fable-5");

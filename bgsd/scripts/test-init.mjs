@@ -125,10 +125,10 @@ test("I01 — defaultBgsdConfig: shape + key defaults", () => {
   assert.ok(Array.isArray(c.env.files) && c.env.files.includes(".env"));
   assert.equal(c.version, 2);
   assert.equal(c.model_contract.profile, "claude");
-  assert.equal(c.model_contract.routing, "cursor");
-  assert.equal(c.model_contract.build.model, "composer-2.5");
-  assert.equal(c.model_contract.evaluate.model, "composer-2.5");
-  assert.equal(c.cursor.enabled, true);
+  assert.equal(c.model_contract.routing, "fixed");
+  assert.equal(c.model_contract.build.model, "claude-opus-5");
+  assert.equal(c.model_contract.evaluate.model, "claude-opus-5");
+  assert.equal(c.cursor.enabled, false);
   assert.equal(c.cursor.models.routine, "composer-2.5");
   assert.equal(c.cursor.models.hard, "cursor-grok-4.5-high");
   assert.equal(c.model_contract.auth, "subscription-only");
@@ -147,9 +147,8 @@ test("I02 — defaultBgsdConfig: fresh deep copy", () => {
   const a = defaultBgsdConfig();
   a.model_contract.build.model = "MUTATED";
   const b = defaultBgsdConfig();
-  assert.equal(b.model_contract.build.model, "composer-2.5");
+  assert.equal(b.model_contract.build.model, "claude-opus-5");
 });
-
 test("I03 — deepMerge: nested merge, scalar replace, no mutation", () => {
   const base = { a: 1, nested: { x: 1, y: 2 }, arr: [1, 2] };
   const over = { a: 2, nested: { y: 9 }, arr: [3] };
@@ -179,7 +178,7 @@ test("I07 — parseBgsdMd: partial override layers over defaults", () => {
   const c = parseBgsdMd(text);
   assert.equal(c.integration_branch, "develop");
   // untouched keys still present from defaults
-  assert.equal(c.model_contract.evaluate.model, "composer-2.5");
+  assert.equal(c.model_contract.evaluate.model, "claude-opus-5");
   assert.equal(c.env.propagate, true);
 });
 

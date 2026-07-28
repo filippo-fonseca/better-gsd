@@ -25,7 +25,7 @@ export const EFFORT_LEVELS = Object.freeze(["low", "medium", "high", "xhigh"]);
  * Fast variants and Auto are never listed.
  */
 export const EXECUTOR_MODEL_OPTIONS = Object.freeze([
-  { id: "claude-opus", label: "Claude Opus", model: "claude-opus-4-8", provider: "claude", effort: "high" },
+  { id: "claude-opus", label: "Claude Opus 5 (Recommended)", model: "claude-opus-5", provider: "claude", effort: "high" },
   { id: "cursor-composer", label: "Cursor CLI · Composer 2.5 Standard", model: "composer-2.5", provider: "cursor", role: "routine" },
   { id: "cursor-grok", label: "Cursor CLI · Grok 4.5 Standard", model: "cursor-grok-4.5-high", provider: "cursor", role: "hard" },
   { id: "codex-sol-high", label: "GPT 5.6 Sol · high", model: "gpt-5.6-sol", provider: "openai", effort: "high" },
@@ -34,22 +34,23 @@ export const EXECUTOR_MODEL_OPTIONS = Object.freeze([
 /**
  * Recommended path presets — Step 1 single-select before custom mix.
  * `sessionFlags` are the argv tokens for session.mjs / doctor.mjs.
+ * Default path is Claude Code / Opus 5 (no Cursor); Cursor is opt-in via --cursor.
  */
 export const SESSION_PATH_PRESETS = Object.freeze({
-  "cursor-default": {
-    label: "Cursor default (Recommended)",
-    sessionFlags: [],
-    resolveOpts: {},
-  },
   "claude-only": {
-    label: "Claude Code only",
+    label: "Claude Code only (Recommended)",
     sessionFlags: ["--no-cursor", "--profile", "claude"],
     resolveOpts: { cursor: false, profile: "claude" },
   },
+  "cursor-default": {
+    label: "Cursor workers",
+    sessionFlags: ["--cursor"],
+    resolveOpts: { cursor: true },
+  },
   "claude-cursor": {
     label: "Claude + Cursor",
-    sessionFlags: ["--profile", "claude"],
-    resolveOpts: { profile: "claude" },
+    sessionFlags: ["--cursor", "--profile", "claude"],
+    resolveOpts: { cursor: true, profile: "claude" },
   },
   claudex: {
     label: "Claudex",
@@ -68,7 +69,6 @@ export const SESSION_PATH_PRESETS = Object.freeze({
     resolveOpts: null,
   },
 });
-
 export function normalizeEffort(value) {
   const v = String(value ?? "").trim().toLowerCase();
   return EFFORT_LEVELS.includes(v) ? v : null;
@@ -102,7 +102,7 @@ export function sessionFlagsFromPreset(presetId, { claudexProfile } = {}) {
 }
 
 export const DEFAULT_MODELS = Object.freeze({
-  claude: { model: "claude-opus-4-8", lightModel: "sonnet", effort: "high", harness: "claude" },
+  claude: { model: "claude-opus-5", lightModel: "sonnet", effort: "high", harness: "claude" },
   openai: { model: "gpt-5.6-sol", lightModel: "gpt-5.5", effort: "medium", harness: "codex" },
   cursor: {
     model: DEFAULT_CURSOR_MODELS.routine,
@@ -111,7 +111,6 @@ export const DEFAULT_MODELS = Object.freeze({
     harness: "cursor",
   },
 });
-
 export const PIPELINE_PROFILES = Object.freeze({
   claude: { build: "claude", evaluate: "claude" },
   openai: { build: "openai", evaluate: "openai" },
@@ -244,19 +243,21 @@ function cursorLane(role, model) {
 /**
  * Explicit CLI / env precedence for Cursor enablement:
  *   1. opts.cursor === false (--no-cursor) → disabled (flag wins)
- *   2. opts.cursor === true → enabled (explicit enable wins over ambient env)
+ *   2. opts.cursor === true (--cursor) → enabled (explicit enable wins over ambient env)
  *   3. BGSD_NO_CURSOR=1 → disabled
  *   4. BGSD_CURSOR=0 → disabled
  *   5. BGSD_CURSOR=1 → enabled
- *   6. default → enabled
+ *   6. config.cursor.enabled boolean from BGSD.md when set
+ *   7. default → disabled (Claude/Codex workers; Cursor is opt-in)
  */
-export function resolveCursorEnabled({ cursor, env = process.env } = {}) {
+export function resolveCursorEnabled({ cursor, env = process.env, config } = {}) {
   if (cursor === false) return false;
   if (cursor === true) return true;
   if (env.BGSD_NO_CURSOR === "1" || env.BGSD_NO_CURSOR === "true") return false;
   if (env.BGSD_CURSOR === "0" || env.BGSD_CURSOR === "false") return false;
   if (env.BGSD_CURSOR === "1" || env.BGSD_CURSOR === "true") return true;
-  return true;
+  if (typeof config?.cursor?.enabled === "boolean") return config.cursor.enabled;
+  return false;
 }
 
 function resolveCursorModels({ cursorRoutineModel, cursorHardModel, env = process.env, config } = {}) {
@@ -291,9 +292,9 @@ function wrapClaudeCodexBlock({ profile, routing, build, adaptive, evaluate }) {
 /**
  * Resolve the session model contract.
  *
- * Default (no flag): Cursor-backed execution (v3) — Composer routine, Grok hard.
- * `--no-cursor` / cursor:false: Claude/Codex workers only (still version 3
- * with cursor.enabled=false so resume persists the disabled state).
+ * Default (no flag): Claude/Codex workers (v3) — Claude Opus 5 build/eval at high
+ * effort. `--cursor` / cursor:true: Cursor-backed execution — Composer routine,
+ * Grok hard. `--no-cursor` remains an explicit alias for the default disabled state.
  */
 export function resolveModelContract({
   profile = "claude",
@@ -344,7 +345,7 @@ export function resolveModelContract({
     evaluate,
   });
 
-  const cursorEnabled = resolveCursorEnabled({ cursor, env });
+  const cursorEnabled = resolveCursorEnabled({ cursor, env, config });
   if (!cursorEnabled) {
     return {
       version: CONTRACT_VERSION,

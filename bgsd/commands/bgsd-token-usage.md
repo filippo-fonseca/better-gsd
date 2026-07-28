@@ -30,7 +30,7 @@ With no `--run-id`, it reports the latest run.
    - **Headline totals:** input / output / cache tokens and indicative cost for
      the whole session.
    - **Per lane:** build vs evaluation, each with its concrete provider/model
-     (e.g. `claude/claude-opus-4-8 high`, `openai/gpt-5.6-sol medium`) so the
+     (e.g. `claude/claude-opus-5 high`, `openai/gpt-5.6-sol medium`) so the
      split between building and verifying is visible.
    - **Per role and per unit:** Conductor, Pipeline Agents, verifiers, fix
      agents — and which unit each belongs to — so a runaway unit is obvious.
