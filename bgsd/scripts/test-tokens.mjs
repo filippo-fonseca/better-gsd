@@ -52,7 +52,6 @@ function test(name, fn) {
 
 test("P01 — pricingKey resolves concrete ids", () => {
   assert.equal(pricingKey("claude-opus-5"), "claude-opus-5");
-  assert.equal(pricingKey("claude-opus-4-8"), "claude-opus-4-8");
   assert.equal(pricingKey("gpt-5.4-mini"), "gpt-5.4-mini");
 });
 
@@ -70,7 +69,7 @@ test("P03 — pricingKey returns null for unknown model", () => {
 
 test("P04 — estimateCost basic input+output (opus)", () => {
   // 1M input @ $5 + 1M output @ $25 = $30
-  const usd = estimateCost({ model: "claude-opus-4-8", inputTokens: 1e6, outputTokens: 1e6 });
+  const usd = estimateCost({ model: "claude-opus-5", inputTokens: 1e6, outputTokens: 1e6 });
   assert.equal(usd, 30);
 });
 
@@ -78,7 +77,7 @@ test("P05 — estimateCost nets cache-read out of full-price input", () => {
   // input 42k (15k of it cache-read), output 9k on opus
   // full input 27k*$5 + cache 15k*$0.5 + out 9k*$25 (per M)
   const usd = estimateCost({
-    model: "claude-opus-4-8",
+    model: "claude-opus-5",
     inputTokens: 42000,
     outputTokens: 9000,
     cacheReadTokens: 15000,
@@ -105,22 +104,22 @@ const BGSD = join(TMP, ".bgsd");
 test("L01 — recordUsage creates ledger + fills computed cost", () => {
   const row = recordUsage(BGSD, "bgsd-t1", {
     agentId: "u-1", role: "executor", harness: "claude",
-    model: "claude-opus-4-8", effort: "xhigh",
+    model: "claude-opus-5", effort: "xhigh",
     inputTokens: 10000, outputTokens: 2000,
   });
-  assert.equal(row.cost_usd, estimateCost({ model: "claude-opus-4-8", inputTokens: 10000, outputTokens: 2000 }));
+  assert.equal(row.cost_usd, estimateCost({ model: "claude-opus-5", inputTokens: 10000, outputTokens: 2000 }));
   assert.equal(row.source, "measured");
   assert.ok(existsSync(join(BGSD, "runs", "bgsd-t1", "tokens.json")));
 });
 
 test("L02 — recordUsage appends (does not clobber)", () => {
-  recordUsage(BGSD, "bgsd-t1", { agentId: "conductor", role: "conductor", model: "claude-opus-4-8", inputTokens: 5000, outputTokens: 500 });
+  recordUsage(BGSD, "bgsd-t1", { agentId: "conductor", role: "conductor", model: "claude-opus-5", inputTokens: 5000, outputTokens: 500 });
   const ledger = loadUsage(BGSD, "bgsd-t1");
   assert.equal(ledger.entries.length, 2);
 });
 
 test("L03 — explicit --cost overrides computed", () => {
-  const row = recordUsage(BGSD, "bgsd-t2", { agentId: "x", role: "planner", model: "claude-opus-4-8", inputTokens: 1000, costUsd: 9.99 });
+  const row = recordUsage(BGSD, "bgsd-t2", { agentId: "x", role: "planner", model: "claude-opus-5", inputTokens: 1000, costUsd: 9.99 });
   assert.equal(row.cost_usd, 9.99);
 });
 
@@ -157,7 +156,7 @@ test("S01 — summarize totals across rows", () => {
 
 test("S02 — breakdowns by model/role/agent present", () => {
   const s = summarize(loadUsage(BGSD, "bgsd-t1"));
-  assert.ok(s.byModel["claude-opus-4-8"]);
+  assert.ok(s.byModel["claude-opus-5"]);
   assert.ok(s.byRole.executor && s.byRole.conductor);
   assert.ok(s.byAgent["u-1"] && s.byAgent.conductor);
 });

@@ -317,7 +317,7 @@ await test("F01: liveFix spawns `claude -p <gsdCommand> --worktree ...` with arg
     assert.equal(cmd, "claude", "must spawn claude");
     assert.deepEqual(
       args,
-      ["-p", "/gsd-quick", "--model", "claude-opus-4-8", "--worktree", wt, "--effort", "high", "--model-profile", "opus"],
+      ["-p", "/gsd-quick", "--model", "claude-opus-5", "--worktree", wt, "--effort", "high", "--model-profile", "opus"],
       "argv matches the gsd fix contract"
     );
     assert.equal(opts.cwd, wt, "spawn cwd is the worktree");

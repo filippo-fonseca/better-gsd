@@ -240,7 +240,7 @@ await test("(d) liveVerify spawns `claude -p /bgsd-verify <url> --criteria <file
   const tester = spawn.calls[1];
   assert.strictEqual(tester.cmd, "claude");
   assert.deepStrictEqual(tester.args, [
-    "-p", "/bgsd-verify", "--model", "claude-opus-4-8", "http://localhost:3200", "--criteria", "/crit/i.md",
+    "-p", "/bgsd-verify", "--model", "claude-opus-5", "http://localhost:3200", "--criteria", "/crit/i.md",
   ]);
   assert.strictEqual(res.verdict, "PASS");
 });
@@ -385,7 +385,7 @@ await test("(i) liveFix creates a worktree + spawns /gsd-quick per defect group"
     assert.strictEqual(c.args[0], "-p");
     assert.strictEqual(c.args[1], "/gsd-quick");
     assert.strictEqual(c.args[2], "--model");
-    assert.strictEqual(c.args[3], "claude-opus-4-8");
+    assert.strictEqual(c.args[3], "claude-opus-5");
     assert.strictEqual(c.args[4], "--worktree");
     assert.ok(typeof c.args[5] === "string" && c.args[5].length > 0, "passes a worktree path");
   }
