@@ -22,23 +22,34 @@ node bgsd/scripts/session.mjs --prompt "Add export filters to the settings page"
 
 Every **new** session asks via native selectors (not prose):
 
-1. **Recommended path preset** — Cursor default, Claude Code only, Claude + Cursor, Claudex, Codex only, or Custom mix
-2. **Optional multi-select** — Claude Opus, Composer 2.5 Standard, Grok 4.5 Standard, GPT 5.6 Sol high, Custom…
+1. **Recommended path preset** — Claude Code only (Recommended), Cursor workers, Claude + Cursor, Claudex, Codex only, or Custom mix
+2. **Optional multi-select** — Claude Opus 5, Composer 2.5 Standard, Grok 4.5 Standard, GPT 5.6 Sol high, Custom…
 
 Then **Doctor** validates what you picked. Details → [Models & routing](/models/).
 
-## 3. Default workers (Cursor path)
+## 3. Default workers (Claude / Opus 5)
 
-- **Routine** → Composer 2.5 Standard (`composer-2.5`)
-- **Hard** → Grok 4.5 Standard (`cursor-grok-4.5-high`) — recorded reason required
+- **Build + evaluate** → Claude Opus 5 (`claude-opus-5`) at high effort
+- **Conductor** → your live session model (start on Opus 5 to orchestrate)
 
 ```
 /bgsd-sesh "Add export filters"
 ```
 
-## 4. Claude / Codex workers instead
+## 4. Cursor workers (opt-in)
 
-Pick **Claude Code only**, **Claudex**, or **Codex only** in the selector — or pass flags:
+Pick **Cursor workers** or **Claude + Cursor** in the selector — or pass `--cursor`:
+
+```sh
+node bgsd/scripts/session.mjs \
+  --prompt "Add export filters" \
+  --cursor
+```
+
+- **Routine** → Composer 2.5 Standard (`composer-2.5`)
+- **Hard** → Grok 4.5 Standard (`cursor-grok-4.5-high`) — recorded reason required
+
+For Claudex / Codex-only:
 
 ```sh
 node bgsd/scripts/session.mjs \

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * test-model-contract.mjs — Contract v3 (Cursor default) + v2 legacy/--no-cursor.
+ * test-model-contract.mjs — Contract v3 (Claude/Opus 5 default; Cursor opt-in).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -20,38 +20,40 @@ function test(name, fn) { fn(); passed++; process.stdout.write(`  PASS  ${name}\
 
 test("four pipeline profiles", () => assert.deepEqual(Object.keys(PIPELINE_PROFILES), ["claude", "openai", "claude-openai", "openai-claude"]));
 
-test("1 — no flag resolves Cursor enabled", () => {
+test("1 — no flag resolves Cursor disabled (Claude/Codex default)", () => {
   const c = resolveModelContract({ profile: "claude", env: { PATH: "/bin" } });
   assert.equal(c.version, 3);
-  assert.equal(c.cursor.enabled, true);
-  assert.equal(isCursorContract(c), true);
+  assert.equal(c.cursor.enabled, false);
+  assert.equal(isCursorContract(c), false);
+  assert.equal(c.build.model, "claude-opus-5");
+  assert.equal(c.evaluate.model, "claude-opus-5");
 });
 
-test("2 — routine lane resolves to Composer Standard selector", () => {
-  const c = resolveModelContract({ env: { PATH: "/bin" } });
+test("2 — --cursor routine lane resolves to Composer Standard selector", () => {
+  const c = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
   assert.equal(c.cursor.routine.model, DEFAULT_CURSOR_MODELS.routine);
   assert.equal(c.cursor.routine.model, "composer-2.5");
   assert.equal(c.cursor.routine.harness, "cursor");
   assert.equal(c.cursor.routine.transport, "direct");
 });
 
-test("3 — hard lane resolves to Grok base selector", () => {
-  const c = resolveModelContract({ env: { PATH: "/bin" } });
+test("3 — --cursor hard lane resolves to Grok base selector", () => {
+  const c = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
   assert.equal(c.cursor.hard.model, "cursor-grok-4.5-high");
   assert.equal(isForbiddenCursorSelector(c.cursor.hard.model).forbidden, false);
 });
 
 test("4 — Conductor remains the live-session model", () => {
   const c = resolveModelContract({
-    conductor: { provider: "claude", harness: "claude", model: "claude-fable-5", source: "live-session" },
+    conductor: { provider: "claude", harness: "claude", model: "claude-opus-5", source: "live-session" },
     env: { PATH: "/bin" },
   });
-  assert.equal(c.conductor.model, "claude-fable-5");
+  assert.equal(c.conductor.model, "claude-opus-5");
   assert.equal(c.conductor.source, "live-session");
 });
 
 test("5 — Cursor hard/legacy assignments require recorded reasons", () => {
-  const c = resolveModelContract({ env: { PATH: "/bin" } });
+  const c = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
   assert.throws(() => buildLaneForUnit(c, { tier: "hard" }), /reason/);
   assert.throws(() => buildLaneForUnit(c, { tier: "legacy", reason: "" }), /reason/);
   const hard = buildLaneForUnit(c, { tier: "hard", reason: "cross-cutting auth refactor" });
@@ -68,7 +70,7 @@ test("6 — Legacy v2 contracts still rehydrate as Cursor-disabled", () => {
       routing: "adaptive",
       build: { provider: "openai", harness: "codex", model: "gpt-5.6-sol", effort: "medium", transport: "direct" },
       adaptive: { heavy: { model: "gpt-5.6-sol", effort: "medium" }, light: { model: "gpt-5.5", effort: "high" } },
-      evaluate: { provider: "claude", harness: "claude", model: "claude-opus-4-8", effort: "high", transport: "direct" },
+      evaluate: { provider: "claude", harness: "claude", model: "claude-opus-5", effort: "high", transport: "direct" },
       conductor: { provider: "openai", model: "gpt-5.6-sol" },
       auth: { policy: "subscription-only", verified_at: null },
     };
@@ -76,7 +78,7 @@ test("6 — Legacy v2 contracts still rehydrate as Cursor-disabled", () => {
     const rehydrated = loadContractForRun(dir, { env: { PATH: "/bin" } });
     assert.equal(rehydrated.cursor.enabled, false);
     assert.equal(rehydrated.build.model, "gpt-5.6-sol");
-    assert.equal(rehydrated.evaluate.model, "claude-opus-4-8");
+    assert.equal(rehydrated.evaluate.model, "claude-opus-5");
     assert.equal(rehydrated.migrated_from, 2);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -84,7 +86,7 @@ test("6 — Legacy v2 contracts still rehydrate as Cursor-disabled", () => {
 test("7 — Cursor v3 contracts rehydrate", () => {
   const dir = mkdtempSync(join(tmpdir(), "bgsd-v3-"));
   try {
-    const original = resolveModelContract({ env: { PATH: "/bin" } });
+    const original = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
     writeFileSync(join(dir, "run.json"), JSON.stringify({ run_id: "r3", model_contract: original }));
     const rehydrated = loadContractForRun(dir, { env: { PATH: "/bin", BGSD_NO_CURSOR: "1" } });
     // Stored enabled=true must win over ambient --no-cursor env on a Cursor run.
@@ -100,8 +102,8 @@ test("8 — --no-cursor persists across processes and resume", () => {
     assert.equal(original.cursor.enabled, false);
     assert.equal(original.build.provider, "claude");
     writeFileSync(join(dir, "run.json"), JSON.stringify({ run_id: "r4", model_contract: original }));
-    // Ambient env would enable Cursor by default — rehydration must keep disabled.
-    const rehydrated = loadContractForRun(dir, { env: { PATH: "/bin" } });
+    // Ambient env would enable Cursor if set — rehydration must keep disabled.
+    const rehydrated = loadContractForRun(dir, { env: { PATH: "/bin", BGSD_CURSOR: "1" } });
     assert.equal(rehydrated.cursor.enabled, false);
     assert.equal(rehydrated.build.harness, "claude");
     const exported = exportContractEnv(original, { PATH: "/bin" });
@@ -113,7 +115,7 @@ test("8 — --no-cursor persists across processes and resume", () => {
 test("legacy hybrid profile resolves with --no-cursor", () => {
   const c = resolveModelContract({ profile: "openai-claude", cursor: false, conductor: { provider: "openai", model: "gpt-5.6-sol" } });
   assert.equal(c.build.model, "gpt-5.6-sol");
-  assert.equal(c.evaluate.model, "claude-opus-4-8");
+  assert.equal(c.evaluate.model, "claude-opus-5");
   assert.equal(c.build.effort, "medium");
 });
 
@@ -137,17 +139,21 @@ test("build-effort flag overrides OpenAI default medium", () => {
   assert.equal(c.evaluate.effort, "high");
 });
 
-test("session path presets expose all six Step 1 options", () => {
+test("session path presets expose all six Step 1 options; Claude recommended", () => {
   assert.equal(Object.keys(SESSION_PATH_PRESETS).length, 6);
-  assert.equal(SESSION_PATH_PRESETS["cursor-default"].label, "Cursor default (Recommended)");
+  assert.equal(SESSION_PATH_PRESETS["claude-only"].label, "Claude Code only (Recommended)");
+  assert.equal(SESSION_PATH_PRESETS["cursor-default"].label, "Cursor workers");
+  assert.deepEqual(sessionFlagsFromPreset("claude-only"), ["--no-cursor", "--profile", "claude"]);
+  assert.deepEqual(sessionFlagsFromPreset("cursor-default"), ["--cursor"]);
 });
 
-test("executor model options exclude Fast variants", () => {
+test("executor model options exclude Fast variants; Opus 5 recommended", () => {
   for (const opt of EXECUTOR_MODEL_OPTIONS) {
     if (opt.provider === "cursor") {
       assert.equal(isForbiddenCursorSelector(opt.model).forbidden, false, opt.model);
     }
   }
+  assert.equal(EXECUTOR_MODEL_OPTIONS.find((o) => o.id === "claude-opus").model, "claude-opus-5");
   assert.equal(EXECUTOR_MODEL_OPTIONS.find((o) => o.id === "codex-sol-high").effort, "high");
 });
 
@@ -167,11 +173,11 @@ test("Fast and Auto Cursor selectors are rejected", () => {
   assert.equal(isForbiddenCursorSelector("cursor-grok-4.5-high-fast").forbidden, true);
   assert.equal(isForbiddenCursorSelector("auto").forbidden, true);
   assert.equal(validateModelId("cursor", "composer-2.5-fast").ok, false);
-  assert.throws(() => resolveModelContract({ cursorRoutineModel: "composer-2.5-fast", env: { PATH: "/bin" } }));
+  assert.throws(() => resolveModelContract({ cursor: true, cursorRoutineModel: "composer-2.5-fast", env: { PATH: "/bin" } }));
 });
 
 test("25 — unassigned Cursor unit defaults visibly to routine/Composer", () => {
-  const lane = buildLaneForUnit(resolveModelContract({ env: { PATH: "/bin" } }));
+  const lane = buildLaneForUnit(resolveModelContract({ cursor: true, env: { PATH: "/bin" } }));
   assert.equal(lane.model, "composer-2.5");
   assert.equal(lane.assignment.tier, "routine");
   assert.equal(lane.assignment.source, "session");
@@ -179,7 +185,7 @@ test("25 — unassigned Cursor unit defaults visibly to routine/Composer", () =>
 });
 
 test("26 — Conductor hard assignment routes to Grok", () => {
-  const lane = buildLaneForUnit(resolveModelContract({ env: { PATH: "/bin" } }), {
+  const lane = buildLaneForUnit(resolveModelContract({ cursor: true, env: { PATH: "/bin" } }), {
     tier: "hard", reason: "ambiguous concurrency failure",
   });
   assert.equal(lane.model, "cursor-grok-4.5-high");
@@ -187,14 +193,14 @@ test("26 — Conductor hard assignment routes to Grok", () => {
 });
 
 test("27/29 — Composer failure does not autonomously change models; no auto legacy", () => {
-  const c = resolveModelContract({ env: { PATH: "/bin" } });
+  const c = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
   const again = buildLaneForUnit(c, null);
   assert.equal(again.assignment.tier, "routine");
   assert.notEqual(again.assignment.tier, "legacy");
 });
 
 test("28 — Recorded escalation routes next attempt to Grok", () => {
-  let c = resolveModelContract({ env: { PATH: "/bin" } });
+  let c = resolveModelContract({ cursor: true, env: { PATH: "/bin" } });
   c = recordEscalation(c, { from: "routine", to: "hard", reason: "Composer failed verification twice", unitId: "u1" });
   assert.equal(c.escalation_history.length, 1);
   const lane = buildLaneForUnit(c, { tier: "hard", reason: "Composer failed verification twice", attempt: 2 });
@@ -204,7 +210,7 @@ test("28 — Recorded escalation routes next attempt to Grok", () => {
 
 test("fixed routing ignores per-unit downgrade under --no-cursor", () => {
   const lane = buildLaneForUnit(resolveModelContract({ profile: "claude", cursor: false }), { tier: "light", reason: "small" });
-  assert.equal(lane.model, "claude-opus-4-8");
+  assert.equal(lane.model, "claude-opus-5");
   assert.equal(lane.assignment.source, "session");
 });
 
@@ -264,13 +270,19 @@ test("conductor detection honors explicit provider/model", () => {
   assert.equal(c.model, "gpt-5.6-sol");
 });
 
-test("contractRuntimes: cursor vs legacy", () => {
-  assert.deepEqual(contractRuntimes(resolveModelContract({ env: { PATH: "/bin" } })), ["cursor"]);
+test("contractRuntimes: cursor vs default Claude", () => {
+  assert.deepEqual(contractRuntimes(resolveModelContract({ cursor: true, env: { PATH: "/bin" } })), ["cursor"]);
   assert.deepEqual(contractRuntimes(resolveModelContract({ cursor: false, profile: "claude" })), ["claude"]);
+  assert.deepEqual(contractRuntimes(resolveModelContract({ env: { PATH: "/bin" } })), ["claude"]);
+});
+
+test("BGSD_CURSOR=1 env enables Cursor", () => {
+  const c = resolveModelContract({ env: { PATH: "/bin", BGSD_CURSOR: "1" } });
+  assert.equal(c.cursor.enabled, true);
 });
 
 test("BGSD_NO_CURSOR env disables Cursor", () => {
-  const c = resolveModelContract({ env: { PATH: "/bin", BGSD_NO_CURSOR: "1" } });
+  const c = resolveModelContract({ env: { PATH: "/bin", BGSD_CURSOR: "1", BGSD_NO_CURSOR: "1" } });
   assert.equal(c.cursor.enabled, false);
 });
 

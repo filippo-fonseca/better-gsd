@@ -19,7 +19,7 @@
  *
  * Usage (CLI):
  *   node tokens.mjs record --run-id <id> --agent <id> --role executor \
- *        --model claude-opus-4-8 --effort xhigh --harness claude \
+ *        --model claude-opus-5 --effort xhigh --harness claude \
  *        --input 42000 --output 9000 [--cache-read 15000] [--unit u-1] [--source measured]
  *   node tokens.mjs report [--run-id <id>] [--json]
  *   node tokens.mjs summary            # newest run, human table
@@ -55,8 +55,7 @@ import { spawnSync } from "node:child_process";
 export const PRICING = Object.freeze({
   // Claude (Anthropic)
   "claude-fable-5":   { input: 10,   output: 50,   cacheRead: 1.0 },
-  "claude-opus-4-8":  { input: 5,    output: 25,   cacheRead: 0.5 },
-  "claude-opus-4-7":  { input: 5,    output: 25,   cacheRead: 0.5 },
+  "claude-opus-5":    { input: 5,    output: 25,   cacheRead: 0.5 },
   "claude-sonnet-5":  { input: 3,    output: 15,   cacheRead: 0.3 },
   "claude-sonnet-4-6":{ input: 3,    output: 15,   cacheRead: 0.3 },
   "claude-haiku-4-5": { input: 1,    output: 5,    cacheRead: 0.1 },
@@ -78,12 +77,11 @@ export const PRICING = Object.freeze({
  * to the concrete id so pricing always resolves.
  */
 const TIER_ALIASES = Object.freeze({
-  opus:   "claude-opus-4-8",
+  opus:   "claude-opus-5",
   sonnet: "claude-sonnet-5",
   haiku:  "claude-haiku-4-5",
   fable:  "claude-fable-5",
 });
-
 /**
  * Resolve any model string (concrete id or semantic tier) to a pricing key.
  * Returns null when we have no pricing for it (cost then reported as null).

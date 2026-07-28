@@ -26,7 +26,7 @@ await test("model probe and model assertion fail closed", async () => {
     fetchImpl: async () => ({ ok: true, json: async () => ({ data: [{ id: "gpt-5.5" }] }) }),
   });
   assert.deepEqual(result.models, ["gpt-5.5"]);
-  assert.throws(() => assertProxyModel(result.models, "claude-opus-4-8"), /does not advertise/);
+  assert.throws(() => assertProxyModel(result.models, "claude-opus-5"), /does not advertise/);
 });
 
 process.stdout.write(`\nproxy.mjs: ${passed} passed\n`);

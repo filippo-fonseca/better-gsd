@@ -82,9 +82,9 @@ Present this selector first. Put the recommended option at the top of the list.
 
 | Option label | Meaning |
 |---|---|
-| **Cursor default (Recommended)** | Composer routine + Grok hard via `cursor-agent` |
-| **Claude Code only** | Opus for build and evaluation (`--no-cursor`) |
-| **Claude + Cursor** | Conductor stays on Claude; Cursor workers for units |
+| **Claude Code only (Recommended)** | Opus 5 for build and evaluation (`--no-cursor`, the default) |
+| **Cursor workers** | Composer routine + Grok hard via `cursor-agent` (`--cursor`) |
+| **Claude + Cursor** | Conductor stays on Claude; Cursor workers for units (`--cursor`) |
 | **Claudex** | Claude + Codex hybrid profiles (`claude-openai` or `openai-claude`) |
 | **Codex only** | GPT 5.6 Sol at **high** effort (`--no-cursor`) |
 | **Custom mix…** | Continue to Step 2 multi-select |
@@ -96,42 +96,46 @@ fixed options plus built-in free-form **Other** for custom ids:
 
 | Option label | Model id | Notes |
 |---|---|---|
-| **Claude Opus** | `claude-opus-4-8` | Claude Code workers; high effort (default) |
+| **Claude Opus 5 (Recommended)** | `claude-opus-5` | Claude Code workers; high effort (default executor) |
 | **Cursor CLI · Composer 2.5 Standard** | `composer-2.5` | Routine Cursor lane; never Fast |
 | **Cursor CLI · Grok 4.5 Standard** | `cursor-grok-4.5-high` | Hard Cursor lane; never Fast |
 | **GPT 5.6 Sol · high** | `gpt-5.6-sol` | Codex workers at **high** effort (not medium) |
 | **Custom…** | (Other) | Free-form id(s); Doctor must validate |
 
-Mark defaults in labels: **(Recommended)** on Cursor default preset;
-**(Default)** on Claude Opus effort and Composer/Grok Standard selectors.
+Mark defaults in labels: **(Recommended)** on Claude Code only preset and
+Claude Opus 5 executor; Cursor is opt-in.
+
+The Conductor is always the live session model — start the session on Opus 5
+when you want it to orchestrate; that choice is yours, independent of the
+executor preset.
 
 ### Mapping presets → `session.mjs` flags
 
 | Preset | Flags |
 |---|---|
-| **Cursor default** | (none — Cursor enabled by default) |
-| **Claude Code only** | `--no-cursor --profile claude` |
-| **Claude + Cursor** | default Cursor + `--profile claude` (Claude/Codex contract for `claude-codex` units) |
+| **Claude Code only** | `--no-cursor --profile claude` (also the no-flag default) |
+| **Cursor workers** | `--cursor` |
+| **Claude + Cursor** | `--cursor --profile claude` (Claude/Codex contract for `claude-codex` units) |
 | **Claudex** | native sub-selector: `claude-openai` (Claude build / OpenAI eval) or `openai-claude` (OpenAI build / Claude eval); then `--no-cursor --profile <choice>` |
 | **Codex only** | `--no-cursor --profile openai --build-effort high --evaluate-effort high` |
 | **Custom mix** | Combine flags from Step 2 selections (see below) |
 
 **Custom mix flag assembly** (from Step 2 multi-select):
 
-- Any Cursor model selected → Cursor enabled; set `--cursor-routine-model` /
+- Any Cursor model selected → `--cursor`; set `--cursor-routine-model` /
   `--cursor-hard-model` when non-default ids chosen.
 - Only Claude Opus (no Cursor, no Codex) → `--no-cursor --profile claude`.
 - Only GPT 5.6 Sol → `--no-cursor --profile openai --build-effort high --evaluate-effort high`.
 - Both Claude and Codex lanes → `--no-cursor --profile claude-openai` or
   `openai-claude` per sub-selector; custom ids via `--build-model` /
   `--evaluate-model`.
-- Mixed Cursor + Claude/Codex → Cursor default on + `--profile` for the
+- Mixed Cursor + Claude/Codex → `--cursor` + `--profile` for the
   `claude_codex` block; optional `--routing fixed|adaptive`.
 
 Invoke Doctor **after** assembling flags:
 
 ```sh
-node "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs" --profile <profile> [--no-cursor] \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs" --profile <profile> [--no-cursor|--cursor] \
   [--build-model <id>] [--evaluate-model <id>] [--build-effort high] [--evaluate-effort high] \
   [--cursor-routine-model <id>] [--cursor-hard-model <id>] --json
 ```
@@ -152,7 +156,7 @@ Grok with a recorded reason, or block. No silent green; no silent cross-backend
 model switch. The human review/merge gate remains mandatory (`next → main` is
 human-only).
 
-Lane defaults under `--no-cursor`: Claude lanes run Opus 4.8 at high effort;
+Lane defaults under `--no-cursor` (and with no Cursor flag): Claude lanes run Opus 5 at high effort;
 OpenAI lanes run GPT-5.6 Sol at medium effort. These are pipeline-lane defaults
 only; the Conductor stays on whatever model the user launched.
 

@@ -64,12 +64,12 @@ export function defaultBgsdConfig() {
       // Skip all issue/PR machinery when the repo has no GitHub remote.
       require_remote: true,
     },
-    // Session model contract defaults. Cursor workers are enabled by default
-    // (Composer routine / Grok hard). Claude/Codex remains an equal alternative
-    // via --no-cursor or an explicit claude-codex assignment. The live session
-    // model is always the Conductor.
+    // Session model contract defaults. Claude/Codex workers are the default
+    // (Opus 5 build/eval). Cursor Agent CLI remains an equal opt-in via --cursor
+    // or cursor.enabled=true. The live session model is always the Conductor —
+    // Opus 5 may orchestrate when the user starts the session on it.
     cursor: {
-      enabled: true,
+      enabled: false,
       models: {
         routine: "composer-2.5",
         hard: "cursor-grok-4.5-high",
@@ -78,7 +78,7 @@ export function defaultBgsdConfig() {
     harness: {
       active: "auto",
       models: {
-        claude: { opus: "claude-opus-4-8", sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
+        claude: { opus: "claude-opus-5", sonnet: "sonnet", haiku: "haiku", fable: "claude-fable-5" },
         codex: { opus: "gpt-5.5", sonnet: "gpt-5.4", haiku: "gpt-5.4-mini", fable: "gpt-5.5" },
         cursor: {
           routine: "composer-2.5",
@@ -92,13 +92,11 @@ export function defaultBgsdConfig() {
     },
     model_contract: {
       profile: "claude",
-      routing: "cursor",
-      build: { provider: "cursor", model: "composer-2.5", effort: null },
-      evaluate: { provider: "cursor", model: "composer-2.5", effort: null },
+      routing: "fixed",
+      build: { provider: "claude", model: "claude-opus-5", effort: "high" },
+      evaluate: { provider: "claude", model: "claude-opus-5", effort: "high" },
       adaptive: {
-        routine: { model: "composer-2.5", effort: null },
-        hard: { model: "cursor-grok-4.5-high", effort: null },
-        heavy: { model: "claude-opus-4-8", effort: "high" },
+        heavy: { model: "claude-opus-5", effort: "high" },
         light: { model: "sonnet", effort: "high" },
       },
       transport: "direct",
@@ -106,11 +104,10 @@ export function defaultBgsdConfig() {
       claude_codex: {
         profile: "claude",
         routing: "fixed",
-        build: { provider: "claude", model: "claude-opus-4-8", effort: "high" },
-        evaluate: { provider: "claude", model: "claude-opus-4-8", effort: "high" },
+        build: { provider: "claude", model: "claude-opus-5", effort: "high" },
+        evaluate: { provider: "claude", model: "claude-opus-5", effort: "high" },
       },
-    },
-    // How thoroughly bgsd verifies. The goal-backward code verification
+    },    // How thoroughly bgsd verifies. The goal-backward code verification
     // (gsd-verifier: "did it build what was asked, is everything proper") ALWAYS
     // runs. usage_testing toggles the heavier Playwright/vision rung (driving the
     // real app: console -> network -> DOM -> vision). Turn it off for repos or
@@ -262,22 +259,23 @@ Notes section and Kiwi will respect them.
   Kiwi copies these env files from the repo root into every worktree (and onto
   the integration branch) so your apps actually run. Edit the globs to match
   this repo's env files.
-- **cursor** — Cursor Agent CLI workers (default on). \`models.routine\` is
-  Composer 2.5 Standard (\`composer-2.5\`); \`models.hard\` is Grok 4.5 base
+- **cursor** — Cursor Agent CLI workers (default **off**). Opt in with
+  \`--cursor\` or \`cursor.enabled: true\`. \`models.routine\` is Composer 2.5
+  Standard (\`composer-2.5\`); \`models.hard\` is Grok 4.5 base
   (\`cursor-grok-4.5-high\`). Fast variants and Auto are never silently selected.
-  Pass \`--no-cursor\` for Claude Code / Codex workers instead. Doctor validates
-  selectors against \`cursor-agent --list-models\`.
+  Default workers are Claude Code / Codex (\`--no-cursor\` is the implicit default).
+  Doctor validates selectors against \`cursor-agent --list-models\` when enabled.
 - **harness** — Claude Code, Codex, and Cursor are first-class harnesses.
   \`harness.active: "auto"\` detects from the environment; pin to
   \`claude\`/\`codex\`/\`cursor\` to force one. \`harness.models\` maps semantic
   tiers to concrete ids per harness.
 - **model_contract** — the session Conductor/worker/evaluation contract. The live
-  session model is always the Conductor and Advisor. With Cursor enabled, routine
-  units use Composer and hard units use Grok (recorded reasons required for hard
-  and claude-codex). Verification is deterministic-first; a fresh Composer
-  verifier gathers semantic evidence only when needed; the live Conductor
-  adjudicates. \`--no-cursor\` uses Claude Code / Codex build and evaluation
-  lanes — an equal alternative, not a fallback.
+  session model is always the Conductor and Advisor (you choose it — Opus 5 may
+  orchestrate when you start the session on it). Default workers are Claude Opus 5
+  for build and evaluation. With \`--cursor\`, routine units use Composer and hard
+  units use Grok (recorded reasons required for hard and claude-codex). Cursor
+  verification is deterministic-first; a fresh Composer verifier gathers semantic
+  evidence only when needed; the live Conductor adjudicates.
 - **model_contract.auth** — always \`subscription-only\`. BGSD Doctor verifies
   Cursor browser-login (\`cursor-agent login\`) when Cursor is enabled, or Claude
   and Codex subscription login for Claude/Codex runs. Child processes scrub

@@ -1225,14 +1225,15 @@ if (
     if (!prompt) {
       process.stderr.write(
         'Usage: session.mjs --prompt "<request>" [--quick | --feature | --project]\n' +
-        '        [--no-cursor]  # Claude Code / Codex workers instead of Cursor\n' +
+        '        [--no-cursor]  # Claude Code / Codex workers (default)\n' +
+        '        [--cursor]     # Cursor Agent CLI workers (opt-in)\n' +
         '        [--profile claude|openai|claude-openai|openai-claude] [--build-model <id>] [--evaluate-model <id>] [--proxy]\n' +
         '        [--routing fixed|adaptive] [--light-build-model <id>]\n' +
         '        [--build-effort low|medium|high|xhigh] [--evaluate-effort low|medium|high|xhigh]\n' +
         '        [--cursor-routine-model <id>] [--cursor-hard-model <id>]\n' +
         '        [--mode fast|thorough|adaptive] [--verify-mode fast|thorough|adaptive]\n' +
         '        [--no-usage-verification] [--headless-ui] [--gui | --no-gui] [--plan-only | --dry-run]\n' +
-        '  Default: Cursor workers (Composer routine / Grok hard). --no-cursor: Claude/Codex workers.\n' +
+        '  Default: Claude/Codex workers (Opus 5). --cursor: Cursor workers (Composer routine / Grok hard).\n' +
         '  Default (no flag): executes the session, adaptive modes. --plan-only / --dry-run: preview.\n'
       );
       process.exit(1);
@@ -1252,6 +1253,7 @@ if (
     const modeFlag = typeof flags.mode === "string" ? flags.mode : undefined;
     const verifyModeFlag = typeof flags["verify-mode"] === "string" ? flags["verify-mode"] : undefined;
     const noCursor = flags["no-cursor"] === true;
+    const wantCursor = flags.cursor === true;
     // Load BGSD.md before resolving the contract so cursor.models overrides apply.
     let bgsdConfig = null;
     try {
@@ -1270,13 +1272,13 @@ if (
       evaluateEffort: typeof flags["evaluate-effort"] === "string" ? flags["evaluate-effort"] : undefined,
       routing: typeof flags.routing === "string" ? flags.routing : "fixed",
       proxy: flags.proxy === true,
-      cursor: noCursor ? false : undefined,
+      cursor: noCursor ? false : wantCursor ? true : undefined,
       cursorRoutineModel: typeof flags["cursor-routine-model"] === "string" ? flags["cursor-routine-model"] : undefined,
       cursorHardModel: typeof flags["cursor-hard-model"] === "string" ? flags["cursor-hard-model"] : undefined,
       config: bgsdConfig,
     });
     Object.assign(process.env, exportContractEnv(modelContract));
-    if (noCursor) {
+    if (noCursor || !modelContract.cursor?.enabled) {
       process.env.BGSD_NO_CURSOR = "1";
       process.env.BGSD_CURSOR = "0";
     }
@@ -1346,7 +1348,7 @@ if (
       process.stdout.write(`  verify:    deterministic-first; Conductor adjudicates evidence\n`);
       process.stdout.write(`  claude/codex: profile=${(modelContract.claude_codex || modelContract.legacy).profile} (equal alternative)\n`);
     } else {
-      process.stdout.write(`  cursor:    disabled (--no-cursor → Claude/Codex workers)\n`);
+      process.stdout.write(`  cursor:    disabled (default Claude/Codex workers; pass --cursor to opt in)\n`);
       process.stdout.write(`  build:     ${modelContract.build.provider}/${modelContract.build.model} (${modelContract.build.effort}, ${modelContract.build.transport}, routing=${modelContract.routing})\n`);
       if (modelContract.routing === "adaptive") {
         process.stdout.write(`  adaptive:  heavy=${modelContract.adaptive.heavy.model}, light=${modelContract.adaptive.light.model} (Conductor assigned)\n`);
