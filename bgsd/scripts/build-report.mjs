@@ -35,6 +35,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { emitVerification } from "./remote-events.mjs";
 
 // ---------------------------------------------------------------------------
 // Verdict logic (REPORT-03)
@@ -364,6 +365,14 @@ if (
     process.stderr.write(`Error writing report: ${err.message}\n`);
     process.exit(1);
   }
+
+  // Structured outbox: mirror the verification verdict for remote observers.
+  // Writes only to the jsonl outbox (NOT stdout), so VERIFY-03's exact-one-line
+  // stdout contract is preserved. Guarded: emitStructured never throws.
+  emitVerification(process.cwd(), input.run_id, {
+    verdict: report.verdict,
+    defectCount: Array.isArray(report.defects) ? report.defects.length : 0,
+  });
 
   // Relative path for display (relative to cwd)
   const relPath = `.bgsd/runs/${input.run_id}/verification-report.json`;

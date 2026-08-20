@@ -61,6 +61,27 @@ Prints the assembled PR body and the `gh pr create` command it WOULD run, then e
 2. Calls `requireNotDefaultBranch(base)`: refuses if `base` is the production branch `main` or `master`. The integration branch `next` is allowed.
 3. Runs `gh pr create --base <base> --head <head> --title <title> --body <body>`.
 
+**After the PR is opened (or later merged), record the git-artifact event** so a
+remote client watching the outbox sees it flow. The PR steps run in command
+markdown, which has no in-process JS seam, so record it from the shell with the
+events CLI:
+
+```sh
+# just after gh pr create returns the PR number/url:
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote-events.mjs" emit \
+  --run-id <run-id> --type pr-opened \
+  --meta '{"pr_number":<n>,"url":"<url>","branch":"<head>","into":"<base>"}'
+
+# and when the human later merges that PR (next -> main is human-only):
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote-events.mjs" emit \
+  --run-id <run-id> --type pr-merged \
+  --meta '{"pr_number":<n>,"url":"<url>"}'
+```
+
+`--meta` must be valid JSON. The command uses a never-throw append and no-ops
+when the run directory is absent, so it is safe to call unconditionally; a
+telemetry failure never blocks the PR flow.
+
 ---
 
 ## Guards

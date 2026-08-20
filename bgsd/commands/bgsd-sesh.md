@@ -289,6 +289,27 @@ unit as needing input, and keep every other unit progressing. Never convert a
 worker question into a global blocking prompt, and never guess on a genuine
 judgment call just to keep moving.
 
+## Remote control messages
+
+The session-inbox you drain each tick carries more than interjections and
+answers. A remote client (the phone app, via `POST /api/control` on the bridge)
+can drop a `kind:"control"` item there: `pause`, `abort`, or `resume`. When you
+see one, act on it exactly as if the local command had been run:
+
+- **`pause`** — stop dispatching new work, let in-flight units reach a safe
+  point, and park the session with the pause harness (same flow as
+  `/bgsd-pause`). The run stays non-terminal and resumable.
+- **`abort`** — stop dispatching, mark the run aborted (terminal), and stand
+  down. Nothing is force-killed mid-write; you simply stop advancing.
+- **`resume`** — if the session is already running, this is a no-op; note it and
+  carry on. If the run was paused, restore it and re-enter the stage.
+- **Any other action** — ignore it (forward-compat) but log that you saw it.
+
+The bridge already flips `run.json` and emits a `control-in` event when it
+accepts the request; your job is to honor the parked state so the session winds
+down (or resumes) cleanly. Never treat a control item as an ordinary
+interjection, and never force-kill an agent mid-commit to satisfy one.
+
 ## Live status doctrine
 
 The session must feel observed, not opaque. Print a stage banner at every

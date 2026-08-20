@@ -592,6 +592,70 @@ export function defaultInboxReader(inboxDir) {
 }
 
 // ---------------------------------------------------------------------------
+// Remote-control inbox items (kind:"control") — pause / abort / resume.
+//
+// A remote client (POST /api/control on remote.mjs) drops a
+// `{ kind:"control", action, source:"remote", ... }` file into the SAME
+// session-inbox this loop already drains. These helpers are pure so every
+// branch is testable through the inboxReaderFn DI seam without a live bridge.
+// ---------------------------------------------------------------------------
+
+/** The control actions the session loop reacts to. `resume` is a running-loop no-op. */
+export const SESSION_CONTROL_ACTIONS = Object.freeze(["pause", "abort", "resume"]);
+
+/**
+ * Classify one drained inbox message. Returns the control action for a
+ * `kind:"control"` item (unknown actions surface as `{ action, known:false }`),
+ * or null for a non-control message (an ordinary interjection/answer). Pure.
+ *
+ * @param {object} msg  a drained inbox message
+ * @returns {{ action: string, known: boolean, source: string|null } | null}
+ */
+export function classifyControlMessage(msg) {
+  if (!msg || typeof msg !== "object" || msg.kind !== "control") return null;
+  const action = typeof msg.action === "string" ? msg.action.trim() : "";
+  return {
+    action,
+    known: SESSION_CONTROL_ACTIONS.includes(action),
+    source: typeof msg.source === "string" ? msg.source : null,
+  };
+}
+
+/**
+ * Fold a drained batch of inbox messages into a control directive the loop acts
+ * on. Non-control messages are ignored here (the caller still handles their
+ * answersUnit / text). A `pause` or `abort` sets `stop` with that reason; a
+ * later `abort` supersedes a `pause` in the same batch (abort is terminal). A
+ * `resume` on a running loop is a recorded no-op; an unknown action is logged
+ * and ignored (forward-compat). Pure — logging is done by the caller from `log`.
+ *
+ * @param {Array<object>} msgs
+ * @returns {{ stop: false|"pause"|"abort", log: string[] }}
+ */
+export function applyControlMessages(msgs) {
+  let stop = false;
+  const log = [];
+  for (const m of msgs ?? []) {
+    const c = classifyControlMessage(m);
+    if (!c) continue;
+    if (!c.known) {
+      log.push(`ignored unknown control action "${c.action}" (forward-compat)`);
+      continue;
+    }
+    if (c.action === "abort") {
+      stop = "abort";
+      log.push("control: abort — stop dispatching, mark aborted");
+    } else if (c.action === "pause") {
+      if (stop !== "abort") stop = "pause";
+      log.push("control: pause — stop dispatching new work, park the session");
+    } else if (c.action === "resume") {
+      log.push("control: resume — session already running, no-op");
+    }
+  }
+  return { stop, log };
+}
+
+// ---------------------------------------------------------------------------
 // U2/U3 — startSession orchestrator
 // ---------------------------------------------------------------------------
 
@@ -762,10 +826,17 @@ export async function startSession(opts = {}) {
   // The live-frame log + ingested-message log the session loop maintains.
   const liveFrames = [];
   const ingestedMessages = [];
+  const controlLog = [];
+  // Remote-control state, mutated by tick() when a kind:"control" inbox item
+  // arrives. `stop` becomes "pause" | "abort" so the orchestration loops exit
+  // gracefully at their next tick without restructuring the loop.
+  const sessionControl = { stop: false };
 
   /**
    * One non-blocking session tick: render the live view, drain the inbox.
    * Called between orchestration steps. NEVER blocks on a question.
+   * A kind:"control" inbox item sets sessionControl.stop so the loop can wind
+   * down (pause parks the run; abort marks it aborted). resume is a no-op here.
    */
   function tick(view) {
     // (1) Live tracking — render the always-on view.
@@ -777,6 +848,11 @@ export async function startSession(opts = {}) {
     // (2) Interject anytime — ingest inbox messages WITHOUT halting.
     const msgs = inboxReaderFn(inboxDir) ?? [];
     for (const m of msgs) ingestedMessages.push(m);
+    // (3) Remote control — fold any kind:"control" items into the stop signal.
+    const { stop, log } = applyControlMessages(msgs);
+    for (const line of log) controlLog.push(line);
+    // abort is terminal and supersedes a pending pause; otherwise take the first stop.
+    if (stop === "abort" || (stop && sessionControl.stop !== "abort")) sessionControl.stop = stop;
     return msgs;
   }
 
@@ -785,12 +861,13 @@ export async function startSession(opts = {}) {
     result = await runQuick({
       prompt, classification, plan, verifyFn, fixFn, quickPlanFn,
       quickDecomposeFn, quickWorkerFn, quickReviewFn, quickExecuteFn, tick,
+      sessionControl,
     });
   } else {
     result = await runDecomposed({
       prompt, scale, classification, plan, bgsdDir, sessionRecord,
       verifyFn, fixFn, discussFn, oracleFn, decomposeFn, reviewFn, prFn,
-      escalateFn: opts.escalateFn, tick,
+      escalateFn: opts.escalateFn, tick, sessionControl,
     });
   }
 
@@ -808,6 +885,8 @@ export async function startSession(opts = {}) {
     session: sessionRecord,
     liveFrames,
     ingestedMessages,
+    controlLog,
+    control: sessionControl.stop ? { stopped: sessionControl.stop } : null,
     ...result,
   };
 }
@@ -828,6 +907,7 @@ export async function startSession(opts = {}) {
 async function runQuick({
   prompt, classification, plan, verifyFn, fixFn, quickPlanFn, quickDecomposeFn,
   quickWorkerFn, quickReviewFn, quickExecuteFn, tick,
+  sessionControl = { stop: false },
 }) {
   const { transition } = await import("./queue.mjs");
   const { runLoop1 } = await import("./loop1.mjs");
@@ -891,6 +971,24 @@ async function runQuick({
     agents: items.map((item) => ({ agent_id: item.id, status: "running", phase: "execute" })),
   });
 
+  // Remote pause/abort before the verify/fix loop: wind down without dispatching
+  // Loop 1. pause parks the session (resumable); abort is terminal. In-flight
+  // direct workers already ran; we simply stop advancing into verification.
+  if (sessionControl.stop) {
+    return {
+      outcome: sessionControl.stop === "abort" ? "aborted" : "paused",
+      reason: `remote ${sessionControl.stop}`,
+      iterations: 0,
+      units: items.map((item) => ({ id: item.id, status: item.state, iterations: 0 })),
+      verified: true,
+      execution: "delegated-direct-pipeline",
+      conductorPlan,
+      workers,
+      reviews,
+      stopped: sessionControl.stop,
+    };
+  }
+
   const loopResults = await Promise.all(items.map(async (item, index) => {
     const loopResult = await runLoop1({
       item,
@@ -943,6 +1041,7 @@ async function runQuick({
 async function runDecomposed({
   prompt, scale, classification, plan, bgsdDir, sessionRecord,
   verifyFn, fixFn, discussFn, oracleFn, decomposeFn, reviewFn, prFn, escalateFn, tick,
+  sessionControl = { stop: false },
 }) {
   // --- DISCUSS FIRST (project only) ---
   let oracle = null;
@@ -992,8 +1091,13 @@ async function runDecomposed({
 
   while (guard++ < MAX_TICKS) {
     // Drain inbox first: an interjected message can ANSWER a pending question,
-    // un-parking exactly one unit (without halting anything else).
+    // un-parking exactly one unit (without halting anything else). tick() also
+    // folds any kind:"control" item into sessionControl.stop.
     const msgs = tick(renderView(scale, unitStates));
+    // Remote pause/abort: stop dispatching NEW work and wind the loop down at
+    // this tick. In-flight units are not force-killed; they simply stop being
+    // advanced. pause parks the run (resumable); abort is terminal.
+    if (sessionControl.stop) break;
     for (const m of msgs) {
       if (m && m.answersUnit) {
         const target = unitStates.find((u) => u.id === m.answersUnit);
@@ -1049,6 +1153,26 @@ async function runDecomposed({
   let escalationResult = null;
   if (escalations.length > 0 && typeof escalateFn === "function") {
     escalationResult = await escalateFn(escalations);
+  }
+
+  // A remote pause/abort short-circuits the downstream boundaries: a stopped
+  // session neither runs Loop 2 nor opens a review gate or PR. pause parks the
+  // run (resumable, non-terminal); abort is a terminal stop.
+  if (sessionControl.stop) {
+    const doneUnits = unitStates.filter((u) => u.status === "done");
+    return {
+      outcome: sessionControl.stop === "abort" ? "aborted" : "paused",
+      discussed: plan.discuss,
+      units: unitStates.map((u) => ({ id: u.id, status: u.status, iterations: u.iterations })),
+      ranLoop2: false,
+      reviewVerdict: null,
+      prResult: null,
+      escalations,
+      escalationResult,
+      verified: true,
+      stopped: sessionControl.stop,
+      doneUnitCount: doneUnits.length,
+    };
   }
 
   // Loop 2 only if more than one unit merged (feature) / always (project, when units merged).

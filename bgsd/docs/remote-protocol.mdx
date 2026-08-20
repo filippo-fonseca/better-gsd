@@ -186,3 +186,340 @@ If you're an agent on the same box you can bypass HTTP and use the files directl
 That's the whole contract. Build the client against these shapes; the bridge is
 intentionally small and file-backed so it's easy to reason about and hard to
 wedge.
+
+## API v2 (additive)
+
+Version 2 layers richer read endpoints on top of everything above. It is strictly
+additive: every v1 route and every event shape is preserved unchanged. Two rules
+make v2 clients forward-compatible with future slices:
+
+- **Gate on capabilities, never on the version.** Read the `capabilities` map from
+  `GET /api/health` and light up UI only for the capabilities that are `true`.
+  A later slice flips `control` and `launch` on without a protocol bump.
+- **Ignore what you don't recognize.** Skip unknown JSON keys in any response and
+  unknown `type` values in the event stream. New keys and new event types will be
+  added over time; a client that tolerates them keeps working.
+
+All v2 reads honor the same auth and the same `?run=<run-id>` addressing as v1,
+with one extension: `?run=` now resolves a live run under `.bgsd/runs/` first,
+then falls back to an archived, shipped session under `.bgsd/seshs/`. Omit `?run=`
+to target the latest live run.
+
+### CORS and preflight
+
+Every response (including the SSE stream and error responses) carries:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: authorization, x-bgsd-token, content-type
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+```
+
+A CORS preflight (`OPTIONS <any path>`) returns `204` with those headers and is
+answered **before** the auth gate, so a browser can complete its preflight and
+then send the real, token-bearing request. `OPTIONS` is the only response the
+bridge produces without a token; every other route stays token-gated exactly as
+in v1.
+
+### `GET /api/health` (extended)
+
+The v1 fields (`ok`, `run_id`, `conductor`) are unchanged; v2 adds three:
+
+```jsonc
+{
+  "ok": true,
+  "run_id": "run-fixture",
+  "conductor": { "name": "Kiwi", "emoji": "🥝" },
+  "protocol": 2,
+  "bgsd_version": "2.0.0",
+  "capabilities": {
+    "sessions": true, "plan": true, "tokens": true, "queue": true,
+    "agents": true, "logs": true,
+    "control": true, "launch": false
+  }
+}
+```
+
+`control` is `true` once the control slice is present (it enables
+`POST /api/control`, below); `launch` remains `false` until a later slice. A
+client should hide any affordance whose capability reads `false`. Gate on the
+capability, never on the protocol version.
+
+### `GET /api/sessions`
+
+Every run the bridge can see, plus the latest live run and the archived sessions:
+
+```jsonc
+{
+  "sessions": [ { "run_id": "…", "title": "…", "scale": "feature", "state": "executing", "stage": "loop1", "status": "…", "counts": {…}, "updated_at": "…" } ],
+  "latest_run_id": "run-fixture",       // newest live run by mtime, or null
+  "archived": ["sesh-old"]              // directory names under .bgsd/seshs/
+}
+```
+
+`sessions` is newest-first. `archived` ids are addressable with `?run=`.
+
+### `GET /api/plan?run=<id>`
+
+The persisted plan for a run, joined with the live control files:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "state": "executing",
+  "scale": "feature",
+  "waves": [ { "wave": 0, "units": ["auth"] } ],
+  "checkpoints": [],
+  "units": [
+    {
+      "id": "auth", "title": "Auth", "scope": "OAuth",
+      "criteria": ["login works"], "touched": null, "difficulty": 0.4,
+      "model_assignment": { "tier": "opus" },
+      "live": {                          // null before the unit's agent spawns
+        "agent_id": "agent-auth", "status": "running", "phase": "execute",
+        "worktree": "/wt/auth", "branch": "feat/auth"
+      }
+    }
+  ]
+}
+```
+
+Units are ordered by `units/_meta.json`'s `unit_ids`. Each unit's `live` block is
+`null` until its agent writes a control file, then reflects the current status.
+
+- `409 { "error": "not yet decomposed" }` when the run exists but has not been
+  decomposed yet (no `units/` directory).
+- `404 { "error": "unknown run" }` for a run id that resolves to no directory.
+
+### `GET /api/agents?run=<id>`
+
+The full projection of the run's control files, with a server-computed heartbeat:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "agents": [
+    {
+      "agent_id": "agent-auth", "unit_id": "auth",
+      "phase": "execute", "status": "running",
+      "heartbeat": "alive",              // "alive" | "stale" | "dead"
+      "heartbeat_at": "…",
+      "model": "claude-opus-4-8", "model_assignment": { "tier": "opus" },
+      "worktree": "/wt/auth", "branch": "feat/auth",
+      "progress": { "iteration": 1, "max_iterations": 5, "note": "" },
+      "context_bytes": 2048, "context_pressure": "normal",
+      "restart_count": 0, "escalations": [], "blockers": [],
+      "started_at": "…", "updated_at": "…"
+    }
+  ]
+}
+```
+
+`heartbeat` is classified server-side from `heartbeat_at`: `alive` under ~2 min,
+`stale` under ~5 min, `dead` beyond that (or never set).
+
+### `GET /api/agents/<agentId>/log?run=<id>&offset=<n>`
+
+A pull-based, byte-offset tail of a per-agent log file
+(`.bgsd/runs/<run-id>/logs/<agentId>.log`):
+
+```jsonc
+// GET …/log?run=run-fixture&offset=6
+{ "agent_id": "agent-auth", "offset": 6, "next_offset": 15, "eof": true, "data": "log world" }
+```
+
+Poll by passing the previous response's `next_offset` back as `offset`; `eof`
+tells you whether you've reached the end. Each request returns at most 256KB of
+`data`. `agentId` is allowlisted to `[A-Za-z0-9._-]` (path traversal is rejected
+with `400`). A `404` means the log file does not exist yet (log files are created
+lazily by the run).
+
+### `GET /api/tokens?run=<id>[&raw=1]`
+
+Token + cost accounting for a run, rolled up:
+
+```jsonc
+{
+  "run_id": "run-fixture",
+  "totals":  { "calls": 1, "input": 1000, "output": 200, "cacheRead": 0, "cost": 0.01, "costKnown": true },
+  "byModel": { "claude-opus-4-8": { "calls": 1, "input": 1000, "output": 200, "cacheRead": 0, "cost": 0.01, "costKnown": true } },
+  "byRole":  { "executor": { … } },
+  "byAgent": { "agent-auth": { … } }
+  // "entries": [ … ]   ← present ONLY when raw=1
+}
+```
+
+`costKnown: false` on a bucket means at least one call had no known pricing, so
+its `cost` is a floor. Pass `raw=1` to also get the individual ledger rows in
+`entries`; omit it for the rollup only.
+
+### `GET /api/queue`
+
+The bgsd fix-stream queue (per-repo, at `.bgsd/queue/queue.json`):
+
+```jsonc
+{
+  "counts": { "queued": 1, "classified": 0, "…": 0 },
+  "current": "item-abc123",              // id of the item being worked, or null
+  "last_verdict": "done",                // most recent terminal state, or null
+  "items": [
+    { "id": "item-abc123", "title": "Fix the nav bug", "state": "queued", "source": "manual", "created_at": "…" }
+  ]
+}
+```
+
+Item bodies are intentionally omitted from this projection; fetch the queue store
+directly on-box if you need them.
+
+### `POST /api/control`
+
+Drive a run's lifecycle from off-box. This is the one **write** endpoint that
+changes run state, so it is **capability-gated**: only send it when
+`capabilities.control` reads `true` on `GET /api/health` (hide the affordance
+otherwise). It honors the same token gate and the same `?run=<id>` addressing as
+every other POST.
+
+```jsonc
+// request
+{ "action": "pause" | "resume" | "abort", "reason": "...", "note": "..." }
+```
+
+`action` is required and allowlisted; anything else is a `400`. `reason` and
+`note` are optional and carried onto the state record and the emitted event.
+
+**Dual-write semantics.** Every accepted action does two things: it drives the
+run's on-disk state through the same core the local commands use, *and* it drops
+a `{ "kind": "control", "action", "source": "remote", ... }` item into the
+run's `session-inbox/` — the SAME inbox the session loop drains each tick — and
+mirrors a `control-in` outbox event so observers see it in the stream. A live
+Conductor reacts to the inbox item on its next tick; the on-disk flip means the
+change is durable even if no Conductor is currently attached.
+
+- **`pause`** → parks the run (non-terminal, resumable). Response `200`:
+
+  ```jsonc
+  { "ok": true, "action": "pause", "run_id": "…", "resume_state": "executing", "inbox": ".bgsd/runs/…/session-inbox/remote-control-….json" }
+  ```
+
+  A run that is already **terminal** (`done` / `aborted` / `blocked` /
+  `needs_input`) has nothing to pause → `409 { "error": "…nothing to pause" }`.
+
+- **`abort`** → terminal stop. **Idempotent** (aborting an already-aborted run
+  succeeds and is a no-op). Response `200`:
+
+  ```jsonc
+  { "ok": true, "action": "abort", "run_id": "…", "state": "aborted", "inbox": "…" }
+  ```
+
+- **`resume`** → restores a paused run, then checks the run's control-file
+  heartbeats:
+  - If **any** agent's heartbeat still classifies `alive`, a live Conductor can
+    pick up the resume cooperatively. Response `200`:
+
+    ```jsonc
+    { "resumed": true, "mode": "cooperative", "run_id": "…", "inbox": "…" }
+    ```
+
+  - If **all** heartbeats are dead or absent, there is no attached Conductor to
+    receive the inbox item, so a human must start one. Response `202`:
+
+    ```jsonc
+    { "resumed": true, "mode": "needs-conductor", "run_id": "…", "hint": "launch a Conductor with /bgsd-resume" }
+    ```
+
+### v2 errors
+
+| Code | Meaning |
+|---|---|
+| `400` | Invalid agent id (path traversal) on the log endpoint; unknown/missing `action` on `/api/control` |
+| `404` | Unknown run, or a log file that does not exist yet |
+| `409` | `/api/plan` on a run that exists but has not been decomposed; `/api/control pause` on a terminal run; no active run to control |
+| `202` | `/api/control resume` when the run has no live Conductor (`needs-conductor`) |
+
+All other status codes match the v1 table above.
+## v2 addendum: structured events + agent log files
+
+Everything above is the v1 contract and stays valid. This section is purely
+**additive**: it documents the structured outbox event types and the per-agent
+log-file contract added by the remote API v2 events slice (`bgsd/scripts/remote-events.mjs`).
+
+**Client requirement (forward compatibility).** Clients MUST ignore any outbox
+event `type` they do not recognize, and MUST ignore any `meta` key they do not
+recognize. New event types and keys will be added over time; a compliant client
+treats an unknown type as an opaque line (render the human `text`, or skip it)
+and never errors on it. Do not gate behavior on the presence of a specific type.
+
+### Envelope (unchanged)
+
+Structured events use the exact same envelope as every other outbox event:
+
+`{ "seq": <int>, "at": "<ISO>", "type": "<string>", "text": "<human line>", "meta": { ... } }`
+
+`seq` is monotonic per run, `text` is a short human-readable line, and `meta`
+carries the machine-readable payload. The on-disk file is still
+`.bgsd/runs/<run-id>/remote-outbox.jsonl`, one JSON object per line, append-only.
+
+**Seq performance note.** v2 assigns `seq` without re-parsing the whole outbox
+on every append. It maintains a `remote-outbox.seq` sidecar (a plain integer
+high-water mark) next to the jsonl and, on a cold start, recovers the mark by
+reading only the last line of the jsonl. The jsonl format is byte-for-byte
+identical to v1; the sidecar is an internal optimization that clients can ignore.
+
+### Structured event types
+
+Each row lists the `type`, the shape of its `meta` payload, and when it fires.
+
+| `type` | `meta` shape | Emitted when |
+|---|---|---|
+| `run-state` | `{ from, to, run_id }` | The run transitions between lifecycle states. |
+| `plan-ready` | `{ unit_count, wave_count, units: [{ id, title, wave }] }` | Decomposition has persisted the units and waves. |
+| `wave-started` | `{ wave, units: [id] }` | A wave begins in the merge loop. |
+| `wave-done` | `{ wave, units: [id] }` | A wave's merges complete. |
+| `agent-spawned` | `{ agent_id, unit_id, model, harness, worktree, branch }` | A pipeline agent is provisioned (worktree + control file). |
+| `agent-phase` | `{ agent_id, phase, status, iteration, note }` | An agent's phase or status changes (emitted on change only, never per heartbeat). |
+| `agent-escalation` | `{ agent_id, question, blocker_id }` | An agent parks in `needs_input` and escalates a question to the user. |
+| `agent-done` | `{ agent_id, status, verified }` | An agent reaches a terminal status. `status` is `"done"` or `"failed"`. |
+| `unit-merged` | `{ unit_id, branch, into }` | A unit branch merges into the integration branch. |
+| `verification` | `{ verdict, defect_count }` | A verification report is written. `verdict` is `"PASS"`, `"FAIL"`, or `"ERROR"`. |
+| `issue-linked` | `{ unit_id, issue_number, url }` | A GitHub issue is created for a unit. `url` may be null. |
+| `pr-opened` | `{ pr_number, url, branch, into }` | A pull request is opened. |
+| `pr-merged` | `{ pr_number, url }` | A pull request is merged. |
+| `branch-created` | `{ branch, unit_id }` | A unit's git branch is created. |
+
+`meta` values may be `null` when the underlying source does not carry that datum
+(for example, `issue_number`/`url` when only a number is known, or `pr_number`
+when `gh` returns only a URL). Treat every `meta` field as optional.
+
+### Recording an event from a shell (Conductor markdown steps)
+
+Some git/GitHub artifacts happen only in Conductor command markdown, which has no
+in-process JavaScript seam to hook. For those steps, record the event from the
+shell with the events CLI:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/remote-events.mjs" emit \
+  --run-id <run-id> --type pr-opened \
+  --meta '{"pr_number":42,"url":"https://github.com/o/r/pull/42","branch":"run/unit-x","into":"next"}' \
+  [--text "PR #42 opened"] [--repo <repo-root>]
+```
+
+`--meta` must be valid JSON. The command uses the same never-throw append and
+no-ops when the run directory is absent, so it is safe to call unconditionally.
+
+### Per-agent log files
+
+v1 pipeline agents ran with `stdio: "inherit"`, so their transcripts never
+touched disk. v2 redirects each pipeline agent's stdout and stderr into a
+per-run log file:
+
+`.bgsd/runs/<run-id>/logs/<unit-id>.log`
+
+The file is opened in append mode, so a re-launched agent keeps appending to the
+same log. The path is recorded on the agent's control file as `log_path` (an
+absolute path, or `null` when logging was unavailable and the agent fell back to
+inherited stdio), which makes the transcript discoverable without guessing the
+naming convention. A byte-offset log-tail endpoint (added by the read-endpoints
+slice) serves this file to remote clients.
+
+Nothing parses agent stdout: the Conductor coordinates entirely through control
+files, so this redirection is behavior-preserving for the pipeline itself.

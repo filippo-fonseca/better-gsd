@@ -66,7 +66,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { isProductionBranch } from "./integration.mjs";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, closeSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
@@ -74,6 +74,14 @@ import { writeUnitWorktreeConfig } from "./decompose.mjs";
 import { buildAgentSpawn } from "./harness.mjs";
 import { buildLaneForUnit, loadContractForRun, harnessForLane } from "./model-contract.mjs";
 import { createControlFile, updateControlFile } from "./control.mjs";
+import {
+  emitAgentSpawned,
+  emitBranchCreated,
+  emitUnitMerged,
+  emitAgentPhase,
+  emitAgentDone,
+  openAgentLog,
+} from "./remote-events.mjs";
 import { propagateEnvForConfig } from "./envprop.mjs";
 import { readRunUnit, readRunScale } from "./run-units.mjs";
 import { ADVISOR_CHECKPOINTS, readConductorSeed, writeAdvisorDirective } from "./advisor.mjs";
@@ -261,6 +269,10 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     );
   }
 
+  // Structured outbox: the unit branch now exists (git worktree add -b created
+  // it). Guarded — emit never throws / no-ops when the run dir is absent.
+  emitBranchCreated(repoRoot, runId, { branch, unitId });
+
   // 2. Propagate env files into the worktree (worktrees skip gitignored files).
   //    Patterns + on/off come from BGSD.md (env.files / env.propagate).
   propagateEnvForConfig({ repoRoot, destDir: wtPath, log });
@@ -303,7 +315,15 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   // (Cursor / Claude / Codex). Recorded on the control file + brief.
   const harness = harnessForLane(buildLane);
 
-  // 5. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
+  // 5. Open the per-agent log file BEFORE spawning so its stdio can be
+  //    redirected into it (agent transcripts are otherwise absent on disk —
+  //    liveSpawnFn historically used stdio: "inherit"). openAgentLog never
+  //    throws; a null result means we fall back to inherit below.
+  const agentLog = openAgentLog(repoRoot, runId, unitId);
+  const logFilePath = agentLog?.path ?? null;
+
+  // 6. Create the agent control file in the MAIN repo's .bgsd/runs/<runId>/.
+  //    log_path makes the transcript discoverable to the remote log-tail endpoint.
   const controlPath = join(bgsdDir, "runs", runId, "control", `${unitId}.json`);
   createControlFile(controlPath, {
     agent_id: unitId,
@@ -317,6 +337,17 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     provider: buildLane.provider,
     model: buildLane.model,
     model_assignment: buildLane.assignment,
+    log_path: logFilePath,
+  });
+
+  // Structured outbox: the agent is provisioned (worktree + control file). Guarded.
+  emitAgentSpawned(repoRoot, runId, {
+    agentId: unitId,
+    unitId,
+    model: buildLane.model,
+    harness,
+    worktree: wtPath,
+    branch,
   });
 
   // Cursor: routine/hard from Conductor assignment. Claude/Codex: fixed/adaptive.
@@ -364,7 +395,16 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
   // Injected test spawns retain the synchronous result shape for deterministic
   // assertions without launching subprocesses.
   if (!opts.spawnImpl) {
-    const child = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", env: agentSpawn.env });
+    // Redirect the pipeline agent's stdout+stderr into its per-run log file so
+    // the transcript is durable + tailable via the remote log endpoint. The
+    // Conductor drives off control files (not the agent's stdout), so nothing
+    // depends on "inherit"; when the log fd is unavailable we fall back to it so
+    // a spawn never fails just because logging did. Mirrors the gui/remote
+    // daemon append pattern (openSync(path, "a") → stdio ["ignore", fd, fd]).
+    const stdio = agentLog ? ["ignore", agentLog.fd, agentLog.fd] : "inherit";
+    const child = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio, env: agentSpawn.env });
+    // The child holds its own dup'd fd; close ours so we don't leak a descriptor.
+    if (agentLog) { try { closeSync(agentLog.fd); } catch (_) { /* noop */ } }
     child.once("error", (error) => {
       recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
       try { updateControlFile(controlPath, { status: "failed", phase: "failed", progress: { iteration: 0, max_iterations: 5, note: `spawn error: ${error.message}` } }); } catch (_) { /* surfaced by scheduler */ }
@@ -378,6 +418,9 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
     });
     return;
   }
+  // The injected (test) spawn path never opened a real fd; if openAgentLog
+  // happened to create one, release it so tests don't leak descriptors.
+  if (agentLog) { try { closeSync(agentLog.fd); } catch (_) { /* noop */ } }
 
   const agentResult = spawnImpl(agentSpawn.cmd, agentSpawn.args, { cwd: wtPath, stdio: "inherit", encoding: "utf8", env: agentSpawn.env });
   recordSpawnUsage(bgsdDir, runId, usageMeta, wtPath, agentT0);
@@ -410,7 +453,8 @@ export async function liveSpawnFn(unitId, plan, opts = {}) {
  */
 export async function liveReadStatusFn(unitId, runId, bgsdDir) {
 
-  const controlDir = join(bgsdDir ?? join(REPO_ROOT, ".bgsd"), "runs", runId, "control");
+  const resolvedBgsdDir = bgsdDir ?? join(REPO_ROOT, ".bgsd");
+  const controlDir = join(resolvedBgsdDir, "runs", runId, "control");
   const controlPath = join(controlDir, `${unitId}.json`);
 
   if (!existsSync(controlPath)) {
@@ -425,6 +469,12 @@ export async function liveReadStatusFn(unitId, runId, bgsdDir) {
     return "dead"; // Corrupt control file — treat as dead (NFR-06)
   }
 
+  // Structured outbox: this reader is the scheduler's central per-cycle poll, so
+  // it is the one place that sees every agent's phase/status. The pipeline agent
+  // mutates its own control file out-of-process, so we diff against the last
+  // value WE observed and emit only on CHANGE (never per heartbeat). Guarded.
+  emitAgentControlChange(resolvedBgsdDir, runId, unitId, cf);
+
   // Map control file status to scheduler status
   const statusMap = {
     running:     "running",
@@ -436,6 +486,54 @@ export async function liveReadStatusFn(unitId, runId, bgsdDir) {
   };
 
   return statusMap[cf.status] ?? "running";
+}
+
+// ---------------------------------------------------------------------------
+// Structured outbox: per-agent phase/status change detection (scheduler poll)
+// ---------------------------------------------------------------------------
+
+/**
+ * Remember the last (phase|status) we emitted per run+unit so the scheduler's
+ * repeated polls only emit agent-phase / agent-done on an actual transition.
+ * Keyed by `${runId}::${unitId}`.
+ */
+const _lastAgentState = new Map();
+
+/**
+ * Diff a freshly-read control file against the last observed phase/status and
+ * emit agent-phase (on any phase or status change) and agent-done (once, when
+ * status becomes terminal done/failed). Fully guarded: never throws.
+ */
+function emitAgentControlChange(bgsdDir, runId, unitId, cf) {
+  try {
+    const repoRoot = dirname(bgsdDir); // bgsdDir is <repoRoot>/.bgsd
+    const key = `${runId}::${unitId}`;
+    const prev = _lastAgentState.get(key);
+    const phase = cf.phase ?? null;
+    const status = cf.status ?? null;
+    if (prev && prev.phase === phase && prev.status === status) return; // no change
+
+    _lastAgentState.set(key, { phase, status });
+
+    emitAgentPhase(repoRoot, runId, {
+      agentId: cf.agent_id ?? unitId,
+      phase,
+      status,
+      iteration: cf.progress?.iteration,
+      note: cf.progress?.note ?? null,
+    });
+
+    // agent-done fires once on the first observation of a terminal status.
+    const nowTerminal = status === "done" || status === "failed";
+    const wasTerminal = prev && (prev.status === "done" || prev.status === "failed");
+    if (nowTerminal && !wasTerminal) {
+      emitAgentDone(repoRoot, runId, {
+        agentId: cf.agent_id ?? unitId,
+        status,
+        verified: status === "done" ? true : false,
+      });
+    }
+  } catch (_) { /* telemetry must never break a status poll */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -517,6 +615,9 @@ export async function liveMergeFn(unitId, runId, plan, opts = {}) {
     gitImpl("git", ["merge", "--abort"], { cwd: repoRoot, encoding: "utf8" });
     return { merged: false, reason: "merge_failed", conflicts: [] };
   }
+
+  // Structured outbox: the unit branch landed on the integration branch. Guarded.
+  emitUnitMerged(repoRoot, runId, { unitId, branch, into: targetBranch });
 
   return { merged: true };
 }
